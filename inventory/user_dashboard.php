@@ -191,6 +191,10 @@ if (!$USED_MONGO) {
     <meta name="theme-color" content="#0d6efd" />
     <script src="pwa-register.js"></script>
     <style>
+      @media (min-width: 769px){
+        #sidebar-wrapper{ display:block !important; }
+        .mobile-menu-toggle{ display:none !important; }
+      }
       @media (max-width: 768px){
         .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; transition: transform .2s ease-in-out; }
         .bottom-nav.hidden{ transform: translateY(100%); }

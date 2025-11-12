@@ -1500,6 +1500,10 @@ if (!empty($my_requests)) {
   <link rel="stylesheet" href="css/style.css">
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
+    @media (min-width: 769px) {
+      #sidebar-wrapper{ display:block !important; }
+      .mobile-menu-toggle{ display:none !important; }
+    }
     /* Page-scoped compact styles for the Submit Request panel */
     #submitReqCard.compact-card .card-body { padding: 0.75rem; }
     #submitReqCard.compact-card h5 { margin-bottom: 0.5rem; font-size: 0.95rem; }

@@ -141,8 +141,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
             body { overflow: auto; }
             #page-content-wrapper { height: auto; overflow: visible; }
         }
-        /* Hide sidebar entirely on this page */
-        #sidebar-wrapper { display: none !important; }
+        /* Sidebar visibility: show on desktop, hide on mobile */
+        @media (min-width: 769px){
+            #sidebar-wrapper { display: block !important; }
+        }
+        @media (max-width: 768px){
+            #sidebar-wrapper { display: none !important; }
+        }
     </style>
 </head>
 <body class="allow-mobile">

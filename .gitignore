@@ -6,6 +6,7 @@
 .env
 .env.*
 inventory/config/mongo.php
+inventory/inventory/config/mongo.php
 
 # Composer artifacts
 /composer.phar

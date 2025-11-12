@@ -83,6 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="css/style.css">
     <!-- Sidebar visible: removed previous rule that hid it on this page -->
     <style>
+      @media (min-width: 769px) {
+        #sidebar-wrapper{ display:block !important; }
+        .mobile-menu-toggle{ display:none !important; }
+      }
       @media (max-width: 768px) {
         /* Keep notification bells visible on mobile */
         #adminBellWrap, #userBellWrapCP {

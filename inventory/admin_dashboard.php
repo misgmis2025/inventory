@@ -329,8 +329,13 @@ if (!$DASH_MONGO_FILLED) {
         body.allow-mobile table th, body.allow-mobile table td{ padding: 6px 8px !important; }
         #stockChart, #stocksChart{ height: 160px !important; max-height: 160px !important; }
       }
-      /* Hide sidebar entirely on this page */
-      #sidebar-wrapper { display: none !important; }
+      /* Sidebar visibility: show on desktop, hide on mobile */
+      @media (min-width: 769px){
+        #sidebar-wrapper { display: block !important; }
+      }
+      @media (max-width: 768px){
+        #sidebar-wrapper { display: none !important; }
+      }
     </style>
 </head>
 <body class="allow-mobile">
