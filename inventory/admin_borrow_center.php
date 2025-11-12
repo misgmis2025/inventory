@@ -1,0 +1,5291 @@
+<?php
+session_start();
+date_default_timezone_set('Asia/Manila');
+if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
+  header('Location: index.php');
+  exit();
+}
+// Action routing (define early so it's available to all handlers below)
+$act = $_GET['action'] ?? '';
+// Resolve current admin full name for autofill (fallback to username)
+$adminFullNameDefault = (string)($_SESSION['username'] ?? '');
+try {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $dbName = get_mongo_db();
+  $uDocAF = $dbName->selectCollection('users')->findOne(['username' => ($_SESSION['username'] ?? '')], ['projection' => ['full_name' => 1]]);
+  $fnAF = $uDocAF && isset($uDocAF['full_name']) ? trim((string)$uDocAF['full_name']) : '';
+  if ($fnAF !== '') { $adminFullNameDefault = $fnAF; }
+} catch (Throwable $_eAF) { /* ignore */ }
+// Print Overdue Items (admin) using the same data as overdue_json
+if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $prepared = trim($_GET['prepared_by'] ?? '');
+  $checked  = trim($_GET['checked_by'] ?? '');
+  $dateVal  = trim($_GET['date'] ?? date('Y-m-d'));
+  try {
+    $db = get_mongo_db();
+    $ub = $db->selectCollection('user_borrows');
+    $ra = $db->selectCollection('request_allocations');
+    $er = $db->selectCollection('equipment_requests');
+    $ii = $db->selectCollection('inventory_items');
+    $users = $db->selectCollection('users');
+    $now = date('Y-m-d H:i:s');
+    $rows = [];
+    // Consider any active borrow (not returned), regardless of status label
+    $cur = $ub->find(['$or' => [ ['returned_at' => null], ['returned_at' => ''] ]]);
+    foreach ($cur as $b) {
+      $bid = (int)($b['id'] ?? 0);
+      $mid = (int)($b['model_id'] ?? 0);
+      // Resolve due date: reservation reserved_to > request expected_return_at > borrow expected_return_at
+      $dueAt = (string)($b['expected_return_at'] ?? '');
+      $approvedBy = '';
+      $reqType = '';
+      $borrowerUser = (string)($b['username'] ?? '');
+      $borrowerFull = $borrowerUser;
+      $borrowerSid = '';
+      try {
+        $u = $users->findOne(['username'=>$borrowerUser], ['projection'=>['full_name'=>1,'school_id'=>1]]);
+        if ($u) {
+          if (isset($u['full_name']) && trim((string)$u['full_name'])!=='') { $borrowerFull = (string)$u['full_name']; }
+          if (isset($u['school_id'])) { $borrowerSid = (string)$u['school_id']; }
+        }
+      } catch (Throwable $_e) {}
+      // link to request via allocation if exists
+      $alloc = $ra->findOne(['borrow_id' => $bid]);
+      if ($alloc && isset($alloc['request_id'])) {
+        $rid = (int)$alloc['request_id'];
+        $req = $er->findOne(['id'=>$rid]);
+        if ($req) {
+          $reqType = (string)($req['type'] ?? 'immediate');
+          $approvedBy = (string)($req['approved_by'] ?? '');
+          if (strcasecmp($reqType,'reservation')===0) {
+            $rt = (string)($req['reserved_to'] ?? '');
+            if ($rt !== '') { $dueAt = $rt; }
+          } else {
+            $rt2 = (string)($req['expected_return_at'] ?? '');
+            if ($rt2 !== '') { $dueAt = $rt2; }
+          }
+        }
+      }
+      if ($dueAt === '') { continue; }
+      if (strtotime($dueAt) && strtotime($dueAt) < strtotime($now)) {
+        $it = $mid>0 ? $ii->findOne(['id'=>$mid]) : null;
+        $serial = $it ? (string)($it['serial_no'] ?? '') : '';
+        $model = $it ? ((string)($it['model'] ?? '') ?: (string)($it['item_name'] ?? '')) : '';
+        $category = $it ? ((string)($it['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+        $location = $it ? (string)($it['location'] ?? '') : '';
+        $remarks = $it ? (string)($it['remarks'] ?? '') : '';
+        $rows[] = [
+          'serial' => $serial,
+          'model' => $model,
+          'category' => $category,
+          'location' => $location,
+          'borrowed_by' => $borrowerFull,
+          'school_id' => $borrowerSid,
+          'approved_by' => $approvedBy,
+          'remarks' => $remarks,
+          'due_at' => $dueAt,
+        ];
+      }
+    }
+  } catch (Throwable $e) { $rows = []; }
+  ?><!DOCTYPE html>
+  <html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overdue Items Print</title>
+    <link href="css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+      @page { size: A4 portrait; margin: 0.6in 0.25in 0.25in 0.25in; }
+      @media print { .no-print { display:none!important } html,body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; } thead{display:table-header-group} tfoot{display:table-footer-group} .print-wrap{ overflow: visible !important; } }
+      .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 10px; }
+      .print-table th, .print-table td { padding: .2rem .25rem; vertical-align: middle; line-height: 1.2; text-align: left; word-break: break-word; white-space: normal; }
+      .print-root { padding-top: 12mm; margin-top: 6mm; }
+      .eca-header { text-align:center; margin-bottom:10px; }
+      .eca-title { font-weight:400; letter-spacing:6px; font-size:14pt; }
+      .print-wrap { width: 100%; overflow: visible; }
+      .eca-meta { display:flex; align-items:center; justify-content:space-between; font-size:9pt; margin-top:6px; margin-bottom:10px; }
+      .report-title { text-align:center; font-weight:400; font-size:14pt; margin:14px 0 14px; text-transform:uppercase; }
+      .eca-footer { margin-top:18mm; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap; }
+      .eca-footer .field { display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+      .eca-print-value { display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:180px; }
+    </style>
+  </head><body>
+    <div class="container-fluid pt-3 print-root">
+      <div class="eca-header"><div class="eca-title">ECA</div><div class="eca-sub">Exact Colleges of Asia, Inc.</div></div>
+      <div class="eca-meta"><div><strong>Date:</strong> <?php echo htmlspecialchars($dateVal); ?></div><div></div></div>
+      <div class="report-title">OVERDUE ITEMS</div>
+      <div class="print-wrap mb-2">
+        <table class="table table-bordered table-sm align-middle print-table">
+          <thead class="table-light">
+            <tr>
+              <th>Serial ID</th>
+              <th>Item</th>
+              <th>Category</th>
+              <th>Location</th>
+              <th>Borrowed By</th>
+              <th>Student ID</th>
+              <th>Approved By</th>
+              <th>Remarks</th>
+              <th>Due At</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if (empty($rows)): ?>
+              <tr><td colspan="9" class="text-center text-muted">No overdue items.</td></tr>
+            <?php else: foreach ($rows as $rw): ?>
+              <tr>
+                <td><?php echo htmlspecialchars($rw['serial']); ?></td>
+                <td><?php echo htmlspecialchars($rw['model']); ?></td>
+                <td><?php echo htmlspecialchars($rw['category']); ?></td>
+                <td><?php echo htmlspecialchars($rw['location']); ?></td>
+                <td><?php echo htmlspecialchars($rw['borrowed_by']); ?></td>
+                <td><?php echo htmlspecialchars((string)($rw['school_id'] ?? '')); ?></td>
+                <td><?php echo htmlspecialchars($rw['approved_by']); ?></td>
+                <td><?php echo htmlspecialchars($rw['remarks']); ?></td>
+                <td><?php echo htmlspecialchars($rw['due_at'] ? date('h:i A m-d-y', strtotime($rw['due_at'])) : ''); ?></td>
+              </tr>
+            <?php endforeach; endif; ?>
+          </tbody>
+        </table>
+      </div>
+
+      if (mdl) {
+        mdl.addEventListener('show.bs.modal', function (event) {
+          var trg = event.relatedTarget;
+          var src = (trg && typeof trg.closest === 'function') ? trg.closest('[data-bs-target="#borrowedDetailsModal"]') : null;
+          var el = src || trg || (typeof window !== 'undefined' ? window._bdSrc : null);
+          var user = el ? (el.getAttribute('data-user') || '') : '';
+          var serial = el ? (el.getAttribute('data-serial') || '') : '';
+          var model = el ? (el.getAttribute('data-model') || '') : '';
+          var category = el ? (el.getAttribute('data-category') || '') : '';
+          var location = el ? (el.getAttribute('data-location') || '') : '';
+          var expRaw = el ? (el.getAttribute('data-expected_raw') || '') : '';
+          var expTxt = expRaw ? (function(s){ try { return s ? new Date(s.replace(' ','T')).toLocaleString() : ''; } catch(_) { return s; } }) (expRaw) : '';
+          document.getElementById('bdUser').textContent = user;
+          document.getElementById('bdSerial').textContent = serial;
+          document.getElementById('bdModel').textContent = model;
+          document.getElementById('bdCategory').textContent = category;
+          document.getElementById('bdLocation').textContent = location;
+          document.getElementById('bdExpected').textContent = expTxt || '-';
+        });
+      }
+    })();
+  </script>
+      <div class="eca-footer">
+        <div class="field"><label>Prepared by:</label><span class="eca-print-value"><?php echo htmlspecialchars($prepared); ?>&nbsp;</span></div>
+        <div class="field"><label>Checked by:</label><span class="eca-print-value"><?php echo htmlspecialchars($checked); ?>&nbsp;</span></div>
+      </div>
+    </div>
+    <script>window.addEventListener('load', function(){ window.print(); });</script>
+  </body></html><?php
+  exit();
+}
+
+// List overdue borrowed items (JSON)
+if ($act === 'overdue_json' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $ub = $db->selectCollection('user_borrows');
+    $ra = $db->selectCollection('request_allocations');
+    $er = $db->selectCollection('equipment_requests');
+    $ii = $db->selectCollection('inventory_items');
+    $users = $db->selectCollection('users');
+    $now = date('Y-m-d H:i:s');
+    $items = [];
+    // Consider any active borrow (not returned), regardless of status label
+    $cur = $ub->find(['$or' => [ ['returned_at' => null], ['returned_at' => ''] ]]);
+    foreach ($cur as $b) {
+      $bid = (int)($b['id'] ?? 0);
+      $mid = (int)($b['model_id'] ?? 0);
+      // Resolve due date: reservation reserved_to > request expected_return_at > borrow expected_return_at
+      $dueAt = (string)($b['expected_return_at'] ?? '');
+      $approvedBy = '';
+      $reqType = '';
+      $borrowerUser = (string)($b['username'] ?? '');
+      $borrowerFull = $borrowerUser;
+      $borrowerSid = '';
+      try { $u = $users->findOne(['username'=>$borrowerUser], ['projection'=>['full_name'=>1,'school_id'=>1]]); if ($u) { if (isset($u['full_name']) && trim((string)$u['full_name'])!=='') { $borrowerFull = (string)$u['full_name']; } if (isset($u['school_id'])) { $borrowerSid = (string)$u['school_id']; } } } catch (Throwable $_e) {}
+      // link to request via allocation if exists
+      $alloc = $ra->findOne(['borrow_id' => $bid]);
+      if ($alloc && isset($alloc['request_id'])) {
+        $rid = (int)$alloc['request_id'];
+        $req = $er->findOne(['id'=>$rid]);
+        if ($req) {
+          $reqType = (string)($req['type'] ?? 'immediate');
+          $approvedBy = (string)($req['approved_by'] ?? '');
+          if (strcasecmp($reqType,'reservation')===0) {
+            $rt = (string)($req['reserved_to'] ?? '');
+            if ($rt !== '') { $dueAt = $rt; }
+          } else {
+            $rt2 = (string)($req['expected_return_at'] ?? '');
+            if ($rt2 !== '') { $dueAt = $rt2; }
+          }
+        }
+      }
+      if ($dueAt === '') { continue; }
+      if (strtotime($dueAt) && strtotime($dueAt) < strtotime($now)) {
+        $it = $mid>0 ? $ii->findOne(['id'=>$mid]) : null;
+        $serial = $it ? (string)($it['serial_no'] ?? '') : '';
+        $model = $it ? ((string)($it['model'] ?? '') ?: (string)($it['item_name'] ?? '')) : '';
+        $category = $it ? ((string)($it['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+        $location = $it ? (string)($it['location'] ?? '') : '';
+        $remarks = $it ? (string)($it['remarks'] ?? '') : '';
+        $items[] = [
+          'serial' => $serial,
+          'model' => $model,
+          'category' => $category,
+          'location' => $location,
+          'borrowed_by' => $borrowerFull,
+          'school_id' => $borrowerSid,
+          'approved_by' => $approvedBy,
+          'remarks' => $remarks,
+          'due_at' => $dueAt,
+        ];
+      }
+    }
+    echo json_encode(['ok'=>true, 'items'=>$items]);
+  } catch (Throwable $e) {
+    echo json_encode(['ok'=>false, 'items'=>[]]);
+  }
+  exit();
+}
+// Action routing (legacy position; $act already defined above)
+
+// List selectable serials (not yet whitelisted) for a given category and model (JSON)
+if ($act === 'selectable_serials' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $itemsCol = $db->selectCollection('inventory_items');
+    $buCol = $db->selectCollection('borrowable_units');
+    $cat = trim((string)($_GET['category'] ?? ''));
+    $model = trim((string)($_GET['model'] ?? ''));
+    if ($cat === '' || $model === '') { echo json_encode(['ok'=>false,'items'=>[]]); exit; }
+    // Collect ids already whitelisted for this model/category
+    $whIds = [];
+    $curWh = $buCol->find(['category'=>$cat, 'model_name'=>$model], ['projection'=>['model_id'=>1]]);
+    foreach ($curWh as $w) { $mid = (int)($w['model_id'] ?? 0); if ($mid>0) $whIds[$mid] = true; }
+    // Get all inventory items for this model/category not yet whitelisted
+    $cur = $itemsCol->find([
+      '$or' => [ ['model'=>$model], ['item_name'=>$model] ],
+      'category' => $cat,
+      'status' => 'Available',
+      'quantity' => ['$gt' => 0]
+    ], ['projection'=>['id'=>1,'serial_no'=>1,'status'=>1,'model'=>1,'item_name'=>1,'quantity'=>1], 'sort'=>['id'=>1]]);
+    $list = [];
+    foreach ($cur as $it) {
+      $mid = (int)($it['id'] ?? 0); if ($mid<=0) continue;
+      if (isset($whIds[$mid])) continue;
+      $serial = (string)($it['serial_no'] ?? '');
+      $st = (string)($it['status'] ?? '');
+      $mname = (string)($it['model'] ?? ($it['item_name'] ?? $model));
+      $list[] = ['model_id'=>$mid, 'serial_no'=>$serial, 'model'=>$mname, 'status'=>$st];
+    }
+    echo json_encode(['ok'=>true,'items'=>$list]);
+  } catch (Throwable $e) {
+    echo json_encode(['ok'=>false,'items'=>[]]);
+  }
+  exit();
+}
+
+// List whitelisted serials for a given category/model (JSON)
+if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $buCol = $db->selectCollection('borrowable_units');
+    $iiCol = $db->selectCollection('inventory_items');
+    $erCol = $db->selectCollection('equipment_requests');
+    $bcCol = $db->selectCollection('borrowable_catalog');
+    $cat = trim((string)($_GET['category'] ?? ''));
+    $model = trim((string)($_GET['model'] ?? ''));
+    if ($cat === '' || $model === '') { echo json_encode(['ok'=>false,'items'=>[]]); exit; }
+    // Reconcile whitelist with borrow_limit: auto-add Available units up to limit
+    try {
+      $bm = $bcCol->findOne(['category'=>$cat,'model_name'=>$model], ['projection'=>['borrow_limit'=>1,'active'=>1]]);
+      $limit = $bm && isset($bm['borrow_limit']) ? (int)$bm['borrow_limit'] : 0;
+      $active = $bm && isset($bm['active']) ? (int)$bm['active'] : 0;
+      if ($active === 1 && $limit > 0) {
+        $curCount = (int)$buCol->countDocuments(['category'=>$cat,'model_name'=>$model]);
+        $need = max(0, $limit - $curCount);
+        if ($need > 0) {
+          // Get already whitelisted ids to avoid duplicates
+          $existing = [];
+          foreach ($buCol->find(['category'=>$cat,'model_name'=>$model], ['projection'=>['model_id'=>1]]) as $r) { $existing[] = (int)($r['model_id'] ?? 0); }
+          $existing = array_values(array_unique(array_filter($existing)));
+          // Find Available items belonging to this model/category not already whitelisted
+          $query = [
+            'status' => 'Available',
+            'quantity' => ['$gt' => 0],
+            '$or' => [ ['model'=>$model], ['item_name'=>$model] ],
+            'category' => $cat
+          ];
+          $opts = ['projection'=>['id'=>1], 'sort'=>['id'=>1], 'limit'=> $need*3 /* overfetch a bit in case of dups */ ];
+          $toInsert = [];
+          foreach ($iiCol->find($query, $opts) as $it) {
+            $mid = (int)($it['id'] ?? 0);
+            if ($mid>0 && !in_array($mid, $existing, true)) { $toInsert[] = $mid; if (count($toInsert) >= $need) break; }
+          }
+          foreach ($toInsert as $mid) {
+            try { $buCol->insertOne(['model_id'=>$mid,'model_name'=>$model,'category'=>$cat,'created_at'=>date('Y-m-d H:i:s')]); } catch (Throwable $_e) {}
+          }
+        }
+      }
+    } catch (Throwable $_recon) { /* ignore */ }
+    $list = [];
+    $cur = $buCol->find(['category'=>$cat,'model_name'=>$model], ['projection'=>['model_id'=>1,'created_at'=>1]]);
+    foreach ($cur as $row) {
+      $mid = (int)($row['model_id'] ?? 0); if ($mid<=0) continue;
+      $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'status'=>1,'remarks'=>1]]);
+      // If reserved for an approved reservation, display Reserved instead of raw status
+      $dispStatus = $it ? (string)($it['status'] ?? '') : '';
+      try {
+        $nowStr = date('Y-m-d H:i:s');
+        $res = $erCol->findOne([
+          'type' => 'reservation',
+          'status' => 'Approved',
+          'reserved_model_id' => $mid,
+          // consider reservations that are upcoming or currently active
+          '$or' => [ ['reserved_to' => ['$gt' => $nowStr]], ['reserved_to' => ['$exists' => false]] ]
+        ], ['projection' => ['id' => 1]]);
+        if ($res) { $dispStatus = 'Reserved'; }
+      } catch (Throwable $_rs) { /* ignore */ }
+      $list[] = [
+        'model_id'=>$mid,
+        'serial_no'=> $it ? (string)($it['serial_no'] ?? '') : '',
+        'status'=> $dispStatus,
+        'remarks'=> $it ? (string)($it['remarks'] ?? '') : '',
+        'added_at'=> (string)($row['created_at'] ?? '')
+      ];
+    }
+    echo json_encode(['ok'=>true,'items'=>$list]);
+  } catch (Throwable $e) { echo json_encode(['ok'=>false,'items'=>[]]); }
+  exit();
+}
+// List hold serials for a given category and model (JSON)
+if ($act === 'hold_serials' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $holdCol = $db->selectCollection('returned_hold');
+    $itemsCol = $db->selectCollection('inventory_items');
+    $cat = trim((string)($_GET['category'] ?? ''));
+    $model = trim((string)($_GET['model'] ?? ''));
+    if ($cat === '' || $model === '') { echo json_encode(['ok'=>false,'items'=>[]]); exit; }
+    $list = [];
+    // Only include items from returned_hold (not already borrowable)
+    $cur = $holdCol->find(['category'=>$cat, 'model_name'=>$model], ['projection'=>['model_id'=>1], 'sort'=>['id'=>1]]);
+    foreach ($cur as $h) {
+      $mid = (int)($h['model_id'] ?? 0);
+      if ($mid <= 0) continue;
+      $it = $itemsCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'model'=>1,'item_name'=>1]]);
+      $serial = $it ? (string)($it['serial_no'] ?? '') : '';
+      $mname = $it ? (string)($it['model'] ?? ($it['item_name'] ?? $model)) : $model;
+      $list[] = ['model_id'=>$mid, 'serial_no'=>$serial, 'model'=>$mname, 'source'=>'hold'];
+    }
+    echo json_encode(['ok'=>true,'items'=>$list]);
+  } catch (Throwable $e) {
+    echo json_encode(['ok'=>false,'items'=>[]]);
+  }
+  exit();
+}
+
+// Print Lost/Damaged history (admin) with inventory_print-style header/footer
+if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $event = trim($_GET['event'] ?? '');
+  $statusFilter = trim($_GET['status'] ?? '');
+  $dept = trim($_GET['department'] ?? '');
+  $dateVal = trim($_GET['date'] ?? date('Y-m-d'));
+  $prepared = trim($_GET['prepared_by'] ?? '');
+  $checked  = trim($_GET['checked_by'] ?? '');
+  if ($prepared === '') {
+    try {
+      @require_once __DIR__ . '/../vendor/autoload.php';
+      @require_once __DIR__ . '/db/mongo.php';
+      $dbu = get_mongo_db();
+      $u = $dbu->selectCollection('users')->findOne(['username'=>($_SESSION['username'] ?? '')], ['projection'=>['full_name'=>1]]);
+      $fn = $u && isset($u['full_name']) ? trim((string)$u['full_name']) : '';
+      $prepared = $fn !== '' ? $fn : (string)($_SESSION['username'] ?? '');
+    } catch (Throwable $_e) { $prepared = (string)($_SESSION['username'] ?? ''); }
+  }
+  try {
+    $db = get_mongo_db();
+    $ld = $db->selectCollection('lost_damaged_log');
+    $ii = $db->selectCollection('inventory_items');
+    $ub = $db->selectCollection('user_borrows');
+    $uCol = $db->selectCollection('users');
+    $query = [];
+    if ($event !== '' && strcasecmp($event,'All')!==0) { $query['action'] = $event; }
+    $cur = $ld->find($query, ['sort'=>['id'=>-1], 'limit'=>1000]);
+    $rows = [];
+    foreach ($cur as $r) {
+      $mid = (int)($r['model_id'] ?? 0);
+      $itm = $mid>0 ? $ii->findOne(['id'=>$mid]) : null;
+      $currStatus = $itm ? (string)($itm['status'] ?? '') : '';
+      if ($statusFilter !== '' && strcasecmp($statusFilter,'All')!==0) {
+        if (strcasecmp($currStatus, $statusFilter) !== 0) continue;
+      }
+      // Try to identify the user who lost/damaged the item vs the admin who marked it
+      $userCandidates = [
+        (string)($r['affected_username'] ?? ''),
+        (string)($r['lost_by'] ?? ''),
+        (string)($r['damaged_by'] ?? ''),
+        (string)($r['user_username'] ?? ''),
+        (string)($r['student_username'] ?? ''),
+        (string)($r['borrower_username'] ?? ''),
+        (string)($r['borrowed_by'] ?? ''),
+        (string)($r['username'] ?? ''),
+      ];
+      $markedCandidates = [
+        (string)($r['marked_by'] ?? ''),
+        (string)($r['admin_username'] ?? ''),
+        (string)($r['created_by'] ?? ''),
+        (string)($r['performed_by'] ?? ''),
+        (string)($r['action_by'] ?? ''),
+        (string)($r['username'] ?? ''),
+      ];
+      $pickFirst = function(array $arr){ foreach ($arr as $v) { if (isset($v) && trim((string)$v) !== '') return (string)$v; } return ''; };
+      $markedUname = $pickFirst($markedCandidates);
+      $userUname = $pickFirst($userCandidates);
+      $logWhen = (string)($r['created_at'] ?? '');
+      // If user is missing or equals the admin marker, resolve from borrows around log time
+      if (($userUname === '' || ($markedUname !== '' && $userUname === $markedUname)) && $mid > 0) {
+        try {
+          // Prefer a borrow that overlaps log time: borrowed_at <= logWhen and (returned_at is null/empty or returned_at >= logWhen)
+          $q1 = [
+            'model_id' => $mid,
+            'borrowed_at' => ['$lte' => $logWhen],
+            '$or' => [ ['returned_at' => null], ['returned_at' => ''], ['returned_at' => ['$gte' => $logWhen]] ]
+          ];
+          $opt = ['sort' => ['borrowed_at' => -1, 'id' => -1], 'limit' => 1];
+          $c1 = $ub->find($q1, $opt);
+          $foundBorrow = false;
+          foreach ($c1 as $br) { $cand = (string)($br['username'] ?? ''); if ($cand !== '') { $userUname = $cand; $foundBorrow = true; break; } }
+          // If still none, pick the latest borrow before or at log time
+          if (!$foundBorrow) {
+            $q2 = [ 'model_id' => $mid, 'borrowed_at' => ['$lte' => $logWhen] ];
+            $c2 = $ub->find($q2, $opt);
+            foreach ($c2 as $br) { $cand = (string)($br['username'] ?? ''); if ($cand !== '') { $userUname = $cand; $foundBorrow = true; break; } }
+          }
+              // If no borrow context, first try item's last borrower, then admin marker (manual edit)
+          if (!$foundBorrow && $userUname === '' && $itm) {
+            $userUname = (string)($itm['last_borrower_username'] ?? ($itm['last_borrower'] ?? ''));
+          }
+          if (!$foundBorrow && $userUname === '' && $markedUname !== '') { $userUname = $markedUname; }
+        } catch (Throwable $e) { /* ignore */ }
+      }
+      if ($userUname === '' && $itm) {
+        $userUname = (string)($itm['last_borrower_username'] ?? ($itm['last_borrower'] ?? ''));
+      }
+      $resolve = function($uname) use ($uCol){
+        $full = $uname;
+        if ($uname !== '') {
+          try { $uu = $uCol->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($uu && !empty($uu['full_name'])) { $full = (string)$uu['full_name']; } } catch (Throwable $e) {}
+        }
+        return $full;
+      };
+      $userFull = $resolve($userUname);
+      $markedFull = $resolve($markedUname);
+      $rows[] = [
+        'serial' => $itm ? (string)($itm['serial_no'] ?? '') : '',
+        'model' => $itm ? ((string)($itm['model'] ?? '') ?: (string)($itm['item_name'] ?? '')) : '',
+        'category' => $itm ? ((string)($itm['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized',
+        'location' => $itm ? (string)($itm['location'] ?? '') : '',
+        'remarks' => $itm ? (string)($itm['remarks'] ?? '') : '',
+        'event' => (string)($r['action'] ?? ''),
+        'lost_damaged_by' => $userFull,
+        'marked_by' => $markedFull,
+        'at' => (string)($r['created_at'] ?? ''),
+        'status' => $currStatus,
+      ];
+    }
+    // Keep original full list order (already sorted by id desc)
+  } catch (Throwable $e) { $rows = []; }
+  ?><!DOCTYPE html>
+  <html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lost/Damaged History Print</title>
+    <link href="css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+      @page { size: A4 portrait; margin: 0.6in 0.25in 0.25in 0.25in; }
+      @media print { .no-print { display:none!important } html,body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; } thead{display:table-header-group} tfoot{display:table-footer-group} .print-wrap{ overflow: visible !important; } }
+      .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 9px; }
+      .print-table th, .print-table td { padding: .15rem .2rem; vertical-align: middle; line-height: 1.2; text-align: left; word-break: break-word; white-space: normal; }
+      .print-root { padding-top: 15mm; margin-top: 6mm; }
+      .eca-header { text-align:center; margin-bottom:10px; }
+      .eca-title { font-weight:400; letter-spacing:6px; font-size:14pt; }
+      .print-wrap { width: 100%; overflow: visible; }
+      .eca-meta { display:flex; align-items:center; justify-content:space-between; font-size:9pt; margin-top:6px; margin-bottom:10px; }
+      .dept-row { margin-bottom: 10mm; }
+      .report-title { text-align:center; font-weight:400; font-size:14pt; margin:14px 0 14px; text-transform:uppercase; }
+      .eca-footer { margin-top:20mm; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap; }
+      .eca-footer .field { display:inline-flex; align-items:center; gap:8px; margin-right:0; white-space:nowrap; }
+      .eca-footer .field label { margin:0; white-space:nowrap; }
+      .eca-print-value { display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:180px; }
+      .blank-row td { padding-top: .35rem !important; padding-bottom: .35rem !important; }
+      .page { page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+    </style>
+  </head><body>
+    <div class="container-fluid pt-3 print-root">
+      <?php
+        $pageSize = 15;
+        $totalRows = is_array($rows) ? count($rows) : 0;
+        $pages = max(1, (int)ceil($totalRows / $pageSize));
+        for ($p = 0; $p < $pages; $p++) {
+          $slice = array_slice($rows, $p * $pageSize, $pageSize);
+          $fill = $pageSize - count($slice);
+      ?>
+      <div class="page">
+        <div class="eca-header"><div class="eca-title">ECA</div><div class="eca-sub">Exact Colleges of Asia, Inc.</div></div>
+        <div class="eca-meta"><div class="form-no">Form No. <em>IF</em>/OO/Jun.2011</div><div></div></div>
+        <div class="report-title">LOST/DAMAGED HISTORY</div>
+        <div class="d-flex align-items-center justify-content-between dept-row">
+          <div><strong>Department:</strong> <span class="eca-print-value"><?php echo htmlspecialchars($dept); ?>&nbsp;</span></div>
+          <div><strong>Date:</strong> <span class="eca-print-value"><?php echo htmlspecialchars($dateVal); ?>&nbsp;</span></div>
+        </div>
+
+      <script>
+        (function(){
+          function byId(id){ return document.getElementById(id); }
+          function show(el){ if(el){ el.style.display = 'block'; } }
+          function hide(el){ if(el){ el.style.display = 'none'; } }
+          function widen(col, full){
+            if (!col) return;
+            if (!col.dataset.orig) col.dataset.orig = col.className;
+            col.className = full ? 'col-12' : (col.dataset.orig || col.className);
+          }
+          function resetCols(){
+            ['pending-col','borrowed-col','reservations-col'].forEach(function(id){ var el=byId(id); if(el && el.dataset.orig){ el.className = el.dataset.orig; }});
+          }
+          function hideAllCards(){
+            ['pending-list','borrowed-list','reservations-list'].forEach(function(id){ hide(byId(id)); });
+          }
+          function applyBorrowView(mode){
+            mode = (mode||'').toLowerCase();
+            var pbRow = byId('pb-row');
+            var retRow = byId('returned-list');
+            var pCol = byId('pending-col');
+            var bCol = byId('borrowed-col');
+            var rsvCol = byId('reservations-col');
+            var pCard = byId('pending-list');
+            var bCard = byId('borrowed-list');
+            var rsvCard = byId('reservations-list');
+            // Hide everything first
+            hide(pbRow); hide(retRow);
+            hide(pCol); hide(bCol); hide(rsvCol);
+            hideAllCards();
+            resetCols();
+            if (mode === 'borrowed') {
+              show(pbRow); show(bCol); show(bCard); widen(bCol, true);
+            } else if (mode === 'reservations') {
+              show(retRow); show(rsvCol); show(rsvCard); widen(rsvCol, true);
+            } else { // pending default
+              show(pbRow); show(pCol); show(pCard); widen(pCol, true);
+            }
+          }
+          function init(){
+            var sel = byId('brViewSelect');
+            if (!sel) return;
+            // Determine default from hash or ?scroll= param
+            var def = (location.hash || '').replace('#','').toLowerCase();
+            if (def.endsWith('-list')) def = def.replace('-list','');
+            if (def.endsWith('-card')) def = def.replace('-card','');
+            var params = new URLSearchParams(location.search);
+            var scr = (params.get('scroll') || '').toLowerCase();
+            if (!def && ['pending','borrowed','reservations'].includes(scr)) def = scr;
+            if (!['pending','borrowed','reservations'].includes(def)) def = 'pending';
+            sel.value = def;
+            applyBorrowView(def);
+            sel.addEventListener('change', function(){ applyBorrowView(this.value); });
+            window.addEventListener('hashchange', function(){
+              var h = (location.hash||'').replace('#','').toLowerCase();
+              if (h.endsWith('-list')) h = h.replace('-list','');
+              if (h.endsWith('-card')) h = h.replace('-card','');
+              if (['pending','borrowed','reservations'].includes(h)) { sel.value = h; applyBorrowView(h); }
+            });
+          }
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+        })();
+      </script>
+
+      
+
+        <div class="print-wrap mb-2">
+          <table class="table table-bordered table-sm align-middle print-table">
+            <thead class="table-light"><tr>
+              <th>Serial ID</th><th>Model</th><th>Category</th><th>Location</th><th>Remarks</th><th>Event</th><th>Lost/Damaged by</th><th>Marked By</th><th>At</th><th>Current Status</th>
+            </tr></thead>
+            <tbody>
+              <?php if (empty($slice)): ?>
+                <?php /* render 15 blank rows if no data on this page */ ?>
+              <?php endif; ?>
+              <?php foreach ($slice as $rw): ?>
+                <tr>
+                  <td><?php echo htmlspecialchars($rw['serial']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['model']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['category']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['location']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['remarks']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['event']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['lost_damaged_by'] ?? ''); ?></td>
+                  <td><?php echo htmlspecialchars($rw['marked_by'] ?? ''); ?></td>
+                  <td><?php echo htmlspecialchars($rw['at'] ? date('h:i A m-d-y', strtotime($rw['at'])) : ''); ?></td>
+                  <td><?php echo htmlspecialchars($rw['status']); ?></td>
+                </tr>
+              <?php endforeach; ?>
+              <?php for ($i = 0; $i < $fill; $i++): ?>
+                <tr class="blank-row">
+                  <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+                </tr>
+              <?php endfor; ?>
+            </tbody>
+          </table>
+        </div>
+        <div class="eca-footer">
+          <div class="field"><label>Prepared by:</label><span class="eca-print-value"><?php echo htmlspecialchars($prepared); ?>&nbsp;</span></div>
+          <div class="field"><label>Checked by:</label><span class="eca-print-value"><?php echo htmlspecialchars($checked); ?>&nbsp;</span></div>
+        </div>
+      </div>
+      <?php } ?>
+    </div>
+    <script>window.addEventListener('load', function(){ window.print(); });</script>
+  </body></html><?php
+  exit();
+}
+// Cancel an approved reservation
+if ($act === 'cancel_reservation') {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  try {
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $id = (int)($_GET['id'] ?? 0);
+    if ($id > 0) {
+      // Resolve canceller full name (fallback to username)
+      $cancelUser = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'system';
+      $cancelName = $cancelUser;
+      try {
+        $uDoc = $db->selectCollection('users')->findOne(['username'=>$cancelUser], ['projection'=>['full_name'=>1]]);
+        if ($uDoc && isset($uDoc['full_name']) && trim((string)$uDoc['full_name'])!=='') { $cancelName = (string)$uDoc['full_name']; }
+      } catch (Throwable $eun) {}
+      $er->updateOne(
+        ['id'=>$id, 'type'=>'reservation', 'status'=>'Approved'],
+        ['$set'=>[
+          'status'=>'Cancelled',
+          'cancelled_at'=>date('Y-m-d H:i:s'),
+          'cancelled_by'=>$cancelName
+        ]]
+      );
+    }
+    header('Location: admin_borrow_center.php?reservation_cancelled=1#reservations-list'); exit();
+  } catch (Throwable $e) {
+    header('Location: admin_borrow_center.php?error=tx'); exit();
+  }
+}
+// Standalone handler: delete selected whitelisted units
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['do'] ?? '') === 'delete_units')) {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  try {
+    $cat = trim((string)($_POST['category'] ?? ''));
+    $model = trim((string)($_POST['model'] ?? ''));
+    $ids = isset($_POST['ids']) && is_array($_POST['ids']) ? array_values(array_unique(array_filter(array_map('intval', $_POST['ids'])))) : [];
+    if ($cat !== '' && $model !== '' && !empty($ids)) {
+      $db = get_mongo_db();
+      $buCol = $db->selectCollection('borrowable_units');
+      $bcCol = $db->selectCollection('borrowable_catalog');
+      $iiCol = $db->selectCollection('inventory_items');
+      $erCol = $db->selectCollection('equipment_requests');
+      // Find IDs currently In Use (actively borrowed)
+      $inUse = [];
+      foreach ($iiCol->find(['id' => ['$in' => $ids], 'status' => 'In Use'], ['projection' => ['id' => 1]]) as $row) {
+        $inUse[] = (int)($row['id'] ?? 0);
+      }
+      $inUse = array_values(array_unique(array_filter($inUse)));
+      // Find IDs reserved in approved reservations (assigned unit)
+      $reserved = [];
+      try {
+        $curRes = $erCol->find(
+          ['type'=>'reservation','status'=>'Approved','reserved_model_id'=>['$in'=>$ids]],
+          ['projection'=>['reserved_model_id'=>1]]
+        );
+        foreach ($curRes as $r) { if (isset($r['reserved_model_id'])) { $reserved[] = (int)$r['reserved_model_id']; } }
+        $reserved = array_values(array_unique(array_filter($reserved)));
+      } catch (Throwable $_) { $reserved = []; }
+      // Compute deletable IDs (not In Use and not Reserved)
+      $blocked = array_values(array_unique(array_merge($inUse, $reserved)));
+      $canDelete = array_values(array_diff($ids, $blocked));
+      $removed = 0;
+      if (!empty($canDelete)) {
+        $delRes = $buCol->deleteMany(['model_id' => ['$in' => $canDelete]]);
+        $removed = (int)($delRes->getDeletedCount() ?? 0);
+        if ($removed > 0) {
+          $cur = $bcCol->findOne(['model_name'=>$model,'category'=>$cat], ['projection'=>['borrow_limit'=>1]]);
+          if ($cur && isset($cur['borrow_limit'])) {
+            $new = max(0, (int)$cur['borrow_limit'] - $removed);
+            $bcCol->updateOne(['model_name'=>$model,'category'=>$cat], ['$set'=>['borrow_limit'=>$new]]);
+          }
+        }
+      }
+      // Redirect with counts for UI feedback
+      $blocked_in_use = count($inUse);
+      $blocked_reserved = count($reserved);
+      header('Location: admin_borrow_center.php?deleted=' . $removed . '&blocked_in_use=' . $blocked_in_use . '&blocked_reserved=' . $blocked_reserved);
+      exit();
+    }
+  } catch (Throwable $e) { /* ignore */ }
+  header('Location: admin_borrow_center.php?deleted=0'); exit();
+}
+// Reject a pending request (cancel without deleting)
+if ($act === 'reject' && isset($_GET['id'])) {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  try {
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $id = (int)($_GET['id'] ?? 0);
+    $now = date('Y-m-d H:i:s');
+    // Resolve rejector full name (fallback to username)
+    $rejectUser = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'system';
+    $rejectName = $rejectUser;
+    try {
+      $uDoc = $db->selectCollection('users')->findOne(['username'=>$rejectUser], ['projection'=>['full_name'=>1]]);
+      if ($uDoc && isset($uDoc['full_name']) && trim((string)$uDoc['full_name'])!=='') { $rejectName = (string)$uDoc['full_name']; }
+    } catch (Throwable $eun) {}
+    // Only reject pending requests
+    $er->updateOne(
+      ['id' => $id, 'status' => 'Pending'],
+      ['$set' => ['status' => 'Rejected', 'rejected_at' => $now, 'rejected_by' => $rejectName]]
+    );
+    header('Location: admin_borrow_center.php?rejected=1'); exit();
+  } catch (Throwable $e) {
+    header('Location: admin_borrow_center.php?error=tx'); exit();
+  }
+}
+
+if (in_array($act, ['mark_returned','mark_lost','mark_maintenance'], true) && isset($_GET['id'])) {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  try {
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $ii = $db->selectCollection('inventory_items');
+    $ub = $db->selectCollection('user_borrows');
+    $ra = $db->selectCollection('request_allocations');
+    $ldCol = $db->selectCollection('lost_damaged_log');
+    $now = date('Y-m-d H:i:s');
+
+    $reqId = (int)$_GET['id'];
+    $req = $er->findOne(['id'=>$reqId]);
+    if (!$req) { header('Location: admin_borrow_center.php?error=notfound'); exit(); }
+    $who = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'system';
+    $item = trim((string)($req['item_name'] ?? ''));
+    $reqQty = max(1,(int)($req['quantity'] ?? 1));
+
+    // Pick one active borrow linked to this request (oldest by borrowed_at, then id)
+    $allocs = iterator_to_array($ra->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
+    $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
+    if (empty($borrowIds)) { header('Location: admin_borrow_center.php?error=noborrow'); exit(); }
+    $cur = $ub->find(['id' => ['$in'=>$borrowIds], 'status'=>'Borrowed']);
+    $activeBorrows = [];
+    foreach ($cur as $b) { $activeBorrows[] = $b; }
+    if (empty($activeBorrows)) { header('Location: admin_borrow_center.php?error=noborrow'); exit(); }
+    usort($activeBorrows, function($a,$b){
+      $ta = strtotime((string)($a['borrowed_at'] ?? '')) ?: 0;
+      $tb = strtotime((string)($b['borrowed_at'] ?? '')) ?: 0;
+      if ($ta === $tb) { return ((int)($a['id'] ?? 0)) <=> ((int)($b['id'] ?? 0)); }
+      return $ta <=> $tb;
+    });
+    $pick = $activeBorrows[0];
+    $borrowId = (int)($pick['id'] ?? 0);
+    $mid = (int)($pick['model_id'] ?? 0);
+
+    if ($act==='mark_returned') {
+      // Set item as Available and close borrow
+      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
+      $ub->updateOne(['id'=>$borrowId, 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+      // Ensure returned unit is whitelisted for borrowing
+      try {
+        $buCol = $db->selectCollection('borrowable_units');
+        $bcCol = $db->selectCollection('borrowable_catalog');
+        $it = $ii->findOne(['id'=>$mid], ['projection'=>['model'=>1,'item_name'=>1,'category'=>1]]);
+        $mn = $it ? (string)($it['model'] ?? ($it['item_name'] ?? '')) : '';
+        $cat = $it ? (string)(($it['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+        if ($mn !== '') {
+          $isActive = (bool)$bcCol->countDocuments(['model_name'=>$mn,'category'=>$cat,'active'=>1]);
+          if ($isActive) {
+            $exists = (int)$buCol->countDocuments(['model_id'=>$mid]);
+            if ($exists === 0) { $buCol->insertOne(['model_id'=>$mid,'model_name'=>$mn,'category'=>$cat,'created_at'=>$now]); }
+          }
+        }
+      } catch (Throwable $_e) {}
+      // Remaining active borrows for this request
+      $allocBorrowIds = array_values(array_filter(array_map(function($d){ return (int)($d['borrow_id'] ?? 0); }, $allocs)));
+      $rem = $ub->countDocuments(['id'=>['$in'=>$allocBorrowIds], 'status'=>'Borrowed']);
+      if ($rem <= 0) {
+        $allocTotal = count($allocBorrowIds);
+        if ($allocTotal >= $reqQty) {
+          $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+        }
+      }
+      header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
+    } elseif ($act==='mark_lost') {
+      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Lost']]);
+      $ub->updateOne(['id'=>$borrowId, 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+      $nextLD = $db->selectCollection('lost_damaged_log')->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+      $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
+      $ldCol->insertOne(['id'=>$lid,'model_id'=>$mid,'username'=>$who,'action'=>'Lost','created_at'=>$now]);
+
+      // Also update borrowable lists: remove this unit and decrement borrow_limit
+      try {
+        $buCol = $db->selectCollection('borrowable_units');
+        $bcCol = $db->selectCollection('borrowable_catalog');
+        $it = $ii->findOne(['id'=>$mid], ['projection'=>['model'=>1,'item_name'=>1,'category'=>1]]);
+        $mn = $it ? (string)($it['model'] ?? ($it['item_name'] ?? '')) : '';
+        $cat = $it ? (string)(($it['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+        if ($mn !== '') {
+          $buCol->deleteOne(['model_id'=>$mid]);
+          $cur = $bcCol->findOne(['model_name'=>$mn,'category'=>$cat], ['projection'=>['borrow_limit'=>1]]);
+          if ($cur && isset($cur['borrow_limit'])) {
+            $new = max(0, (int)$cur['borrow_limit'] - 1);
+            $bcCol->updateOne(['model_name'=>$mn,'category'=>$cat], ['$set'=>['borrow_limit'=>$new]]);
+          }
+        }
+      } catch (Throwable $eadj) { /* ignore adjustments */ }
+
+      header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
+    } else { // mark_maintenance
+      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Under Maintenance']]);
+      $ub->updateOne(['id'=>$borrowId, 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+      $nextLD = $db->selectCollection('lost_damaged_log')->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+      $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
+      $ldCol->insertOne(['id'=>$lid,'model_id'=>$mid,'username'=>$who,'action'=>'Under Maintenance','created_at'=>$now]);
+      header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
+    }
+  } catch (Throwable $e) {
+    header('Location: admin_borrow_center.php?error=mark'); exit();
+  }
+}
+if (in_array($act, ['validate_model_id','approve_with','approve','validate_return_id','return_with','returnship_status','request_returnship','approve_returnship','returnship_feed'], true)) {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  try {
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $ii = $db->selectCollection('inventory_items');
+    $ub = $db->selectCollection('user_borrows');
+    $ra = $db->selectCollection('request_allocations');
+
+    $now = date('Y-m-d H:i:s');
+
+    $getDesired = function($itemName) use ($ii) {
+      $doc = $ii->findOne([
+        '$or' => [ ['model'=>$itemName], ['item_name'=>$itemName] ]
+      ], ['sort' => ['id' => -1]]);
+      $m = $doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? '')) : (string)$itemName;
+      $c = $doc ? (string)($doc['category'] ?? '') : '';
+      $c = trim($c) !== '' ? $c : 'Uncategorized';
+      return [$m,$c];
+    };
+
+    $nextId = function($col) use ($db) {
+      $last = $db->selectCollection($col)->findOne([], ['sort' => ['id' => -1], 'projection' => ['id' => 1]]);
+      $cur = $last && isset($last['id']) ? (int)$last['id'] : 0;
+      return $cur + 1;
+    };
+
+    if ($act === 'validate_model_id' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      header('Content-Type: application/json');
+      $id = (int)($_POST['request_id'] ?? 0);
+      $serial = trim((string)($_POST['serial_no'] ?? ''));
+      $modelIdIn = (int)($_POST['model_id'] ?? 0);
+      if ($id <= 0) { echo json_encode(['ok'=>false,'reason'=>'Missing parameters']); exit; }
+      $req = $er->findOne(['id'=>$id]);
+      if (!$req || (string)($req['status'] ?? '') !== 'Pending') { echo json_encode(['ok'=>false,'reason'=>'Request not pending']); exit; }
+      // If this request originated from a QR with a specific serial, require that exact serial
+      $qrSerialReq = trim((string)($req['qr_serial_no'] ?? ''));
+      if ($qrSerialReq !== '') {
+        if ($serial === '' || strcasecmp($serial, $qrSerialReq) !== 0) {
+          echo json_encode(['ok'=>false,'reason'=>'This request requires the specific QR serial.']); exit;
+        }
+      }
+      $item = trim((string)($req['item_name'] ?? ''));
+      [$dm,$dc] = $getDesired($item);
+      $unit = null;
+      if ($serial !== '') { $unit = $ii->findOne(['serial_no'=>$serial]); }
+      elseif ($modelIdIn > 0) { $unit = $ii->findOne(['id'=>$modelIdIn]); }
+      if (!$unit) { echo json_encode(['ok'=>false,'reason'=>'Serial not found']); exit; }
+      if ((string)($unit['status'] ?? '') !== 'Available') { echo json_encode(['ok'=>false,'reason'=>'Serial not available']); exit; }
+      $um = (string)($unit['model'] ?? ($unit['item_name'] ?? ''));
+      $uc = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
+      $match = (strcasecmp(trim($um), trim($dm))===0) && (strcasecmp(trim($uc), trim($dc))===0);
+      if (!$match) { echo json_encode(['ok'=>false,'reason'=>'Item mismatch']); exit; }
+      echo json_encode(['ok'=>true,'reason'=>'OK','model'=>$um,'category'=>$uc,'id'=>(int)($unit['id'] ?? 0)]); exit;
+    }
+
+    if ($act === 'approve_with' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      $id = (int)($_POST['request_id'] ?? 0);
+      $serial = trim((string)($_POST['serial_no'] ?? ''));
+      $modelIdIn = (int)($_POST['model_id'] ?? 0);
+      $reqType = trim((string)($_POST['req_type'] ?? 'immediate'));
+      $expectedReturn = trim((string)($_POST['expected_return_at'] ?? ''));
+      $reserveStart = trim((string)($_POST['reserved_from'] ?? ''));
+      $reserveEnd = trim((string)($_POST['reserved_to'] ?? ''));
+      $req = $er->findOne(['id'=>$id]);
+      if (!$req || (string)($req['status'] ?? '') !== 'Pending') { header('Location: admin_borrow_center.php?error=notpend'); exit(); }
+      // Enforce QR serial if present: ignore any posted serial/model_id and use the request's QR serial
+      $qrSerialReq = trim((string)($req['qr_serial_no'] ?? ''));
+      if ($qrSerialReq !== '') { $serial = $qrSerialReq; $modelIdIn = 0; }
+      $user = trim((string)($req['username'] ?? ''));
+      $item = trim((string)($req['item_name'] ?? ''));
+      $qty  = max(1, (int)($req['quantity'] ?? 1));
+      $reqLocation = (string)($req['request_location'] ?? '');
+      [$dm,$dc] = $getDesired($item);
+
+      // Resolve approver full name
+      $approverUser = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'system';
+      $approverName = $approverUser;
+      try { $uDoc = $db->selectCollection('users')->findOne(['username'=>$approverUser], ['projection'=>['full_name'=>1]]); if ($uDoc && isset($uDoc['full_name']) && trim((string)$uDoc['full_name'])!=='') { $approverName = (string)$uDoc['full_name']; } } catch (Throwable $eun) {}
+
+      if ($reqType === 'reservation') {
+        // Validate reservation times
+        if ($reserveStart === '' || $reserveEnd === '') { header('Location: admin_borrow_center.php?error=time_required'); exit(); }
+        $tsStart = strtotime($reserveStart); $tsEnd = strtotime($reserveEnd);
+        if (!$tsStart || !$tsEnd || $tsEnd <= $tsStart || $tsStart <= time()) { header('Location: admin_borrow_center.php?error=time_required'); exit(); }
+        // Normalize input times to 'Y-m-d H:i:s'
+        $reserveStartNorm = date('Y-m-d H:i:s', $tsStart);
+        $reserveEndNorm   = date('Y-m-d H:i:s', $tsEnd);
+        // Optional: assign a specific serial/model for this reservation
+        $assignedUnit = null; $assignedMid = 0; $assignedSerial = '';
+        if ($serial !== '') { $assignedUnit = $ii->findOne(['serial_no'=>$serial]); }
+        elseif ($modelIdIn > 0) { $assignedUnit = $ii->findOne(['id'=>$modelIdIn]); }
+        if ($assignedUnit) { $assignedMid = (int)($assignedUnit['id'] ?? 0); $assignedSerial = (string)($assignedUnit['serial_no'] ?? ''); }
+        // If assigning a unit, enforce no overlapping reservations on the same unit with 5-minute buffer
+        if ($assignedMid > 0) {
+          $buf = 5*60;
+          $conflicts = [];
+          try {
+            $curR = $er->find(['type'=>'reservation','status'=>'Approved','reserved_model_id'=>$assignedMid], ['projection'=>['reserved_from'=>1,'reserved_to'=>1,'id'=>1]]);
+            foreach ($curR as $row) {
+              $ofs = isset($row['reserved_from']) ? strtotime((string)$row['reserved_from']) : null;
+              $ote = isset($row['reserved_to']) ? strtotime((string)$row['reserved_to']) : null;
+              if (!$ofs || !$ote) { continue; }
+              // conflict unless there is at least 5-min gap between intervals
+              $noOverlapWithBuffer = ($ote <= ($tsStart - $buf)) || ($tsEnd <= ($ofs - $buf));
+              if (!$noOverlapWithBuffer) { $conflicts[] = (int)($row['id'] ?? 0); }
+            }
+          } catch (Throwable $echk) {}
+          if (!empty($conflicts)) { header('Location: admin_borrow_center.php?error=serial_reserved_conflict'); exit(); }
+        }
+        // Mark request approved as reservation; do not claim an item now. Persist assigned unit if any.
+        $set = [
+          'status'=>'Approved', 'approved_at'=>$now, 'approved_by'=>$approverName,
+          'type'=>'reservation', 'reserved_from'=>$reserveStartNorm, 'reserved_to'=>$reserveEndNorm
+        ];
+        if ($assignedMid > 0) { $set['reserved_model_id'] = $assignedMid; }
+        if ($assignedSerial !== '') { $set['reserved_serial_no'] = $assignedSerial; }
+        $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>$set]);
+        header('Location: admin_borrow_center.php?approved=1'); exit();
+      }
+
+      // Immediate borrow: require expected return
+      if ($expectedReturn === '') { header('Location: admin_borrow_center.php?error=time_required'); exit(); }
+      $tsExpected = strtotime($expectedReturn); if (!$tsExpected || $tsExpected <= time()) { header('Location: admin_borrow_center.php?error=time_required'); exit(); }
+
+      // Apply 5-min cutoff only if effectively single-unit item
+      $applyCutoff = false; $earliest = null;
+      try {
+        // total units
+        $totalUnits = 0; $curI = $ii->find(['$or'=>[['model'=>$item], ['item_name'=>$item]]], ['projection'=>['quantity'=>1]]);
+        foreach ($curI as $it) { $totalUnits += (int)($it['quantity'] ?? 1); }
+        if ($totalUnits <= 1) {
+          $q = [ 'item_name'=>$item, 'type'=>'reservation', 'status'=>'Approved', 'reserved_from'=>['$gt'=>date('Y-m-d H:i:s')] ];
+          $proj = ['reserved_from'=>1];
+          $curRes = $er->find($q, ['projection'=>$proj]);
+          foreach ($curRes as $r) { $t = isset($r['reserved_from']) ? strtotime((string)$r['reserved_from']) : null; if ($t && ($earliest===null || $t < $earliest)) { $earliest = $t; } }
+          $applyCutoff = (bool)$earliest;
+        }
+      } catch (Throwable $echeck) {}
+      if ($applyCutoff && $earliest) {
+        $cutoff = $earliest - (5*60);
+        if ($tsExpected > $cutoff) { header('Location: admin_borrow_center.php?error=reservation_conflict'); exit(); }
+      }
+
+      // Proceed to claim a unit and mark borrowed
+      if ($serial === '' && $modelIdIn <= 0) { header('Location: admin_borrow_center.php?error=preferred_unavailable'); exit(); }
+      $query = ($serial !== '') ? ['serial_no'=>$serial,'status'=>'Available'] : ['id'=>$modelIdIn,'status'=>'Available'];
+      $claimed = $ii->findOneAndUpdate(
+        $query,
+        ['$set'=>['status'=>'In Use','location'=>$reqLocation]],
+        ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]
+      );
+      if (!$claimed) { header('Location: admin_borrow_center.php?error=preferred_unavailable'); exit(); }
+      $um = (string)($claimed['model'] ?? ($claimed['item_name'] ?? ''));
+      $uc = trim((string)($claimed['category'] ?? '')) !== '' ? (string)$claimed['category'] : 'Uncategorized';
+      $match = (strcasecmp(trim($um), trim($dm))===0) && (strcasecmp(trim($uc), trim($dc))===0);
+      if (!$match) { $ii->updateOne(['id'=>(int)($claimed['id'] ?? 0)], ['$set'=>['status'=>'Available']]); header('Location: admin_borrow_center.php?error=item_mismatch'); exit(); }
+      $borrowId = $nextId('user_borrows');
+      $ub->insertOne([
+        'id'=>$borrowId,
+        'username'=>$user,
+        'model_id'=>(int)($claimed['id'] ?? 0),
+        'status'=>'Borrowed',
+        'borrowed_at'=>$now,
+        'expected_return_at'=>$expectedReturn,
+      ]);
+      $exists = $ra->countDocuments(['request_id'=>$id,'borrow_id'=>$borrowId]);
+      if ($exists === 0) { $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]); }
+      $allocCount = $ra->countDocuments(['request_id'=>$id]);
+      if ($allocCount >= $qty) {
+        $er->updateOne(['id'=>$id, 'status'=>['$in'=>['Pending','Approved']]], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$now,'type'=>'immediate','expected_return_at'=>$expectedReturn]]);
+        header('Location: admin_borrow_center.php?approved=1&scroll=borrowed#borrowed-list'); exit();
+      } else {
+        $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>['approved_at'=>$now,'approved_by'=>$approverName,'type'=>'immediate','expected_return_at'=>$expectedReturn]]);
+        $left = max(0, $qty - $allocCount);
+        header('Location: admin_borrow_center.php?allocated=1&left=' . $left . '&req=' . $id); exit();
+      }
+    }
+
+    if ($act === 'approve') {
+      $id = (int)($_GET['id'] ?? 0);
+      $req = $er->findOne(['id'=>$id]);
+      if (!$req || (string)($req['status'] ?? '') !== 'Pending') { header('Location: admin_borrow_center.php?error=notpend'); exit(); }
+      $user = trim((string)($req['username'] ?? ''));
+      $item = trim((string)($req['item_name'] ?? ''));
+      $qty  = max(1, (int)($req['quantity'] ?? 1));
+      $preferredId = 0;
+      $details = (string)($req['details'] ?? '');
+      if ($details !== '' && preg_match('/Scanned\s+Model\s+ID:\s*(\d+)/i', $details, $m)) { $preferredId = (int)($m[1] ?? 0); }
+      $picked = [];
+      if ($preferredId > 0) {
+        $c = $ii->findOneAndUpdate(['id'=>$preferredId,'status'=>'Available'], ['$set'=>['status'=>'In Use','location'=>(string)($req['request_location'] ?? '')]], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
+        if ($c && (int)($c['id'] ?? 0) === $preferredId) { $picked[] = $preferredId; }
+      }
+      $need = $qty - count($picked);
+      if ($need > 0) {
+        $cur = $ii->find([
+          'status'=>'Available',
+          '$or' => [ ['model'=>$item], ['item_name'=>$item] ],
+          $preferredId>0 ? ['id' => ['$ne'=>$preferredId]] : []
+        ], ['sort'=>['id'=>1]]);
+        foreach ($cur as $doc) {
+          if ($need <= 0) break;
+          $mid = (int)($doc['id'] ?? 0);
+          $c = $ii->findOneAndUpdate(['id'=>$mid,'status'=>'Available'], ['$set'=>['status'=>'In Use','location'=>(string)($req['request_location'] ?? '')]], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
+          if ($c) { $picked[] = $mid; $need--; }
+        }
+      }
+      if (count($picked) < $qty) { foreach ($picked as $mid) { $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]); } header('Location: admin_borrow_center.php?insufficient=1'); exit(); }
+      // Resolve approver full name
+      $approverUser = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'system';
+      $approverName = $approverUser;
+      try { $uDoc = $db->selectCollection('users')->findOne(['username'=>$approverUser], ['projection'=>['full_name'=>1]]); if ($uDoc && isset($uDoc['full_name']) && trim((string)$uDoc['full_name'])!=='') { $approverName = (string)$uDoc['full_name']; } } catch (Throwable $eun) {}
+      $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$now]]);
+      foreach ($picked as $mid) {
+        $borrowId = $nextId('user_borrows');
+        $ub->insertOne(['id'=>$borrowId,'username'=>$user,'model_id'=>$mid,'status'=>'Borrowed','borrowed_at'=>$now]);
+        $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]);
+      }
+      header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
+    }
+
+    if ($act === 'validate_return_id' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      header('Content-Type: application/json');
+      $reqId = (int)($_POST['request_id'] ?? 0);
+      $serial = trim((string)($_POST['serial_no'] ?? ''));
+      $modelIdIn = (int)($_POST['model_id'] ?? 0);
+      if ($reqId <= 0) { echo json_encode(['ok'=>false,'reason'=>'Missing parameters']); exit; }
+      $req = $er->findOne(['id'=>$reqId]);
+      if (!$req) { echo json_encode(['ok'=>false,'reason'=>'Request not found']); exit; }
+      $unit = null;
+      if ($serial !== '') { $unit = $ii->findOne(['serial_no'=>$serial]); }
+      elseif ($modelIdIn > 0) { $unit = $ii->findOne(['id'=>$modelIdIn]); }
+      if (!$unit) { echo json_encode(['ok'=>false,'reason'=>'Serial not found']); exit; }
+      // Collect active borrows linked to this request
+      $allocs = iterator_to_array($ra->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
+      $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
+      if (empty($borrowIds)) { echo json_encode(['ok'=>false,'reason'=>'No active borrow for request']); exit; }
+      $mid = (int)($unit['id'] ?? 0);
+      $matchBorrow = $ub->findOne(['id' => ['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$mid]);
+      if (!$matchBorrow) { echo json_encode(['ok'=>false,'reason'=>'The scanned item does not match the borrowed record.']); exit; }
+      $um = (string)($unit['model'] ?? ($unit['item_name'] ?? ''));
+      $uc = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
+      echo json_encode(['ok'=>true,'reason'=>'OK','model'=>$um,'category'=>$uc,'id'=>$mid]); exit;
+    }
+
+    if ($act === 'return_with' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      $reqId = (int)($_POST['request_id'] ?? 0);
+      $serial = trim((string)($_POST['serial_no'] ?? ''));
+      $modelIdIn = (int)($_POST['model_id'] ?? 0);
+      if ($reqId <= 0) { header('Location: admin_borrow_center.php?error=return_missing'); exit(); }
+      $req = $er->findOne(['id'=>$reqId]);
+      if (!$req) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
+      $unit = null;
+      if ($serial !== '') { $unit = $ii->findOne(['serial_no'=>$serial]); }
+      elseif ($modelIdIn > 0) { $unit = $ii->findOne(['id'=>$modelIdIn]); }
+      if (!$unit) { header('Location: admin_borrow_center.php?error=return_serial_notfound'); exit(); }
+      $mid = (int)($unit['id'] ?? 0);
+      // Find an active borrow for this request with this model_id
+      $allocs = iterator_to_array($ra->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
+      $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
+      if (empty($borrowIds)) { header('Location: admin_borrow_center.php?error=return_no_alloc'); exit(); }
+      $borrow = $ub->findOne(['id' => ['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$mid]);
+      if (!$borrow) { header('Location: admin_borrow_center.php?error=return_not_borrowed'); exit(); }
+      // Process return
+      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
+      $ub->updateOne(['id'=>(int)($borrow['id'] ?? 0), 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+      // Ensure whitelisted
+      try {
+        $buCol = $db->selectCollection('borrowable_units');
+        $bcCol = $db->selectCollection('borrowable_catalog');
+        $it = $ii->findOne(['id'=>$mid], ['projection'=>['model'=>1,'item_name'=>1,'category'=>1]]);
+        $mn = $it ? (string)($it['model'] ?? ($it['item_name'] ?? '')) : '';
+        $cat = $it ? (string)(($it['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+        if ($mn !== '') {
+          $isActive = (bool)$bcCol->countDocuments(['model_name'=>$mn,'category'=>$cat,'active'=>1]);
+          if ($isActive) {
+            if ((int)$buCol->countDocuments(['model_id'=>$mid]) === 0) { $buCol->insertOne(['model_id'=>$mid,'model_name'=>$mn,'category'=>$cat,'created_at'=>$now]); }
+          }
+        }
+      } catch (Throwable $_e) {}
+      // If no remaining active borrows, mark request Returned
+      $rem = $ub->countDocuments(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed']);
+      if ($rem <= 0) { $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]); }
+      header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
+    }
+    if ($act === 'validate_return_id' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      header('Content-Type: application/json');
+      $reqId = (int)($_POST['request_id'] ?? 0);
+      $serial = trim((string)($_POST['serial_no'] ?? ''));
+      if ($reqId <= 0 || $serial === '') { echo json_encode(['ok'=>false,'reason'=>'Missing parameters']); exit; }
+      $req = $er->findOne(['id'=>$reqId]);
+      if (!$req) { echo json_encode(['ok'=>false,'reason'=>'Request not found']); exit; }
+      $unit = $ii->findOne(['serial_no'=>$serial]);
+      if (!$unit) { echo json_encode(['ok'=>false,'reason'=>'Serial not found']); exit; }
+      $allocs = iterator_to_array($ra->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
+      $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
+      if (empty($borrowIds)) { echo json_encode(['ok'=>false,'reason'=>'No active borrow for request']); exit; }
+      $mid = (int)($unit['id'] ?? 0);
+      $matchBorrow = $ub->findOne(['id' => ['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$mid]);
+      if (!$matchBorrow) { echo json_encode(['ok'=>false,'reason'=>'The scanned item does not match the borrowed record.']); exit; }
+      $um = (string)($unit['model'] ?? ($unit['item_name'] ?? ''));
+      $uc = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
+      echo json_encode(['ok'=>true,'reason'=>'OK','model'=>$um,'category'=>$uc,'id'=>$mid]); exit;
+    }
+    if ($act === 'return_with' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      $reqId = (int)($_POST['request_id'] ?? 0);
+      $serial = trim((string)($_POST['serial_no'] ?? ''));
+      if ($reqId <= 0 || $serial === '') { header('Location: admin_borrow_center.php?error=return_missing'); exit(); }
+      $req = $er->findOne(['id'=>$reqId]);
+      if (!$req) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
+      $unit = $ii->findOne(['serial_no'=>$serial]);
+      if (!$unit) { header('Location: admin_borrow_center.php?error=return_serial_notfound'); exit(); }
+      $mid = (int)($unit['id'] ?? 0);
+      $allocs = iterator_to_array($ra->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
+      $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
+      if (empty($borrowIds)) { header('Location: admin_borrow_center.php?error=return_no_alloc'); exit(); }
+      $borrow = $ub->findOne(['id' => ['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$mid]);
+      if (!$borrow) { header('Location: admin_borrow_center.php?error=return_not_borrowed'); exit(); }
+      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
+      $ub->updateOne(['id'=>(int)($borrow['id'] ?? 0), 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+      $rem = $ub->countDocuments(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed']);
+      if ($rem <= 0) { $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]); }
+      header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
+    }
+
+    // ===== QR Returnship helpers =====
+    if ($act === 'returnship_status' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+      header('Content-Type: application/json');
+      $reqId = (int)($_GET['request_id'] ?? 0);
+      if ($reqId <= 0) { echo json_encode(['ok'=>false,'reason'=>'Missing request_id']); exit; }
+      $rsCol = $db->selectCollection('returnship_requests');
+      $doc = $rsCol->findOne(['request_id'=>$reqId], ['sort'=>['id'=>-1]]);
+      if (!$doc) { echo json_encode(['ok'=>true,'exists'=>false]); exit; }
+      $exists = true;
+      $verified = !empty($doc['verified_at']);
+      $loc = (string)($doc['location'] ?? '');
+      echo json_encode(['ok'=>true,'exists'=>$exists,'verified'=>$verified,'location'=>$loc,'status'=>(string)($doc['status'] ?? 'Pending')]); exit;
+    }
+    if ($act === 'request_returnship' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      $reqId = (int)($_POST['request_id'] ?? 0);
+      if ($reqId <= 0) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
+      $reqDoc = $er->findOne(['id'=>$reqId]); if (!$reqDoc) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
+      $rsCol = $db->selectCollection('returnship_requests');
+      $last = $rsCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+      $nid = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
+      $rsCol->insertOne([
+        'id'=>$nid,
+        'request_id'=>$reqId,
+        'username'=>(string)($reqDoc['username'] ?? ''),
+        'model_name'=>(string)($reqDoc['item_name'] ?? ''),
+        'qr_serial_no'=>(string)($reqDoc['qr_serial_no'] ?? ''),
+        'status'=>'Pending',
+        'created_at'=>$now,
+        'created_by'=>'admin'
+      ]);
+      header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
+    }
+    if ($act === 'approve_returnship' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      $reqId = (int)($_POST['request_id'] ?? 0);
+      if ($reqId <= 0) { header('Location: admin_borrow_center.php?error=return_missing'); exit(); }
+      $reqDoc = $er->findOne(['id'=>$reqId]);
+      if (!$reqDoc) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
+      $rsCol = $db->selectCollection('returnship_requests');
+      $rr = $rsCol->findOne(['request_id'=>$reqId], ['sort'=>['id'=>-1]]);
+      if (!$rr || empty($rr['verified_at'])) { header('Location: admin_borrow_center.php?error=return_not_verified'); exit(); }
+      // Strict: verified_serial must equal request.qr_serial_no and map to the same unit
+      $origSerial = trim((string)($reqDoc['qr_serial_no'] ?? ''));
+      $verSerial = trim((string)($rr['verified_serial'] ?? ''));
+      if ($origSerial === '' || strcasecmp($origSerial, $verSerial) !== 0) { header('Location: admin_borrow_center.php?error=serial_mismatch'); exit(); }
+      $unit = $ii->findOne(['serial_no'=>$verSerial]); if (!$unit) { header('Location: admin_borrow_center.php?error=serial_not_found'); exit(); }
+      $midVerified = (int)($unit['id'] ?? 0);
+      // Ensure an active borrow under this request matches that exact unit
+      $allocs = iterator_to_array($ra->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
+      $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
+      if (empty($borrowIds)) { header('Location: admin_borrow_center.php?error=return_no_alloc'); exit(); }
+      $borrow = $ub->findOne(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$midVerified]);
+      if (!$borrow) { header('Location: admin_borrow_center.php?error=return_not_borrowed'); exit(); }
+      // Process return
+      $ii->updateOne(['id'=>$midVerified], ['$set'=>['status'=>'Available']]);
+      $ub->updateOne(['id'=>(int)($borrow['id'] ?? 0), 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+      // Ensure whitelisted
+      try {
+        $buCol = $db->selectCollection('borrowable_units');
+        $bcCol = $db->selectCollection('borrowable_catalog');
+        $it = $ii->findOne(['id'=>$midVerified], ['projection'=>['model'=>1,'item_name'=>1,'category'=>1]]);
+        $mn = $it ? (string)($it['model'] ?? ($it['item_name'] ?? '')) : '';
+        $cat = $it ? (string)(($it['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+        if ($mn !== '') {
+          $isActive = (bool)$bcCol->countDocuments(['model_name'=>$mn,'category'=>$cat,'active'=>1]);
+          if ($isActive) {
+            if ((int)$buCol->countDocuments(['model_id'=>$midVerified]) === 0) { $buCol->insertOne(['model_id'=>$midVerified,'model_name'=>$mn,'category'=>$cat,'created_at'=>$now]); }
+          }
+        }
+      } catch (Throwable $_e) {}
+      $rem = $ub->countDocuments(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed']);
+      if ($rem <= 0) { $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]); }
+      $rsCol->updateOne(['id'=>(int)($rr['id'] ?? 0)], ['$set'=>['status'=>'Approved','approved_at'=>$now,'approved_by'=>(string)($_SESSION['username'] ?? 'admin')]]);
+      header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
+    }
+    // ===== End QR Returnship helpers =====
+
+    // Lightweight admin feed for user return verifications
+    if ($act === 'returnship_feed' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+      header('Content-Type: application/json');
+      $rsCol = $db->selectCollection('returnship_requests');
+      $cur = $rsCol->find(['status' => ['$in'=>['Requested']], 'verified_at' => ['$exists' => true, '$ne' => '']], ['sort'=>['id'=>-1], 'limit'=>150]);
+      $out = [];
+      foreach ($cur as $r) {
+        $out[] = [
+          'id' => (int)($r['id'] ?? 0),
+          'request_id' => (int)($r['request_id'] ?? 0),
+          'username' => (string)($r['username'] ?? ''),
+          'model_name' => (string)($r['model_name'] ?? ''),
+          'qr_serial_no' => (string)($r['qr_serial_no'] ?? ''),
+          'location' => (string)($r['location'] ?? ''),
+          'verified_at' => (string)($r['verified_at'] ?? ''),
+        ];
+      }
+      echo json_encode(['ok'=>true,'verifications'=>$out]); exit;
+    }
+  } catch (Throwable $e) {
+    header('Location: admin_borrow_center.php?error=tx'); exit();
+  }
+}
+
+// Early-handle JSON endpoints via MongoDB to avoid MySQL dependency
+if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservations_json') {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  header('Content-Type: application/json');
+  try {
+    $db = get_mongo_db();
+    if ($act === 'pending_json') {
+      $rows = [];
+      $er = $db->selectCollection('equipment_requests');
+      $uCol = $db->selectCollection('users');
+      // Auto-reject any Pending reservations whose start time has already passed
+      try {
+        $nowStr = date('Y-m-d H:i:s');
+        $curPendRes = $er->find(['status'=>'Pending','type'=>'reservation']);
+        foreach ($curPendRes as $pd) {
+          $rf = (string)($pd['reserved_from'] ?? '');
+          $ts = $rf !== '' ? strtotime($rf) : null;
+          if ($ts && $ts <= time()) {
+            $er->updateOne(['id'=>(int)($pd['id'] ?? 0), 'status'=>'Pending'], ['$set'=>[
+              'status'=>'Rejected', 'rejected_at'=>$nowStr, 'rejected_reason'=>'Auto-rejected: reservation start passed without approval'
+            ]]);
+          }
+        }
+        $curPendImm = $er->find(['status'=>'Pending','type'=>'immediate']);
+        foreach ($curPendImm as $pd) {
+          $erAt = (string)($pd['expected_return_at'] ?? '');
+          $ts = $erAt !== '' ? strtotime($erAt) : null;
+          if ($ts && $ts <= time()) {
+            $er->updateOne(['id'=>(int)($pd['id'] ?? 0), 'status'=>'Pending'], ['$set'=>[
+              'status'=>'Rejected', 'rejected_at'=>$nowStr, 'rejected_reason'=>'Auto-rejected: expected return reached without approval'
+            ]]);
+          }
+        }
+      } catch (Throwable $_) {}
+      $rq = $er->find(['status' => 'Pending'], ['sort' => ['created_at' => 1, 'id' => 1]]);
+      $itemsCol = $db->selectCollection('inventory_items');
+      $allocCol = $db->selectCollection('request_allocations');
+      foreach ($rq as $doc) {
+        $id = (int)($doc['id'] ?? 0);
+        $itemName = (string)($doc['item_name'] ?? '');
+        $qty = (int)($doc['quantity'] ?? 1);
+        // If this model no longer exists in inventory (total quantity == 0), auto-reject
+        $totAgg = $itemsCol->aggregate([
+          ['$match'=>['$or'=>[['model'=>$itemName],['item_name'=>$itemName]]]],
+          ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+          ['$group'=>['_id'=>null,'total'=>['$sum'=>'$q']]]
+        ])->toArray();
+        $totalQty = (int)($totAgg[0]['total'] ?? 0);
+        if ($totalQty <= 0) {
+          try { $er->updateOne(['id'=>$id,'status'=>'Pending'], ['$set'=>['status'=>'Rejected','rejected_at'=>date('Y-m-d H:i:s')]]); } catch (Throwable $eAuto) {}
+          continue; // do not include in pending output
+        }
+        $available = $itemsCol->countDocuments([
+          'status' => 'Available',
+          '$or' => [ ['model' => $itemName], ['item_name' => $itemName] ]
+        ]);
+        $allocCount = $allocCol->countDocuments(['request_id' => $id]);
+        // Build display time in Asia/Manila 12-hour format
+        $createdLocal = '';
+        try {
+          if (isset($doc['created_at']) && $doc['created_at'] instanceof MongoDB\BSON\UTCDateTime) {
+            $dt = $doc['created_at']->toDateTime();
+            $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+          } else {
+            $raw = (string)($doc['created_at'] ?? '');
+            // Strings are stored already in local time; parse as Asia/Manila without shifting
+            $dt = $raw !== '' ? new DateTime($raw, new DateTimeZone('Asia/Manila')) : new DateTime('now', new DateTimeZone('Asia/Manila'));
+          }
+          $createdLocal = $dt->format('h:i A m-d-y');
+        } catch (Throwable $e2) {
+          $createdLocal = (string)($doc['created_at'] ?? '');
+        }
+        // Resolve student id from users
+        $uname = (string)($doc['username'] ?? '');
+        $sid = '';
+        $ufull = $uname;
+        if ($uname !== '') {
+          try {
+            $u = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]);
+            if ($u) {
+              if (isset($u['school_id'])) { $sid = (string)$u['school_id']; }
+              if (isset($u['full_name']) && trim((string)$u['full_name'])!=='') { $ufull = (string)$u['full_name']; }
+              elseif (isset($u['first_name']) || isset($u['last_name'])) { $ufull = trim((string)($u['first_name']??'').' '.(string)($u['last_name']??'')); }
+              elseif (isset($u['name']) && trim((string)$u['name'])!=='') { $ufull = (string)$u['name']; }
+            }
+          } catch (Throwable $_) { $sid = ''; $ufull = $uname; }
+        }
+        $rows[] = [
+          'id' => $id,
+          'username' => $uname,
+          'user_full_name' => $ufull,
+          'school_id' => $sid,
+          'item_name' => $itemName,
+          'quantity' => $qty,
+          'status' => (string)($doc['status'] ?? ''),
+          'created_at' => (string)($doc['created_at'] ?? ''),
+          'created_at_display' => $createdLocal,
+          'request_location' => (string)($doc['request_location'] ?? ''),
+          'details' => (string)($doc['details'] ?? ''),
+          'type' => (string)($doc['type'] ?? ''),
+          'expected_return_at' => (string)($doc['expected_return_at'] ?? ''),
+          'reserved_from' => (string)($doc['reserved_from'] ?? ''),
+          'reserved_to' => (string)($doc['reserved_to'] ?? ''),
+          'qr_serial_no' => (string)($doc['qr_serial_no'] ?? ''),
+          'available_count' => $available,
+          'remaining' => max($qty - $allocCount, 0),
+        ];
+      }
+      echo json_encode(['pending' => $rows]);
+      exit();
+    } else if ($act === 'borrowed_json') {
+      $rows = [];
+      $allocCol = $db->selectCollection('request_allocations');
+      $ubCol = $db->selectCollection('user_borrows');
+      $erCol = $db->selectCollection('equipment_requests');
+      $iiCol = $db->selectCollection('inventory_items');
+      $uCol = $db->selectCollection('users');
+      $allocs = $allocCol->find([], ['sort' => ['id' => -1]]);
+      foreach ($allocs as $al) {
+        $reqId = (int)($al['request_id'] ?? 0);
+        $borrowId = (int)($al['borrow_id'] ?? 0);
+        if ($reqId <= 0 || $borrowId <= 0) { continue; }
+        $er = $erCol->findOne(['id' => $reqId]);
+        if (!$er) { continue; }
+        $st = (string)($er['status'] ?? '');
+        if (!in_array($st, ['Approved','Borrowed'], true)) { continue; }
+        $ub = $ubCol->findOne(['id' => $borrowId]);
+        if (!$ub) { continue; }
+        // Only show if this allocation's borrow is still active
+        if ((string)($ub['status'] ?? '') !== 'Borrowed') { continue; }
+        $mid = (int)($ub['model_id'] ?? 0);
+        $ii = $mid > 0 ? $iiCol->findOne(['id' => $mid]) : null;
+        $model = '';
+        $cat = 'Uncategorized';
+        if ($ii) {
+          $model = (string)($ii['model'] ?? ($ii['item_name'] ?? ''));
+          $cat = trim((string)($ii['category'] ?? '')) !== '' ? (string)$ii['category'] : 'Uncategorized';
+        }
+        // Build expected_return_display in Asia/Manila 12-hour format (fallback to reservation end)
+        $expectedDisp = '';
+        try {
+          $rawExp = (string)($er['expected_return_at'] ?? ($er['reserved_to'] ?? ''));
+          if ($rawExp !== '') {
+            // Strings are stored already in local time; parse as Asia/Manila without shifting
+            $dtE = new DateTime($rawExp, new DateTimeZone('Asia/Manila'));
+            $expectedDisp = $dtE->format('h:i A m-d-y');
+          }
+        } catch (Throwable $e2) { $expectedDisp = (string)($er['expected_return_at'] ?? ($er['reserved_to'] ?? '')); }
+        // Resolve student id from users for borrower
+        $uname = (string)($ub['username'] ?? '');
+        $sid = '';
+        if ($uname !== '') { try { $u = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1]]); if ($u && isset($u['school_id'])) { $sid = (string)$u['school_id']; } } catch (Throwable $_) { $sid = ''; } }
+        $rows[] = [
+          'request_id' => $reqId,
+          'username' => $uname,
+          'school_id' => $sid,
+          'model_id' => $mid,
+          'serial_no' => $ii ? (string)($ii['serial_no'] ?? '') : '',
+          'model' => $model,
+          'category' => $cat,
+          'location' => $ii ? (string)($ii['location'] ?? '') : '',
+          'expected_return_at' => (string)($er['expected_return_at'] ?? ($er['reserved_to'] ?? '')),
+          'expected_return_display' => $expectedDisp,
+          'type' => ((isset($er['qr_serial_no']) && trim((string)$er['qr_serial_no'])!=='') ? 'QR' : 'Manual'),
+        ];
+      }
+      // Sort by expected_return_at desc, then id desc similar to SQL
+      usort($rows, function($a,$b){
+        $ta = strtotime((string)($a['expected_return_at'] ?? '')) ?: 0;
+        $tb = strtotime((string)($b['expected_return_at'] ?? '')) ?: 0;
+        if ($ta === $tb) { return ($b['request_id'] <=> $a['request_id']); }
+        return $tb <=> $ta;
+      });
+      echo json_encode(['borrowed' => $rows]);
+      exit();
+    } else if ($act === 'reservations_json') {
+      // Auto-promote due reservations to Borrowed if start time has arrived and units are available
+      $erCol = $db->selectCollection('equipment_requests');
+      $iiCol = $db->selectCollection('inventory_items');
+      $ubCol = $db->selectCollection('user_borrows');
+      $allocCol = $db->selectCollection('request_allocations');
+      $nowStr = date('Y-m-d H:i:s');
+      try {
+        // Fetch all approved reservations and check due using strtotime to avoid string comparison issues
+        $cur = $erCol->find(['type'=>'reservation','status'=>'Approved']);
+        foreach ($cur as $er) {
+          $rf = (string)($er['reserved_from'] ?? '');
+          $ts = $rf !== '' ? strtotime($rf) : null;
+          if (!$ts || $ts > time()) { continue; }
+          $reqId = (int)($er['id'] ?? 0); if ($reqId<=0) continue;
+          $itemName = trim((string)($er['item_name'] ?? '')); if ($itemName==='') continue;
+          $reservedMid = (int)($er['reserved_model_id'] ?? 0);
+          // Prefer the specifically assigned unit if provided
+          if ($reservedMid > 0) {
+            $unit = $iiCol->findOneAndUpdate(['id'=>$reservedMid, 'status'=>'Available'], ['$set'=>['status'=>'In Use']], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
+          } else {
+            // Find any available unit for this model
+            $unit = $iiCol->findOneAndUpdate([
+              'status'=>'Available', '$or'=>[['model'=>$itemName],['item_name'=>$itemName]]
+            ], ['$set'=>['status'=>'In Use']], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
+          }
+          if (!$unit) { continue; }
+          $mid = (int)($unit['id'] ?? 0);
+          // Create user_borrows
+          $lastUb = $ubCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+          $nextUb = ($lastUb && isset($lastUb['id']) ? (int)$lastUb['id'] : 0) + 1;
+          $ubCol->insertOne([
+            'id'=>$nextUb,
+            'username'=>(string)($er['username'] ?? ''),
+            'model_id'=>$mid,
+            'serial_no'=>(string)($unit['serial_no'] ?? ''),
+            'status'=>'Borrowed',
+            'borrowed_at'=>$nowStr
+          ]);
+          // Allocation link
+          $lastAl = $allocCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+          $nextAl = ($lastAl && isset($lastAl['id']) ? (int)$lastAl['id'] : 0) + 1;
+          $allocCol->insertOne(['id'=>$nextAl,'request_id'=>$reqId,'borrow_id'=>$nextUb,'allocated_at'=>$nowStr]);
+          // Update request
+          $erCol->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Borrowed','borrowed_at'=>$nowStr]]);
+        }
+      } catch (Throwable $_) { /* swallow */ }
+      // Now list remaining active reservations (Approved)
+      $rows = [];
+      $uCol = $db->selectCollection('users');
+      try {
+        $rq = $erCol->find(['type'=>'reservation','status'=>'Approved'], ['sort'=>['reserved_from'=>1,'id'=>1]]);
+        foreach ($rq as $doc) {
+          $uname = (string)($doc['username'] ?? '');
+          $sid = '';
+          if ($uname !== '') { try { $u = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1]]); if ($u && isset($u['school_id'])) { $sid = (string)$u['school_id']; } } catch (Throwable $_) { $sid = ''; } }
+          // Resolve category and location for display from inventory_items
+          $itemName = (string)($doc['item_name'] ?? '');
+          $iiDoc = null;
+          if ($itemName !== '') {
+            try {
+              $iiDoc = $iiCol->findOne(['$or' => [['model'=>$itemName], ['item_name'=>$itemName]]], ['projection'=>['category'=>1,'location'=>1]]);
+            } catch (Throwable $_) { $iiDoc = null; }
+          }
+          $cat = $iiDoc ? ((string)($iiDoc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+          // Location should reflect user's requested location on reservation
+          $loc = (string)($doc['request_location'] ?? '');
+          $rows[] = [
+            'id' => (int)($doc['id'] ?? 0),
+            'username' => $uname,
+            'school_id' => $sid,
+            'item_name' => (string)($doc['item_name'] ?? ''),
+            'reserved_from' => (string)($doc['reserved_from'] ?? ''),
+            'reserved_to' => (string)($doc['reserved_to'] ?? ''),
+            'category' => $cat,
+            'location' => $loc,
+            'type' => ((isset($doc['qr_serial_no']) && trim((string)$doc['qr_serial_no'])!=='') ? 'QR' : 'Manual'),
+          ];
+        }
+      } catch (Throwable $_) { $rows = []; }
+      echo json_encode(['reservations'=>$rows]);
+      exit();
+    }
+  } catch (Throwable $e) {
+    echo json_encode(['error' => 'mongo_unavailable']);
+  }
+}
+  // JSON endpoints handled above via Mongo
+
+// Build borrowable catalog and counters via Mongo first
+$ABC_MONGO_FILLED = false;
+$invCatModels = [];
+$heldCounts = [];
+$qtyStats = [];
+try {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $db = get_mongo_db();
+  $iiCol = $db->selectCollection('inventory_items');
+  $rhCol = $db->selectCollection('returned_hold');
+
+  // Build category -> models map from inventory (use model or item_name)
+  $cur = $iiCol->find([], ['projection'=>['category'=>1,'model'=>1,'item_name'=>1,'quantity'=>1,'status'=>1]]);
+  foreach ($cur as $doc) {
+    $cat = trim((string)($doc['category'] ?? '')) !== '' ? (string)$doc['category'] : 'Uncategorized';
+    $model = (string)($doc['model'] ?? ($doc['item_name'] ?? ''));
+    if ($model === '') { continue; }
+    if (!isset($invCatModels[$cat])) { $invCatModels[$cat] = []; }
+    if (!in_array($model, $invCatModels[$cat], true)) { $invCatModels[$cat][] = $model; }
+    // qty stats accumulate
+    if (!isset($qtyStats[$cat])) { $qtyStats[$cat] = []; }
+    if (!isset($qtyStats[$cat][$model])) { $qtyStats[$cat][$model] = ['available'=>0,'total'=>0]; }
+    $q = (int)($doc['quantity'] ?? 1);
+    $qtyStats[$cat][$model]['total'] += max(0, $q);
+    if ((string)($doc['status'] ?? '') === 'Available' && $q > 0) { $qtyStats[$cat][$model]['available'] += $q; }
+  }
+  // Held counts from returned_hold
+  $curH = $rhCol->find([], ['projection'=>['category'=>1,'model_name'=>1]]);
+  foreach ($curH as $h) {
+    $cat = trim((string)($h['category'] ?? '')) !== '' ? (string)$h['category'] : 'Uncategorized';
+    $model = (string)($h['model_name'] ?? '');
+    if ($model === '') { continue; }
+    if (!isset($heldCounts[$cat])) { $heldCounts[$cat] = []; }
+    if (!isset($heldCounts[$cat][$model])) { $heldCounts[$cat][$model] = 0; }
+    $heldCounts[$cat][$model] += 1;
+    // ensure model appears in invCatModels for UI
+    if (!isset($invCatModels[$cat])) { $invCatModels[$cat] = []; }
+    if (!in_array($model, $invCatModels[$cat], true)) { $invCatModels[$cat][] = $model; }
+  }
+  // Sort models within categories for nicer UI
+  foreach ($invCatModels as $c => &$mods) { natcasesort($mods); $mods = array_values(array_unique($mods)); }
+  unset($mods);
+  // Build consumed counts per (category, model): active borrows + returned_hold (returned_queue removed)
+  $activeConsumed = [];
+  try {
+    $ubCol = $db->selectCollection('user_borrows');
+    $agg = $ubCol->aggregate([
+      ['$match' => ['status' => 'Borrowed']],
+      ['$lookup' => [
+        'from' => 'inventory_items',
+        'localField' => 'model_id',
+        'foreignField' => 'id',
+        'as' => 'item'
+      ]],
+      ['$unwind' => '$item'],
+      ['$project' => [
+        'category' => ['$ifNull' => ['$item.category', 'Uncategorized']],
+        'model_name' => ['$ifNull' => ['$item.model', '$item.item_name']]
+      ]],
+      ['$group' => ['_id' => ['c' => '$category', 'm' => '$model_name'], 'cnt' => ['$sum' => 1]]]
+    ]);
+    foreach ($agg as $r) {
+      $c = trim((string)($r->_id['c'] ?? '')) ?: 'Uncategorized';
+      $m = (string)($r->_id['m'] ?? ''); if ($m === '') continue;
+      if (!isset($activeConsumed[$c])) { $activeConsumed[$c] = []; }
+      $activeConsumed[$c][$m] = (int)($r->cnt ?? 0);
+    }
+  } catch (Throwable $e) {}
+  $pendingReturned = [];
+  // Also load borrowable whitelist for UI mapping from new catalog collection
+  $borrowables = [];
+  $bcCol = $db->selectCollection('borrowable_catalog');
+  // Ensure index on (category, model_name)
+  try { $bcCol->createIndex(['category'=>1,'model_name'=>1], ['unique'=>true]); } catch (Throwable $eidx) {}
+  // If catalog empty but legacy exists, migrate minimal fields
+  try {
+    $catCount = $bcCol->countDocuments([]);
+    if ($catCount === 0) {
+      $legacy = $db->selectCollection('borrowable_models');
+      $curL = $legacy->find([], ['projection'=>['model_name'=>1,'category'=>1,'active'=>1,'borrow_limit'=>1,'created_at'=>1]]);
+      foreach ($curL as $b) {
+        $bcCol->updateOne(
+          ['category'=>(string)($b['category'] ?? ''), 'model_name'=>(string)($b['model_name'] ?? '')],
+          ['$set'=>[
+            'category'=>(string)($b['category'] ?? ''),
+            'model_name'=>(string)($b['model_name'] ?? ''),
+            'active'=>(int)($b['active'] ?? 1),
+            'borrow_limit'=>(int)($b['borrow_limit'] ?? 0),
+            'created_at'=>(string)($b['created_at'] ?? date('Y-m-d H:i:s'))
+          ]],
+          ['upsert'=>true]
+        );
+      }
+    }
+  } catch (Throwable $emig) {}
+  $bmCur = $bcCol->find([], ['sort'=>['category'=>1,'model_name'=>1], 'projection'=>['model_name'=>1,'category'=>1,'active'=>1,'borrow_limit'=>1,'created_at'=>1]]);
+  foreach ($bmCur as $b) {
+    $borrowables[] = [
+      'model_name' => (string)($b['model_name'] ?? ''),
+      'category' => (string)($b['category'] ?? ''),
+      'active' => (int)($b['active'] ?? 0),
+      'borrow_limit' => (int)($b['borrow_limit'] ?? 0),
+      'created_at' => (string)($b['created_at'] ?? ''),
+    ];
+  }
+  // Build quick map of borrow limits per category/model for UI calculations
+  $borrowLimitMap = [];
+  foreach ($borrowables as $b) {
+    $c = trim((string)$b['category']);
+    $m = trim((string)$b['model_name']);
+    if ($c === '' || $m === '') continue;
+    if (!isset($borrowLimitMap[$c])) { $borrowLimitMap[$c] = []; }
+    $borrowLimitMap[$c][$m] = (int)($b['borrow_limit'] ?? 0);
+  }
+  // Initialize lists (JSON endpoints provide data in-page; keep vars defined for template safety)
+  $pending = [];
+  $borrowed = [];
+  $ABC_MONGO_FILLED = true;
+} catch (Throwable $e) {
+  $ABC_MONGO_FILLED = false;
+}
+
+// Removed MySQL fallback connection: MongoDB is the only backend
+
+// Removed MySQL schema ensure and pruning: handled in MongoDB collections
+
+// Actions: approve/reject/return/lost/maintenance
+$act = $_GET['action'] ?? '';
+
+// JSON endpoints handled above via Mongo
+
+// JSON endpoints handled above via Mongo
+
+// Removed duplicate SQL validator (Mongo JSON endpoint already implemented above)
+
+// Approve with a specific Model ID (from QR scan or manual input)
+// Removed duplicate SQL approve_with (Mongo handler exists above)
+// Removed SQL reject; add Mongo reject route at top if needed
+
+// Removed duplicate SQL approve (Mongo handler exists above)
+
+// Removed duplicate SQL mark_* (Mongo handler exists above)
+
+// Handle borrowable list POST actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  $do = $_POST['do'] ?? '';
+  if ($do === 'add_borrowable') {
+    $cat = trim($_POST['category'] ?? '');
+    $models = [];
+    $bulkLimit = isset($_POST['bulk_limit']) ? (int)$_POST['bulk_limit'] : null;
+    $selectedSerials = (isset($_POST['serials']) && is_array($_POST['serials'])) ? $_POST['serials'] : [];
+    // Accept either single model or multiple models[] from merged UI
+    if (!empty($_POST['models']) && is_array($_POST['models'])) {
+      $models = array_filter(array_map('trim', $_POST['models']));
+    } else if (isset($_POST['model'])) {
+      $m = trim($_POST['model']);
+      if ($m !== '') { $models = [$m]; }
+    }
+    // Mongo-first implementation when ABC_MONGO_FILLED is true
+    if ($ABC_MONGO_FILLED) {
+      try {
+        @require_once __DIR__ . '/../vendor/autoload.php';
+        @require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $itemsCol = $db->selectCollection('inventory_items');
+        $bcCol = $db->selectCollection('borrowable_catalog');
+        $holdCol = $db->selectCollection('returned_hold');
+        $buCol = $db->selectCollection('borrowable_units');
+
+        if ($cat !== '' && $bulkLimit !== null && empty($models)) {
+          if ($bulkLimit < 0) { $bulkLimit = 0; }
+          // Aggregate distinct model keys with total quantity per model within category
+          $agg = $itemsCol->aggregate([
+            ['$match' => ['category' => $cat]],
+            ['$project' => [
+              'model_key' => ['$ifNull' => ['$model', '$item_name']],
+              'quantity'  => ['$ifNull' => ['$quantity', 1]]
+            ]],
+            ['$group' => ['_id' => '$model_key', 'total_qty' => ['$sum' => '$quantity']]],
+          ]);
+          foreach ($agg as $row) {
+            $modelName = (string)($row->_id ?? ''); if ($modelName === '') continue;
+            $total = (int)($row->total_qty ?? 0);
+            // Increment existing limit by bulk amount, cap at total
+            $existing = $bcCol->findOne(['model_name'=>$modelName,'category'=>$cat], ['projection'=>['borrow_limit'=>1]]);
+            $curLimit = $existing && isset($existing['borrow_limit']) ? (int)$existing['borrow_limit'] : 0;
+            $inc = max(0, (int)$bulkLimit);
+            $newLimit = $curLimit + $inc;
+            if ($newLimit > $total) { $newLimit = $total; }
+            if ($newLimit < 0) { $newLimit = 0; }
+            $bcCol->updateOne(
+              ['model_name' => $modelName, 'category' => $cat],
+              ['$set' => ['model_name'=>$modelName,'category'=>$cat,'active'=>1,'borrow_limit'=>$newLimit,'created_at'=>date('Y-m-d H:i:s')]],
+              ['upsert' => true]
+            );
+            // Release up to the increment amount from returned_hold into Available
+            $toRelease = max(0, $newLimit - $curLimit);
+            if ($toRelease > 0) {
+              try {
+                $released = 0;
+                // Honor admin-selected serials first, if any were posted for this model
+                $selList = isset($selectedSerials[$modelName]) && is_array($selectedSerials[$modelName]) ? $selectedSerials[$modelName] : [];
+                foreach ($selList as $sid) {
+                  if ($released >= $toRelease) break;
+                  $midRel = (int)$sid; if ($midRel <= 0) continue;
+                  $itemsCol->updateOne(['id'=>$midRel], ['$set'=>['status'=>'Available']]);
+                  $holdCol->deleteOne(['model_id'=>$midRel]);
+                  $released++;
+                }
+                // Fallback: release arbitrary remaining from hold
+                if ($released < $toRelease) {
+                  $relCur = $holdCol->find(['category'=>$cat,'model_name'=>$modelName], ['limit'=>($toRelease - $released)]);
+                  foreach ($relCur as $h) {
+                    if ($released >= $toRelease) break;
+                    $midRel = (int)($h['model_id'] ?? 0);
+                    if ($midRel > 0) {
+                      $itemsCol->updateOne(['id'=>$midRel], ['$set'=>['status'=>'Available']]);
+                      $holdCol->deleteOne(['model_id'=>$midRel]);
+                      $released++;
+                    }
+                  }
+                }
+              } catch (Throwable $eRel) { /* ignore release errors */ }
+            }
+          }
+        } elseif ($cat !== '' && (!empty($models) || (isset($_POST['limits']) && is_array($_POST['limits'])))) {
+          // Optional per-item limits coming from UI
+          $limits = isset($_POST['limits']) && is_array($_POST['limits']) ? $_POST['limits'] : [];
+          if (empty($models) && !empty($limits)) {
+            foreach ($limits as $k => $v) { $vv = (int)$v; if ($vv > 0) { $models[] = $k; } }
+          }
+          foreach ($models as $modelName) {
+            if ($modelName === '') continue;
+            $reqLimit = isset($limits[$modelName]) ? (int)$limits[$modelName] : 1;
+            if ($reqLimit < 0) { $reqLimit = 0; }
+            // Sum total quantity for this (cat, model)
+            $agg = $itemsCol->aggregate([
+              ['$match' => [
+                'category' => $cat,
+                '$or' => [ ['model'=>$modelName], ['item_name'=>$modelName] ]
+              ]],
+              ['$project' => ['quantity' => ['$ifNull' => ['$quantity', 1]]]],
+              ['$group' => ['_id' => null, 'total_qty' => ['$sum' => '$quantity']]],
+            ]);
+            $total = 0; foreach ($agg as $r) { $total = (int)($r->total_qty ?? 0); break; }
+            // Treat reqLimit as an increment to current borrow_limit; cap by total
+            $existing = $bcCol->findOne(['model_name'=>$modelName,'category'=>$cat], ['projection'=>['borrow_limit'=>1]]);
+            $curLimit = $existing && isset($existing['borrow_limit']) ? (int)$existing['borrow_limit'] : 0;
+            $inc = max(0, (int)$reqLimit);
+            $newLimit = $curLimit + $inc;
+            if ($newLimit > $total) { $newLimit = $total; }
+            if ($newLimit < 0) { $newLimit = 0; }
+            // If specific serials were selected, whitelist those and set borrow_limit from whitelist count
+            $selList = isset($selectedSerials[$modelName]) && is_array($selectedSerials[$modelName]) ? $selectedSerials[$modelName] : [];
+            if (!empty($selList)) {
+              $now = date('Y-m-d H:i:s');
+              $added = 0;
+              foreach ($selList as $sid) {
+                $mid = (int)$sid; if ($mid<=0) continue;
+                // upsert whitelist
+                $buCol->updateOne(
+                  ['model_id'=>$mid],
+                  ['$set'=>['model_id'=>$mid,'model_name'=>$modelName,'category'=>$cat,'created_at'=>$now]],
+                  ['upsert'=>true]
+                );
+                // if in hold, release to Available and remove from hold
+                $h = $holdCol->findOne(['model_id'=>$mid]);
+                if ($h) { $itemsCol->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]); $holdCol->deleteOne(['model_id'=>$mid]); }
+                $added++;
+              }
+              // Recompute whitelist count and sync borrow_limit
+              $cnt = (int)$buCol->countDocuments(['model_name'=>$modelName,'category'=>$cat]);
+              if ($cnt > $total) { $cnt = $total; }
+              $bcCol->updateOne(
+                ['model_name'=>$modelName,'category'=>$cat],
+                ['$set'=>['model_name'=>$modelName,'category'=>$cat,'active'=>1,'borrow_limit'=>$cnt,'created_at'=>$now]],
+                ['upsert'=>true]
+              );
+            } else {
+              // Legacy path: no explicit serials selected, keep increment behavior
+              $bcCol->updateOne(
+                ['model_name'=>$modelName,'category'=>$cat],
+                ['$set'=>['model_name'=>$modelName,'category'=>$cat,'active'=>1,'borrow_limit'=>$newLimit,'created_at'=>date('Y-m-d H:i:s')]],
+                ['upsert'=>true]
+              );
+              $toRelease = max(0, $newLimit - $curLimit);
+              if ($toRelease > 0) {
+                try {
+                  $released = 0;
+                  $relCur = $holdCol->find(['category'=>$cat,'model_name'=>$modelName], ['limit'=>$toRelease]);
+                  foreach ($relCur as $h) {
+                    if ($released >= $toRelease) break;
+                    $midRel = (int)($h['model_id'] ?? 0);
+                    if ($midRel > 0) {
+                      $itemsCol->updateOne(['id'=>$midRel], ['$set'=>['status'=>'Available']]);
+                      $holdCol->deleteOne(['model_id'=>$midRel]);
+                      $released++;
+                    }
+                  }
+                } catch (Throwable $eRel) { /* ignore release errors */ }
+              }
+            }
+          }
+        }
+        header('Location: admin_borrow_center.php?bm=added'); exit();
+      } catch (Throwable $e) {
+        // Fall back to MySQL path below on error
+      }
+    }
+    // Removed MySQL fallback path; handled above with MongoDB
+    header('Location: admin_borrow_center.php?bm=added'); exit();
+  } elseif ($do === 'toggle_borrowable') {
+    // Mongo: toggle active flag
+    try {
+      @require_once __DIR__ . '/../vendor/autoload.php';
+      @require_once __DIR__ . '/db/mongo.php';
+      $db = get_mongo_db();
+      $bmCol = $db->selectCollection('borrowable_catalog');
+      $cat = trim($_POST['category'] ?? '');
+      $model = trim($_POST['model'] ?? '');
+      $active = (int)($_POST['active'] ?? 0);
+      if ($cat !== '' && $model !== '') {
+        $bmCol->updateOne(['model_name'=>$model,'category'=>$cat], ['$set'=>['active'=>$active]]);
+      }
+    } catch (Throwable $e) {}
+    header('Location: admin_borrow_center.php?bm=toggled'); exit();
+  } elseif ($do === 'delete_borrowable') {
+    // Mongo: delete borrowable entry
+    try {
+      @require_once __DIR__ . '/../vendor/autoload.php';
+      @require_once __DIR__ . '/db/mongo.php';
+      $db = get_mongo_db();
+      $bmCol = $db->selectCollection('borrowable_catalog');
+      $cat = trim($_POST['category'] ?? '');
+      $model = trim($_POST['model'] ?? '');
+      if ($cat !== '' && $model !== '') {
+        $bmCol->deleteOne(['model_name'=>$model,'category'=>$cat]);
+      }
+    } catch (Throwable $e) {}
+    header('Location: admin_borrow_center.php?bm=deleted'); exit();
+  } elseif (in_array($do, ['returned_add','returned_remove'], true)) {
+    // Returned List feature removed: no-op
+    header('Location: admin_borrow_center.php?scroll=pending#pending-list'); exit();
+  } elseif (in_array($do, ['mark_found','mark_fixed'], true)) {
+    // Mark item as Found/Fixed -> set Available immediately and log; no queue
+    $mid = (int)($_POST['model_id'] ?? 0);
+    $note = trim($_POST['notes'] ?? '');
+    if ($mid > 0) {
+      try {
+        @require_once __DIR__ . '/../vendor/autoload.php';
+        @require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $iiCol = $db->selectCollection('inventory_items');
+        $ldCol = $db->selectCollection('lost_damaged_log');
+        $by = $_SESSION['username'] ?? 'system';
+        $now = date('Y-m-d H:i:s');
+        // Set unit to Available
+        $iiCol->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
+        // Resolve prior Lost/Under Maintenance logs so they disappear from lists
+        try { $ldCol->updateMany(['model_id'=>$mid, 'action'=>['$in'=>['Lost','Under Maintenance']], 'resolved_at'=>['$exists'=>false]], ['$set'=>['resolved_at'=>$now]]); } catch (Throwable $e2) {}
+        // Log Found/Fixed action
+        $ldCol->insertOne(['model_id'=>$mid,'username'=>$by,'action'=>($do==='mark_found'?'Found':'Fixed'),'notes'=>$note,'created_at'=>$now]);
+      } catch (Throwable $e) {}
+    }
+    header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
+  }
+  elseif ($do === 'mark_permanent_lost') {
+    $mid = (int)($_POST['model_id'] ?? 0);
+    $note = trim($_POST['notes'] ?? '');
+    if ($mid > 0) {
+      try {
+        @require_once __DIR__ . '/../vendor/autoload.php';
+        @require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $iiCol = $db->selectCollection('inventory_items');
+        $ldCol = $db->selectCollection('lost_damaged_log');
+        $delLogCol = $db->selectCollection('inventory_delete_log');
+        $retCol = $db->selectCollection('retired_serials');
+        $by = $_SESSION['username'] ?? 'system';
+        $now = date('Y-m-d H:i:s');
+        // Capture serial before removal
+        $doc = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'model'=>1,'item_name'=>1,'category'=>1,'location'=>1,'quantity'=>1,'status'=>1]]);
+        $serial = $doc && isset($doc['serial_no']) ? (string)$doc['serial_no'] : '';
+        $snapModelKey = $doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? '')) : '';
+        $snapCategory = $doc ? (string)($doc['category'] ?? '') : '';
+        $snapLocation = $doc ? (string)($doc['location'] ?? '') : '';
+        // Mark item as Permanently Lost in inventory status
+        $iiCol->updateOne(['id'=>$mid], ['$set'=>['status'=>'Permanently Lost']]);
+        // Adjust borrow_limit for this model/category and prune if total is now zero
+        try {
+          $bmCol = $db->selectCollection('borrowable_catalog');
+          $modelKey = $doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? '')) : '';
+          $cat = $doc ? ((string)($doc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+          if ($modelKey !== '') {
+            // Compute new total excluding Permanently Lost/Disposed
+            $agg = $iiCol->aggregate([
+              ['$match' => [
+                'category' => $cat,
+                '$or' => [ ['model'=>$modelKey], ['item_name'=>$modelKey] ]
+              ]],
+              ['$project' => [ 'q' => ['$ifNull' => ['$quantity', 1]], 'status' => ['$ifNull' => ['$status','']] ]],
+              ['$project' => [ 'cnt' => ['$cond' => [[ '$and' => [[ '$ne' => ['$status','Permanently Lost'] ], [ '$ne' => ['$status','Disposed'] ] ] ], '$q', 0 ]] ]],
+              ['$group' => ['_id' => null, 'total' => ['$sum' => '$cnt']]]
+            ])->toArray();
+            $newTotal = (int)($agg[0]['total'] ?? 0);
+            $existing = $bmCol->findOne(['model_name'=>$modelKey,'category'=>$cat], ['projection'=>['borrow_limit'=>1]]);
+            $curLimit = $existing && isset($existing['borrow_limit']) ? (int)$existing['borrow_limit'] : 0;
+            $newLimit = max(0, $curLimit - 1);
+            if ($newLimit > $newTotal) { $newLimit = $newTotal; }
+            if ($newTotal <= 0) {
+              // Remove the entry entirely if there are no remaining units
+              try { $bmCol->deleteOne(['model_name'=>$modelKey,'category'=>$cat]); } catch (Throwable $eDelBm) {}
+            } else {
+              $bmCol->updateOne(
+                ['model_name'=>$modelKey,'category'=>$cat],
+                ['$set'=>['active'=>1,'borrow_limit'=>$newLimit,'created_at'=>$now]],
+                ['upsert'=>true]
+              );
+            }
+          }
+        } catch (Throwable $eBm) { /* ignore */ }
+        // Record retired serial so it cannot be reused
+        try { $retCol->createIndex(['serial_no'=>1], ['unique'=>true]); } catch (Throwable $eIdx) {}
+        if ($serial !== '') {
+          try { $retCol->updateOne(['serial_no'=>$serial], ['$set'=>['serial_no'=>$serial,'reason'=>'Permanently Lost','model_id'=>$mid,'retired_at'=>$now,'retired_by'=>$by]], ['upsert'=>true]); } catch (Throwable $eRet) {}
+        }
+        // Preserve snapshot in deletion history as well (without deleting the record)
+        try {
+          $lastDel = $delLogCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+          $nextDelId = ($lastDel && isset($lastDel['id']) ? (int)$lastDel['id'] : 0) + 1;
+          $delLogCol->insertOne([
+            'id' => $nextDelId,
+            'item_id' => $mid,
+            'serial_no' => $serial,
+            'deleted_by' => $by,
+            'deleted_at' => $now,
+            'reason' => 'Permanently Lost',
+            'item_name' => $doc ? (string)($doc['item_name'] ?? '') : '',
+            'model' => $doc ? (string)($doc['model'] ?? '') : '',
+            'category' => $doc ? (string)($doc['category'] ?? 'Uncategorized') : 'Uncategorized',
+            'quantity' => $doc ? (int)($doc['quantity'] ?? 1) : 1,
+            'status' => 'Permanently Lost',
+          ]);
+        } catch (Throwable $eDelLog) { /* ignore */ }
+        // Do not delete the inventory record; keep it for audit/history. It will be hidden via status and not used in flows.
+        // Resolve any prior Lost/Under Maintenance records so it disappears from active lists
+        try { $ldCol->updateMany(['model_id'=>$mid, 'action'=>['$in'=>['Lost','Under Maintenance']], 'resolved_at'=>['$exists'=>false]], ['$set'=>['resolved_at'=>$now]]); } catch (Throwable $e2) {}
+        // Log Permanently Lost action with snapshot fields to preserve display after deletion
+        $ldCol->insertOne([
+          'model_id'=>$mid,
+          'username'=>$by,
+          'action'=>'Permanently Lost',
+          'notes'=>$note,
+          'created_at'=>$now,
+          'serial_no'=>$serial,
+          'model_key'=>$snapModelKey,
+          'category'=>$snapCategory,
+          'location'=>$snapLocation,
+        ]);
+      } catch (Throwable $e) {}
+    }
+    header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
+  }
+  elseif ($do === 'dispose_item') {
+    $mid = (int)($_POST['model_id'] ?? 0);
+    $confirmText = trim((string)($_POST['confirm_text'] ?? ''));
+    if ($confirmText !== 'DISPOSE') { header('Location: admin_borrow_center.php?error=confirm_dispose'); exit(); }
+    if ($mid > 0) {
+      try {
+        @require_once __DIR__ . '/../vendor/autoload.php';
+        @require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $iiCol = $db->selectCollection('inventory_items');
+        $ldCol = $db->selectCollection('lost_damaged_log');
+        $delLogCol = $db->selectCollection('inventory_delete_log');
+        $retCol = $db->selectCollection('retired_serials');
+        $by = $_SESSION['username'] ?? 'system';
+        $now = date('Y-m-d H:i:s');
+        $doc = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'model'=>1,'item_name'=>1,'category'=>1,'location'=>1,'quantity'=>1]]);
+        $serial = $doc && isset($doc['serial_no']) ? (string)$doc['serial_no'] : '';
+        // Update status to Disposed (record kept for audit)
+        $iiCol->updateOne(['id'=>$mid], ['$set'=>['status'=>'Disposed']]);
+        // Adjust borrow_limit for this model/category and prune if total is now zero
+        try {
+          $bmCol = $db->selectCollection('borrowable_catalog');
+          $modelKey = $doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? '')) : '';
+          $cat = $doc ? ((string)($doc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+          if ($modelKey !== '') {
+            $agg = $iiCol->aggregate([
+              ['$match' => [
+                'category' => $cat,
+                '$or' => [ ['model'=>$modelKey], ['item_name'=>$modelKey] ]
+              ]],
+              ['$project' => [ 'q' => ['$ifNull' => ['$quantity', 1]], 'status' => ['$ifNull' => ['$status','']] ]],
+              ['$project' => [ 'cnt' => ['$cond' => [[ '$and' => [[ '$ne' => ['$status','Permanently Lost'] ], [ '$ne' => ['$status','Disposed'] ] ] ], '$q', 0 ]] ]],
+              ['$group' => ['_id' => null, 'total' => ['$sum' => '$cnt']]]
+            ])->toArray();
+            $newTotal = (int)($agg[0]['total'] ?? 0);
+            $existing = $bmCol->findOne(['model_name'=>$modelKey,'category'=>$cat], ['projection'=>['borrow_limit'=>1]]);
+            $curLimit = $existing && isset($existing['borrow_limit']) ? (int)$existing['borrow_limit'] : 0;
+            $newLimit = max(0, $curLimit - 1);
+            if ($newLimit > $newTotal) { $newLimit = $newTotal; }
+            if ($newTotal <= 0) {
+              try { $bmCol->deleteOne(['model_name'=>$modelKey,'category'=>$cat]); } catch (Throwable $eDelBm) {}
+            } else {
+              $bmCol->updateOne(
+                ['model_name'=>$modelKey,'category'=>$cat],
+                ['$set'=>['active'=>1,'borrow_limit'=>$newLimit,'created_at'=>$now]],
+                ['upsert'=>true]
+              );
+            }
+          }
+        } catch (Throwable $eBm) { /* ignore */ }
+        // Retire serial
+        try { $retCol->createIndex(['serial_no'=>1], ['unique'=>true]); } catch (Throwable $eIdx) {}
+        if ($serial !== '') {
+          try { $retCol->updateOne(['serial_no'=>$serial], ['$set'=>['serial_no'=>$serial,'reason'=>'Disposed','model_id'=>$mid,'retired_at'=>$now,'retired_by'=>$by]], ['upsert'=>true]); } catch (Throwable $eRet) {}
+        }
+        // Deletion history snapshot (reason: Disposed)
+        try {
+          $lastDel = $delLogCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+          $nextDelId = ($lastDel && isset($lastDel['id']) ? (int)$lastDel['id'] : 0) + 1;
+          $delLogCol->insertOne([
+            'id' => $nextDelId,
+            'item_id' => $mid,
+            'serial_no' => $serial,
+            'deleted_by' => $by,
+            'deleted_at' => $now,
+            'reason' => 'Disposed',
+            'item_name' => $doc ? (string)($doc['item_name'] ?? '') : '',
+            'model' => $doc ? (string)($doc['model'] ?? '') : '',
+            'category' => $doc ? (string)($doc['category'] ?? 'Uncategorized') : 'Uncategorized',
+            'quantity' => $doc ? (int)($doc['quantity'] ?? 1) : 1,
+            'status' => 'Disposed',
+          ]);
+        } catch (Throwable $eDel) { /* ignore */ }
+        // Resolve any open Under Maintenance logs for this item
+        try { $ldCol->updateMany(['model_id'=>$mid, 'action'=>'Under Maintenance', 'resolved_at'=>['$exists'=>false]], ['$set'=>['resolved_at'=>$now]]); } catch (Throwable $_e) {}
+        // Log to Lost/Damaged history as Disposed
+        $nextLD = $ldCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+        $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
+        $ldCol->insertOne([
+          'id'=>$lid,
+          'model_id'=>$mid,
+          'username'=>$by,
+          'action'=>'Disposed',
+          'created_at'=>$now,
+          'serial_no'=>$serial,
+          'model_key'=>$doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? '')) : '',
+          'category'=>$doc ? ((string)($doc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized',
+          'location'=>$doc ? (string)($doc['location'] ?? '') : '',
+        ]);
+      } catch (Throwable $e) { /* ignore */ }
+    }
+    header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
+  }
+  elseif (in_array($do, ['mark_lost_with_details','mark_maint_with_details'], true)) {
+    $reqId = (int)($_POST['request_id'] ?? 0);
+    $remarks = trim((string)($_POST['remarks'] ?? ''));
+    // no location field; only remarks
+    if ($remarks === '') { header('Location: admin_borrow_center.php?error=remarks_required'); exit(); }
+    if ($reqId > 0) {
+      try {
+        @require_once __DIR__ . '/../vendor/autoload.php';
+        @require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $er = $db->selectCollection('equipment_requests');
+        $ii = $db->selectCollection('inventory_items');
+        $ub = $db->selectCollection('user_borrows');
+        $ra = $db->selectCollection('request_allocations');
+        $ld = $db->selectCollection('lost_damaged_log');
+        $now = date('Y-m-d H:i:s');
+        $who = $_SESSION['username'] ?? 'system';
+
+        $req = $er->findOne(['id'=>$reqId]);
+        if ($req) {
+          $allocs = iterator_to_array($ra->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
+          $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
+          if (!empty($borrowIds)) {
+            $cur = $ub->find(['id' => ['$in'=>$borrowIds], 'status'=>'Borrowed']);
+            $activeBorrows = [];
+            foreach ($cur as $b) { $activeBorrows[] = $b; }
+            if (!empty($activeBorrows)) {
+              usort($activeBorrows, function($a,$b){
+                $ta = strtotime((string)($a['borrowed_at'] ?? '')) ?: 0;
+                $tb = strtotime((string)($b['borrowed_at'] ?? '')) ?: 0;
+                if ($ta === $tb) { return ((int)($a['id'] ?? 0)) <=> ((int)($b['id'] ?? 0)); }
+                return $ta <=> $tb;
+              });
+              $pick = $activeBorrows[0];
+              $borrowId = (int)($pick['id'] ?? 0);
+              $mid = (int)($pick['model_id'] ?? 0);
+              if ($mid > 0 && $borrowId > 0) {
+                if ($do === 'mark_lost_with_details') {
+                  $iiUpdates = ['status' => 'Lost']; if ($remarks !== '') { $iiUpdates['remarks'] = $remarks; }
+                  $ii->updateOne(['id'=>$mid], ['$set'=>$iiUpdates]);
+                  $ub->updateOne(['id'=>$borrowId,'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+                  $note = ($remarks !== '' ? $remarks : '');
+                  $nextLD = $ld->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+                  $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
+                  $ld->insertOne(['id'=>$lid,'model_id'=>$mid,'username'=>$who,'action'=>'Lost','notes'=>$note,'created_at'=>$now]);
+                } else { // mark_maint_with_details
+                  $iiUpdates = ['status' => 'Under Maintenance']; if ($remarks !== '') { $iiUpdates['remarks'] = $remarks; }
+                  $ii->updateOne(['id'=>$mid], ['$set'=>$iiUpdates]);
+                  $ub->updateOne(['id'=>$borrowId,'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+                  $note = ($remarks !== '' ? $remarks : '');
+                  $nextLD = $ld->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+                  $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
+                  $ld->insertOne(['id'=>$lid,'model_id'=>$mid,'username'=>$who,'action'=>'Under Maintenance','notes'=>$note,'created_at'=>$now]);
+                }
+              }
+            }
+          }
+        }
+      } catch (Throwable $e) { /* ignore */ }
+    }
+    header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
+  }
+}
+
+// Removed legacy MySQL fallback list population; Mongo data already prepared above
+// Build quick lookup of active borrowable models per category
+$activeBorrow = [];
+foreach ($borrowables as $b) {
+  if ((int)$b['active'] !== 1) continue;
+  $c = trim((string)$b['category']);
+  $m = trim((string)$b['model_name']);
+  if ($c === '' || $m === '') continue;
+  if (!isset($activeBorrow[$c])) { $activeBorrow[$c] = []; }
+  $activeBorrow[$c][$m] = true;
+}
+
+// Inventory catalog and quantity stats via Mongo
+try {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $db = isset($db) && $db instanceof MongoDB\Database ? $db : get_mongo_db();
+  $iiCol = $db->selectCollection('inventory_items');
+  $holdCol = $db->selectCollection('returned_hold');
+  // Inventory catalog (category -> models)
+  $invCatModels = [];
+  $categoryCounts = [];
+  foreach ($iiCol->find([], ['projection'=>['category'=>1,'model'=>1,'item_name'=>1]]) as $doc) {
+    $c = trim((string)($doc['category'] ?? '')) !== '' ? (string)$doc['category'] : 'Uncategorized';
+    $m = (string)($doc['model'] ?? ($doc['item_name'] ?? ''));
+    if ($c === '' || $m === '') continue;
+    if (!isset($invCatModels[$c])) { $invCatModels[$c] = []; $categoryCounts[$c] = 0; }
+    if (!in_array($m, $invCatModels[$c], true)) { $invCatModels[$c][] = $m; }
+    $categoryCounts[$c]++;
+  }
+  $heldCounts = [];
+  foreach ($holdCol->aggregate([
+    ['$group' => ['_id' => ['category'=>'$category','model_name'=>'$model_name'], 'cnt' => ['$sum' => 1]]]
+  ]) as $row) {
+    $id = (array)($row->_id ?? []);
+    $c = trim((string)($id['category'] ?? '')) !== '' ? (string)$id['category'] : 'Uncategorized';
+    $m = (string)($id['model_name'] ?? '');
+    $cnt = (int)($row->cnt ?? 0);
+    if ($c === '' || $m === '') continue;
+    if (!isset($heldCounts[$c])) { $heldCounts[$c] = []; }
+    $heldCounts[$c][$m] = $cnt;
+    if (!isset($invCatModels[$c])) { $invCatModels[$c] = []; }
+    if (!in_array($m, $invCatModels[$c], true)) { $invCatModels[$c][] = $m; }
+  }
+  foreach ($invCatModels as $c => &$mods) { natcasesort($mods); $mods = array_values(array_unique($mods)); }
+  unset($mods);
+  // Quantity stats per (category, model). Exclude Permanently Lost/Disposed from totals.
+  $qtyStats = [];
+  foreach ($iiCol->aggregate([
+    ['$project' => [
+      'category' => ['$ifNull' => ['$category', 'Uncategorized']],
+      'model_name' => ['$ifNull' => ['$model', '$item_name']],
+      'q' => ['$ifNull' => ['$quantity', 1]],
+      'status' => ['$ifNull' => ['$status', '']]
+    ]],
+    ['$project' => [
+      'category' => 1,
+      'model_name' => 1,
+      // Available counts only when Available and q > 0
+      'available' => ['$cond' => [['$and' => [['$eq' => ['$status','Available']], ['$gt' => ['$q', 0]]]], '$q', 0]],
+      // Total excludes items that are not lendable (Lost/Damaged/Under Maintenance/Permanently Lost/Disposed)
+      'total_count' => ['$cond' => [
+        ['$and' => [
+          ['$ne' => ['$status', 'Permanently Lost']],
+          ['$ne' => ['$status', 'Disposed']],
+          ['$ne' => ['$status', 'Lost']],
+          ['$ne' => ['$status', 'Damaged']],
+          ['$ne' => ['$status', 'Under Maintenance']]
+        ]], '$q', 0
+      ]]
+    ]],
+    ['$group' => [
+      '_id' => ['category'=>'$category','model_name'=>'$model_name'],
+      'available' => ['$sum' => '$available'],
+      'total' => ['$sum' => '$total_count']
+    ]]
+  ]) as $row) {
+    $id = (array)($row->_id ?? []);
+    $c = (string)($id['category'] ?? 'Uncategorized');
+    $m = (string)($id['model_name'] ?? '');
+    if ($c === '' || $m === '') continue;
+    if (!isset($qtyStats[$c])) { $qtyStats[$c] = []; }
+    $qtyStats[$c][$m] = [ 'available' => (int)($row->available ?? 0), 'total' => (int)($row->total ?? 0) ];
+  }
+  // Prune models with zero total from Add From Category lists
+  if (!empty($invCatModels)) {
+    foreach ($invCatModels as $c => &$mods) {
+      $mods = array_values(array_filter($mods, function($m) use ($qtyStats, $c){
+        return isset($qtyStats[$c][$m]) && (int)$qtyStats[$c][$m]['total'] > 0;
+      }));
+    }
+    unset($mods);
+    // Recompute category counts displayed in the dropdown
+    $categoryCounts = [];
+    foreach ($invCatModels as $c => $mods) { $categoryCounts[$c] = count($mods); }
+  }
+} catch (Throwable $e) {
+  // Default to empty on failure
+  $invCatModels = $invCatModels ?? [];
+  $categoryCounts = $categoryCounts ?? [];
+  $heldCounts = $heldCounts ?? [];
+  $qtyStats = $qtyStats ?? [];
+}
+
+// Returned queue removed: no items to render in Returned List
+$returnedItems = [];
+
+// Lost items via Mongo (latest action Lost)
+try {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $db = isset($db) && $db instanceof MongoDB\Database ? $db : get_mongo_db();
+  $ldCol = $db->selectCollection('lost_damaged_log');
+  $iiCol = $db->selectCollection('inventory_items');
+  $ubCol = $db->selectCollection('user_borrows');
+  $uCol  = $db->selectCollection('users');
+  $lostItems = [];
+  $cur = $ldCol->find(['action'=>'Lost', 'resolved_at'=>['$exists'=>false], 'source' => ['$ne' => 'manual_edit']], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
+  foreach ($cur as $l) {
+    $mid = (int)($l['model_id'] ?? 0);
+    $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
+    if (!$ii) continue;
+    // Resolve affected student's username (prefer latest borrower)
+    $studUser = '';
+    try { $br = $ubCol->findOne(['model_id'=>$mid], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'projection'=>['username'=>1]]); if ($br && isset($br['username'])) { $studUser = (string)$br['username']; } } catch (Throwable $_) {}
+    if ($studUser === '') { $studUser = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? '')); }
+    $studSid = '';
+    $userName = $studUser;
+    if ($studUser !== '') {
+      try {
+        $uu = $uCol->findOne(['username'=>$studUser], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]);
+        if ($uu) {
+          if (isset($uu['full_name']) && trim((string)$uu['full_name'])!=='') { $userName = (string)$uu['full_name']; }
+          elseif (isset($uu['first_name']) || isset($uu['last_name'])) { $userName = trim((string)($uu['first_name']??'').' '.(string)($uu['last_name']??'')); }
+          elseif (isset($uu['name']) && trim((string)$uu['name'])!=='') { $userName = (string)$uu['name']; }
+          if (isset($uu['school_id'])) { $studSid = (string)$uu['school_id']; }
+        }
+      } catch (Throwable $_) {}
+    }
+    $lostItems[] = [
+      'model_id' => $mid,
+      'serial_no' => (string)($ii['serial_no'] ?? ''),
+      'model_key' => (string)($ii['model'] ?? ($ii['item_name'] ?? '')),
+      'category' => (string)($ii['category'] ?? 'Uncategorized'),
+      'user_name' => (string)$userName,
+      'location' => (string)($ii['location'] ?? ''),
+      'condition' => (string)($ii['condition'] ?? ''),
+      'marked_by' => (string)($l['username'] ?? ''),
+      'student_school_id' => $studSid,
+      'marked_at' => (string)($l['created_at'] ?? ''),
+      'notes' => (string)($l['notes'] ?? ''),
+      'remarks' => (string)($ii['remarks'] ?? ''),
+    ];
+  }
+} catch (Throwable $e) { $lostItems = []; }
+
+// Damaged items via Mongo (latest action Under Maintenance)
+try {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $db = isset($db) && $db instanceof MongoDB\Database ? $db : get_mongo_db();
+  $ldCol = $db->selectCollection('lost_damaged_log');
+  $iiCol = $db->selectCollection('inventory_items');
+  $uCol  = $db->selectCollection('users');
+  $ubCol = $db->selectCollection('user_borrows');
+  $damagedItems = [];
+  $cur = $ldCol->find(['action'=>'Under Maintenance', 'resolved_at'=>['$exists'=>false], 'source' => ['$ne' => 'manual_edit']], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
+  foreach ($cur as $l) {
+    $mid = (int)($l['model_id'] ?? 0);
+    $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
+    if (!$ii) continue;
+    // Resolve affected student's username (prefer latest borrower)
+    $studUser = '';
+    try { $br = $ubCol->findOne(['model_id'=>$mid], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'projection'=>['username'=>1]]); if ($br && isset($br['username'])) { $studUser = (string)$br['username']; } } catch (Throwable $_) {}
+    if ($studUser === '') { $studUser = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? '')); }
+    $studSid = '';
+    $userName = $studUser;
+    if ($studUser !== '') {
+      try {
+        $uu = $uCol->findOne(['username'=>$studUser], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]);
+        if ($uu) {
+          if (isset($uu['full_name']) && trim((string)$uu['full_name'])!=='') { $userName = (string)$uu['full_name']; }
+          elseif (isset($uu['first_name']) || isset($uu['last_name'])) { $userName = trim((string)($uu['first_name']??'').' '.(string)($uu['last_name']??'')); }
+          elseif (isset($uu['name']) && trim((string)$uu['name'])!=='') { $userName = (string)$uu['name']; }
+          if (isset($uu['school_id'])) { $studSid = (string)$uu['school_id']; }
+        }
+      } catch (Throwable $_) {}
+    }
+    $damagedItems[] = [
+      'model_id' => $mid,
+      'serial_no' => (string)($ii['serial_no'] ?? ''),
+      'model_key' => (string)($ii['model'] ?? ($ii['item_name'] ?? '')),
+      'category' => (string)($ii['category'] ?? 'Uncategorized'),
+      'user_name' => (string)$userName,
+      'location' => (string)($ii['location'] ?? ''),
+      'condition' => (string)($ii['condition'] ?? ''),
+      'marked_by' => (string)($l['username'] ?? ''),
+      'student_school_id' => $studSid,
+      'marked_at' => (string)($l['created_at'] ?? ''),
+      'notes' => (string)($l['notes'] ?? ''),
+    ];
+  }
+} catch (Throwable $e) { $damagedItems = []; }
+
+// Lost/Damaged history rows via Mongo with last_* dates per model
+try {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $db = isset($db) && $db instanceof MongoDB\Database ? $db : get_mongo_db();
+  $ldCol = $db->selectCollection('lost_damaged_log');
+  $iiCol = $db->selectCollection('inventory_items');
+  $ldHistory = [];
+  $raw = iterator_to_array($ldCol->find([], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]));
+  // Compute last action dates per model
+  $lastMap = [];
+  foreach ($raw as $l) {
+    $mid = (int)($l['model_id'] ?? 0);
+    $act = (string)($l['action'] ?? '');
+    $ts  = (string)($l['created_at'] ?? '');
+    if ($mid <= 0 || $ts === '' || $act === '') continue;
+    if (!isset($lastMap[$mid])) { $lastMap[$mid] = ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>'','last_disposed_at'=>'']; }
+    if ($act === 'Lost' && $ts > (string)$lastMap[$mid]['last_lost_at']) { $lastMap[$mid]['last_lost_at'] = $ts; }
+    if ($act === 'Under Maintenance' && $ts > (string)$lastMap[$mid]['last_maint_at']) { $lastMap[$mid]['last_maint_at'] = $ts; }
+    if ($act === 'Found' && $ts > (string)$lastMap[$mid]['last_found_at']) { $lastMap[$mid]['last_found_at'] = $ts; }
+    if ($act === 'Fixed' && $ts > (string)$lastMap[$mid]['last_fixed_at']) { $lastMap[$mid]['last_fixed_at'] = $ts; }
+    // Track Permanently Lost and Disposed separately as well
+    if ($act === 'Permanently Lost' && $ts > (string)$lastMap[$mid]['last_perm_lost_at']) { $lastMap[$mid]['last_perm_lost_at'] = $ts; }
+    if ($act === 'Disposed' && $ts > (string)$lastMap[$mid]['last_disposed_at']) { $lastMap[$mid]['last_disposed_at'] = $ts; }
+  }
+  // Build history rows enriched with last_* dates
+  foreach ($raw as $l) {
+    $mid = (int)($l['model_id'] ?? 0);
+    $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
+    $lm = $lastMap[$mid] ?? ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>''];
+    // Determine current_action for filtering and display
+    $lostAt  = !empty($lm['last_lost_at']) ? strtotime((string)$lm['last_lost_at']) : null;
+    $foundAt = !empty($lm['last_found_at']) ? strtotime((string)$lm['last_found_at']) : null;
+    $maintAt = !empty($lm['last_maint_at']) ? strtotime((string)$lm['last_maint_at']) : null;
+    $fixedAt = !empty($lm['last_fixed_at']) ? strtotime((string)$lm['last_fixed_at']) : null;
+    $permLostAt = !empty($lm['last_perm_lost_at']) ? strtotime((string)$lm['last_perm_lost_at']) : null;
+    $disposedAt = !empty($lm['last_disposed_at']) ? strtotime((string)$lm['last_disposed_at']) : null;
+    $currentAction = '';
+    if ($disposedAt) {
+      // Disposed is terminal
+      $currentAction = 'Disposed';
+    }
+    elseif ($permLostAt) {
+      // If there was a Found after Permanently Lost (unlikely), prefer Found; otherwise Permanently Lost
+      if ($foundAt && $foundAt > $permLostAt) { $currentAction = 'Found'; }
+      else { $currentAction = 'Permanently Lost'; }
+    }
+    elseif ($lostAt) {
+      // If there was a Found after Lost, consider Found; otherwise still Lost
+      if ($foundAt && $foundAt > $lostAt) { $currentAction = 'Found'; }
+      else { $currentAction = 'Lost'; }
+    } elseif ($maintAt) {
+      // If there was a Fixed after Damaged, consider Fixed; otherwise still Damaged
+      if ($fixedAt && $fixedAt > $maintAt) { $currentAction = 'Fixed'; }
+      else { $currentAction = 'Under Maintenance'; }
+    } else {
+      // Fallback to current inventory status if no history pair detected
+      // Do NOT infer 'Permanently Lost' from inventory status; only show it when explicitly logged
+      $ist = $ii ? (string)($ii['status'] ?? '') : '';
+      if (in_array($ist, ['Lost','Under Maintenance','Found','Fixed'], true)) { $currentAction = $ist; }
+    }
+    // Resolve the user's full name: prefer last borrower at/before log time
+    $logWhen = (string)($l['created_at'] ?? '');
+    $userUname = (string)($l['affected_username'] ?? '');
+    // Determine admin marker for this log (who marked it)
+    $markedCandidates = [
+      (string)($l['marked_by'] ?? ''),
+      (string)($l['admin_username'] ?? ''),
+      (string)($l['created_by'] ?? ''),
+      (string)($l['performed_by'] ?? ''),
+      (string)($l['action_by'] ?? ''),
+      (string)($l['username'] ?? ''),
+    ];
+    $pickFirst = function(array $arr){ foreach ($arr as $v) { if (isset($v) && trim((string)$v) !== '') return (string)$v; } return ''; };
+    $markedUname = $pickFirst($markedCandidates);
+    $tryBorrow = function($when) use ($ubCol, $mid){
+      $pick = '';
+      try {
+        if ($when !== '' && $mid > 0) {
+          $q1 = [
+            'model_id' => $mid,
+            'borrowed_at' => ['$lte' => $when],
+            '$or' => [ ['returned_at' => null], ['returned_at' => ''], ['returned_at' => ['$gte' => $when]] ]
+          ];
+          $opt = ['sort' => ['borrowed_at' => -1, 'id' => -1], 'limit' => 1];
+          foreach ($ubCol->find($q1, $opt) as $br) { $pick = (string)($br['username'] ?? ''); if ($pick!=='') break; }
+          if ($pick==='') { $q2 = ['model_id'=>$mid, 'borrowed_at' => ['$lte'=>$when]]; foreach ($ubCol->find($q2, $opt) as $br){ $pick=(string)($br['username']??''); if($pick!=='') break; } }
+        }
+      } catch (Throwable $e) { /* ignore */ }
+      return $pick;
+    };
+    if ($userUname === '') { $userUname = $tryBorrow($logWhen); }
+    // If still none, show admin (manual edit); only then fallback to item last borrower
+    if ($userUname === '' && $markedUname !== '') { $userUname = $markedUname; }
+    if ($userUname === '' && $ii) { $userUname = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? '')); }
+    $userFull = $userUname;
+    $userSid = '';
+    if ($userUname !== '') {
+      try {
+        $uf = $uCol->findOne(['username'=>$userUname], ['projection'=>['full_name'=>1,'school_id'=>1]]);
+        if ($uf && !empty($uf['full_name'])) { $userFull = (string)$uf['full_name']; }
+        if ($uf && isset($uf['school_id'])) { $userSid = (string)$uf['school_id']; }
+      } catch (Throwable $e) {}
+    }
+
+    $ldHistory[] = [
+      'id' => (int)($l['id'] ?? 0),
+      'model_id' => $mid,
+      'serial_no' => $ii ? (string)($ii['serial_no'] ?? '') : (string)($l['serial_no'] ?? ''),
+      'username' => $userFull,
+      'user_school_id' => $userSid,
+      'action' => (string)($l['action'] ?? ''),
+      'notes' => (string)($l['notes'] ?? ''),
+      'created_at' => (string)($l['created_at'] ?? ''),
+      'item_name' => $ii ? (string)($ii['item_name'] ?? '') : '',
+      'model_key' => $ii ? (string)($ii['model'] ?? ($ii['item_name'] ?? '')) : (string)($l['model_key'] ?? ''),
+      'category' => $ii ? (string)($ii['category'] ?? 'Uncategorized') : (string)($l['category'] ?? 'Uncategorized'),
+      'location' => $ii ? (string)($ii['location'] ?? '') : (string)($l['location'] ?? ''),
+      'last_lost_at' => (string)$lm['last_lost_at'],
+      'last_maint_at' => (string)$lm['last_maint_at'],
+      'last_found_at' => (string)$lm['last_found_at'],
+      'last_fixed_at' => (string)$lm['last_fixed_at'],
+      'last_disposed_at' => (string)$lm['last_disposed_at'],
+      'current_action' => $currentAction,
+    ];
+  }
+} catch (Throwable $e) { $ldHistory = []; }
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Borrow Requests</title>
+  <link href="css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    html, body { height: 100%; }
+    body { overflow: hidden; }
+    #sidebar-wrapper { position: sticky; top: 0; height: 100vh; overflow: hidden; }
+    #page-content-wrapper { flex: 1 1 auto; height: 100vh; overflow: auto; padding: 0.5rem !important; }
+    @media (max-width: 768px) { body { overflow: auto; } #page-content-wrapper { height: auto; overflow: visible; } }
+    /* Slightly shorter scrollable lists */
+    @media (min-width: 768px) {
+      .list-scroll { min-height: 45vh; max-height: calc(100vh - 300px); overflow-y: auto; }
+    }
+  </style>
+</head>
+<body class="allow-mobile">
+  <div class="d-flex">
+    <div class="bg-light border-end" id="sidebar-wrapper">
+      <div class="sidebar-heading py-4 fs-4 fw-bold border-bottom d-flex align-items-center justify-content-center">
+        <img src="images/logo-removebg.png" alt="ECA Logo" class="brand-logo me-2" />
+        <span>ECA MIS-GMIS</span>
+      </div>
+      <div class="list-group list-group-flush my-3">
+        <a href="admin_dashboard.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+        <a href="inventory.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-box-seam me-2"></i>Inventory</a>
+        <a href="inventory_print.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING']) : ''); ?>" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-printer me-2"></i>Print Inventory</a>
+        <a href="generate_qr.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-qr-code me-2"></i>Add Item/Generate QR</a>
+        <a href="qr_scanner.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-camera me-2"></i>QR Scanner</a>
+        <a href="admin_borrow_center.php" class="list-group-item list-group-item-action bg-transparent fw-bold"><i class="bi bi-clipboard-check me-2"></i>Borrow Requests</a>
+        <a href="user_management.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-people me-2"></i>User Management</a>
+        <a href="change_password.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-key me-2"></i>Change Password</a>
+        <a href="logout.php" class="list-group-item list-group-item-action bg-transparent" onclick="return confirm('Are you sure you want to logout?');"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
+      </div>
+    </div>
+    <div class="p-4" id="page-content-wrapper">
+      <div class="page-header d-flex justify-content-between align-items-center">
+        <h2 class="page-title"><i class="bi bi-clipboard-check me-2"></i>Borrow Center</h2>
+        <div class="dropdown">
+          <button class="btn btn-outline-primary dropdown-toggle" type="button" id="bcActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-list"></i> Actions
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end actions-menu" aria-labelledby="bcActionsDropdown">
+            <li>
+              <a class="dropdown-item d-flex align-items-center" href="#" data-bs-toggle="modal" data-bs-target="#ldHistoryModal">
+                <i class="bi bi-clock-history me-2"></i>Lost/Damaged History
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center" href="#" data-bs-toggle="modal" data-bs-target="#lostDamagedListModal">
+                <i class="bi bi-exclamation-triangle me-2"></i>Lost/Damaged Item List
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center" href="#" data-bs-toggle="modal" data-bs-target="#overdueModal">
+                <i class="bi bi-hourglass-split me-2"></i>Overdue Items
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+  <!-- Mark Lost Modal -->
+  <div class="modal fade" id="markLostModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form method="POST" class="modal-content" onsubmit="return confirm('Mark this item as Lost?');">
+        <input type="hidden" name="do" value="mark_lost_with_details" />
+        <input type="hidden" name="request_id" id="ml_req_id" />
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Mark as Lost</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Item:</strong> <span id="ml_model_name"></span> (<span id="ml_model_id"></span>)</div>
+          <div class="mb-2">
+            <label class="form-label">Remarks</label>
+            <textarea class="form-control" name="remarks" rows="3" placeholder="Describe what happened" required></textarea>
+          </div>
+          <div class="small text-muted">Remarks will also update the item's remarks in Inventory.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger"><i class="bi bi-check2-circle me-1"></i>Confirm Lost</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Mark Maintenance (Damaged) Modal -->
+  <div class="modal fade" id="markMaintModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form method="POST" class="modal-content" onsubmit="return confirm('Mark this item as Damaged / Under Maintenance?');">
+        <input type="hidden" name="do" value="mark_maint_with_details" />
+        <input type="hidden" name="request_id" id="mm_req_id" />
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-tools me-2"></i>Mark as Damaged / Under Maintenance</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Item:</strong> <span id="mm_model_name"></span> (<span id="mm_model_id"></span>)</div>
+          <div class="mb-2">
+            <label class="form-label">Remarks (type of damage)</label>
+            <textarea class="form-control" name="remarks" rows="3" placeholder="Describe the damage" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning text-dark"><i class="bi bi-check2-circle me-1"></i>Confirm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Populate Mark Lost / Maintenance modals
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        var lostM = document.getElementById('markLostModal');
+        if (lostM) {
+          lostM.addEventListener('show.bs.modal', function(e){
+            var btn = e.relatedTarget; if (!btn) return;
+            var rid = btn.getAttribute('data-reqid') || '';
+            var serial = btn.getAttribute('data-serial') || '';
+            var name = btn.getAttribute('data-model_name') || '';
+            var idEl = document.getElementById('ml_req_id'); if (idEl) idEl.value = rid;
+            var nmEl = document.getElementById('ml_model_name'); if (nmEl) nmEl.textContent = name;
+            var midEl = document.getElementById('ml_model_id'); if (midEl) midEl.textContent = serial;
+          });
+        }
+        var maintM = document.getElementById('markMaintModal');
+        if (maintM) {
+          maintM.addEventListener('show.bs.modal', function(e){
+            var btn = e.relatedTarget; if (!btn) return;
+            var rid = btn.getAttribute('data-reqid') || '';
+            var serial = btn.getAttribute('data-serial') || '';
+            var name = btn.getAttribute('data-model_name') || '';
+            var idEl2 = document.getElementById('mm_req_id'); if (idEl2) idEl2.value = rid;
+            var nmEl2 = document.getElementById('mm_model_name'); if (nmEl2) nmEl2.textContent = name;
+            var midEl2 = document.getElementById('mm_model_id'); if (midEl2) midEl2.textContent = serial;
+          });
+        }
+      });
+    })();
+  </script>
+  <!-- View Borrowable Serials Modal -->
+  <div class="modal fade" id="bmViewUnitsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-list-ul me-2"></i>Borrowable Serials</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2 small text-muted" id="bmViewUnitsMeta"></div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Serial ID</th>
+                  <th>Remarks</th>
+                  <th>Status</th>
+                  <th>Added</th>
+                </tr>
+              </thead>
+              <tbody id="bmViewUnitsBody">
+                <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function(){
+      function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+      async function fetchWhitelisted(cat, model){
+        const url = 'admin_borrow_center.php?action=list_borrowable_units&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
+        const r = await fetch(url); if(!r.ok) return [];
+        const j = await r.json().catch(()=>({ok:false,items:[]}));
+        if (!j || !j.ok || !Array.isArray(j.items)) return [];
+        return j.items;
+      }
+      document.addEventListener('click', async function(e){
+        const btn = e.target.closest && e.target.closest('.bm-view-units');
+        if (!btn) return;
+        const cat = btn.getAttribute('data-category')||'';
+        const model = btn.getAttribute('data-model')||'';
+        const meta = document.getElementById('bmViewUnitsMeta');
+        const body = document.getElementById('bmViewUnitsBody');
+        if (meta) meta.innerHTML = 'Category: <strong>'+esc(cat)+'</strong> | Model: <strong>'+esc(model)+'</strong>';
+        if (body) body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>';
+        const items = await fetchWhitelisted(cat, model);
+        const rows = [];
+        if (!items.length) {
+          rows.push('<tr><td colspan="4" class="text-center text-muted">No whitelisted serials yet.</td></tr>');
+        } else {
+          items.forEach(it=>{
+            rows.push('<tr>'+
+              '<td>'+esc(it.serial_no||'')+'</td>'+
+              '<td>'+esc(it.remarks||'')+'</td>'+
+              '<td>'+esc(it.status||'')+'</td>'+
+              '<td>'+esc(it.added_at||'')+'</td>'+
+            '</tr>');
+          });
+        }
+        if (body) body.innerHTML = rows.join('');
+      });
+    })();
+  </script>
+  <!-- QR Return (Admin) Modal -->
+  <div class="modal fade" id="qrReturnAdminModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-qr-code me-2"></i>QR Return</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Request ID:</strong> <span id="qrAdmReq"></span></div>
+          <div class="mb-2"><strong>Item Name:</strong> <span id="qrAdmModel"></span></div>
+          <div class="mb-2"><strong>Serial ID:</strong> <span id="qrAdmSerial"></span></div>
+          <div class="mb-2"><small id="qrAdmStatus" class="text-muted">Waiting for user QR verification.</small></div>
+          <div class="mb-2"><strong>User Location (if provided):</strong> <span id="qrAdmLoc">—</span></div>
+          <div class="d-flex gap-2 mt-3 justify-content-end">
+            <form id="qrAdmReqForm" method="POST" action="admin_borrow_center.php?action=request_returnship" class="d-inline">
+              <input type="hidden" name="request_id" id="qrAdmReqId1" value="" />
+              <button type="submit" id="qrAdmRequestBtn" class="btn btn-outline-secondary"><i class="bi bi-bell"></i> Request for return</button>
+            </form>
+            <form id="qrAdmApproveForm" method="POST" action="admin_borrow_center.php?action=approve_returnship" class="d-inline">
+              <input type="hidden" name="request_id" id="qrAdmReqId2" value="" />
+              <button type="submit" id="qrAdmApproveBtn" class="btn btn-secondary" disabled><i class="bi bi-check2"></i> Approve Return</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        // Admin notifications: user verified returns (toast + beep)
+        try {
+          var toastWrap = document.getElementById('adminToastWrap');
+          if (!toastWrap) {
+            toastWrap = document.createElement('div'); toastWrap.id = 'adminToastWrap';
+            toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080';
+            document.body.appendChild(toastWrap);
+          }
+          function showToast(msg, cls){ var el=document.createElement('div'); el.className='alert '+(cls||'alert-info')+' shadow-sm border-0'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 5000); }
+          function playBeep(){ try{ var ctx = new (window.AudioContext||window.webkitAudioContext)(); var o = ctx.createOscillator(); var g = ctx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(880, ctx.currentTime); g.gain.setValueAtTime(0.0001, ctx.currentTime); o.connect(g); g.connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.4); o.stop(ctx.currentTime+0.45); } catch(_e){} }
+          var baseVerif = new Set(); var initFeed=false; var feeding=false;
+          function pollVerif(){ if (feeding) return; feeding=true;
+            fetch('admin_borrow_center.php?action=returnship_feed')
+              .then(function(r){ return r.json(); })
+              .then(function(d){ var list = (d && d.ok && Array.isArray(d.verifications)) ? d.verifications : []; var ids = new Set(list.map(function(v){ return parseInt(v.id||0,10); }).filter(function(n){ return n>0; })); if (!initFeed){ baseVerif = ids; initFeed=true; return; } var ding=false; list.forEach(function(v){ var id=parseInt(v.id||0,10); if (!baseVerif.has(id)){ ding=true; var name=String(v.model_name||''); var sn=String(v.qr_serial_no||''); var loc=String(v.location||''); showToast('User verified return for '+(name?name+' ':'')+(sn?('['+sn+']'):'')+(loc?(' @ '+loc):''), 'alert-info'); } }); if (ding) playBeep(); baseVerif = ids; })
+              .catch(function(){})
+              .finally(function(){ feeding=false; });
+          }
+          pollVerif(); setInterval(function(){ if (document.visibilityState==='visible') pollVerif(); }, 2000);
+        } catch(_e){}
+        var mdl = document.getElementById('qrReturnAdminModal');
+        if (!mdl) return;
+        var reqSpan = document.getElementById('qrAdmReq');
+        var modelSpan = document.getElementById('qrAdmModel');
+        var serialSpan = document.getElementById('qrAdmSerial');
+        var statusEl = document.getElementById('qrAdmStatus');
+        var locEl = document.getElementById('qrAdmLoc');
+        var reqId1 = document.getElementById('qrAdmReqId1');
+        var reqId2 = document.getElementById('qrAdmReqId2');
+        var approveBtn = document.getElementById('qrAdmApproveBtn');
+        function checkStatus(rid){
+          if (!rid) return;
+          fetch('admin_borrow_center.php?action=returnship_status&request_id='+encodeURIComponent(String(rid)))
+            .then(r=>r.json())
+            .then(function(resp){
+              var reqBtn = document.getElementById('qrAdmRequestBtn');
+              if (!resp || resp.ok===false) {
+                statusEl.textContent = (resp && resp.reason) ? resp.reason : 'Status check failed.';
+                statusEl.className='small text-danger';
+                if(approveBtn){ approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
+                if(reqBtn){ reqBtn.disabled = true; reqBtn.classList.add('disabled'); }
+                return;
+              }
+              if (!resp.exists) {
+                statusEl.textContent = 'No returnship request yet. You can request it.';
+                statusEl.className='small text-muted';
+                locEl.textContent='—';
+                if(approveBtn){ approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
+                if(reqBtn){ reqBtn.disabled = false; reqBtn.classList.remove('disabled'); }
+                return;
+              }
+              locEl.textContent = String(resp.location||'—');
+              if (reqBtn){ reqBtn.disabled = true; reqBtn.classList.add('disabled'); }
+              if (resp.verified) {
+                if (reqBtn){ reqBtn.style.display = 'none'; }
+                statusEl.textContent = 'User has verified the correct QR. You can approve the return.';
+                statusEl.className='small text-success';
+                if(approveBtn){ approveBtn.disabled = false; approveBtn.className='btn btn-primary'; }
+              }
+              else {
+                statusEl.textContent = 'Waiting for user QR verification.';
+                statusEl.className='small text-warning';
+                if(approveBtn){ approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
+              }
+            })
+            .catch(function(){ statusEl.textContent='Status check error.'; statusEl.className='small text-danger'; if(approveBtn){ approveBtn.disabled=true; approveBtn.className='btn btn-secondary'; } });
+        }
+        mdl.addEventListener('show.bs.modal', function(e){
+          var btn = e.relatedTarget; if (!btn) return;
+          var rid = btn.getAttribute('data-reqid')||'';
+          var mdlName = btn.getAttribute('data-model_name')||'';
+          var serial = btn.getAttribute('data-serial')||'';
+          reqSpan.textContent = rid; modelSpan.textContent = mdlName; serialSpan.textContent = serial || '—';
+          if (reqId1) reqId1.value = rid; if (reqId2) reqId2.value = rid;
+          var reqBtn = document.getElementById('qrAdmRequestBtn');
+          if (approveBtn) { approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
+          if (reqBtn) { reqBtn.disabled = true; reqBtn.classList.add('disabled'); reqBtn.style.display=''; }
+          if (statusEl){ statusEl.textContent = 'Checking status...'; statusEl.className='small text-info'; }
+          if (locEl) locEl.textContent = '—';
+          checkStatus(rid);
+        });
+        // Poll while open
+        var pollTimer = null;
+        mdl.addEventListener('shown.bs.modal', function(){
+          var rid = reqId2 && reqId2.value; if (!rid) return;
+          pollTimer = setInterval(function(){ checkStatus(rid); }, 2000);
+        });
+        mdl.addEventListener('hide.bs.modal', function(){ if (pollTimer){ clearInterval(pollTimer); pollTimer=null; } });
+      });
+    })();
+  </script>
+  <!-- Serial Selection Modal -->
+  <div class="modal fade" id="bmSerialSelectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-ui-checks-grid me-2"></i>Select Serials to Release</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="bmSerialSelectBody">
+          <div class="text-muted">Loading serials...</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="bmSerialConfirmBtn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        const form = document.getElementById('bm_add_form');
+        if (!form) return;
+        const catSel = document.getElementById('bm_bulk_category');
+        const modalEl = document.getElementById('bmSerialSelectModal');
+        const modalBody = document.getElementById('bmSerialSelectBody');
+        const confirmBtn = document.getElementById('bmSerialConfirmBtn');
+        let bsModal = null;
+        function ensureModal(){ if (!bsModal && window.bootstrap && bootstrap.Modal) { bsModal = bootstrap.Modal.getOrCreateInstance(modalEl); } }
+      function gatherSelections(){
+        const map = {};
+        const tbody = document.getElementById('bm_models_body');
+        if (!tbody) return map;
+        tbody.querySelectorAll('tr').forEach(tr=>{
+          const cb = tr.querySelector('.bm-row-check');
+          const lim = tr.querySelector('input[name^="limits["]');
+          if (!cb || !lim) return;
+          const model = (cb.value||'').trim();
+          const limit = parseInt(lim.value||'0',10)||0;
+          if (cb.checked && limit > 0 && model) { map[model] = limit; }
+        });
+        return map;
+      }
+      async function fetchSelectableSerials(cat, model){
+        const url = 'admin_borrow_center.php?action=selectable_serials&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
+        const r = await fetch(url); if (!r.ok) return [];
+        const j = await r.json().catch(()=>({ok:false,items:[]}));
+        if (!j || !j.ok || !Array.isArray(j.items)) return [];
+        return j.items;
+      }
+      function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+      function buildModalContent(dataMap){
+        const parts = [];
+        Object.keys(dataMap).forEach(model=>{
+          const info = dataMap[model];
+          const items = info.items||[]; const limit = info.limit||0;
+          parts.push('<div class="mb-3">'+
+            '<div class="d-flex justify-content-between align-items-center mb-1">'+
+              '<strong>'+esc(model)+'</strong>'+
+              '<span class="badge bg-secondary">Limit '+limit+'</span>'+
+            '</div>');
+          if (!items.length) { parts.push('<div class="text-muted small">No serials in hold for this model.</div></div>'); return; }
+          parts.push('<div class="d-flex flex-wrap gap-2">');
+          let pre = 0;
+          items.forEach((it, idx)=>{
+            const sid = parseInt(it.model_id||0,10)||0;
+            const serial = String(it.serial_no||'');
+            const shouldCheck = (limit>0 && pre < limit);
+            if (shouldCheck) pre++;
+            parts.push('<label class="border rounded px-2 py-1 d-inline-flex align-items-center bm-serial-chip">'+
+              '<input type="checkbox" class="form-check-input me-2 bm-serial-check" data-model="'+esc(model)+'" data-mid="'+sid+'"'+(shouldCheck?' checked':'')+' />'+
+              '<span class="small">'+(serial?esc(serial):'(no serial)')+'</span>'+
+            '</label>');
+          });
+          parts.push('</div></div>');
+        });
+        modalBody.innerHTML = parts.join('');
+        // enforce per-model limits without CSS.escape
+        modalBody.querySelectorAll('.bm-serial-check').forEach(cb=>{
+          cb.addEventListener('change', function(){
+            const model = this.getAttribute('data-model')||'';
+            const limit = (dataMap[model] && dataMap[model].limit) ? parseInt(dataMap[model].limit,10)||0 : 0;
+            if (!model || !limit) return;
+            let count = 0;
+            modalBody.querySelectorAll('.bm-serial-check').forEach(x=>{
+              if ((x.getAttribute('data-model')||'')===model && x.checked) count++;
+            });
+            if (count > limit) { this.checked = false; }
+          });
+        });
+      }
+      form && form.addEventListener('submit', async function(ev){
+        try {
+          const cat = catSel ? catSel.value : '';
+          const selMap = gatherSelections();
+          // If nothing selected with limit, submit as-is
+          if (!cat || Object.keys(selMap).length === 0) return;
+          ev.preventDefault();
+          // Prefetch hold serials for each selected model
+          const dataMap = {};
+          await Promise.all(Object.keys(selMap).map(async (m)=>{
+            const items = await fetchSelectableSerials(cat, m);
+            dataMap[m] = { items: items, limit: selMap[m] };
+          }));
+          ensureModal();
+          buildModalContent(dataMap);
+          // If nothing to select for all models, show a notice in the modal
+          const allEmpty = Object.keys(dataMap).every(k => !dataMap[k].items || dataMap[k].items.length === 0);
+          if (allEmpty) {
+            modalBody.innerHTML = '<div class="alert alert-info mb-0">No units to select for the chosen models. Click Confirm to proceed.</div>';
+          }
+          // Confirm handler adds hidden inputs and submits
+          const onConfirm = function(){
+            // Clear previous hidden serial inputs
+            form.querySelectorAll('input[name^="serials["]').forEach(n=>n.remove());
+            const picksByModel = {};
+            modalBody.querySelectorAll('.bm-serial-check:checked').forEach(cb=>{
+              const m = cb.getAttribute('data-model')||'';
+              const mid = parseInt(cb.getAttribute('data-mid')||'0',10)||0;
+              if (!picksByModel[m]) picksByModel[m] = [];
+              if (mid>0) picksByModel[m].push(mid);
+            });
+            Object.keys(picksByModel).forEach(m=>{
+              picksByModel[m].forEach(mid=>{
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'serials['+m+'][]';
+                inp.value = String(mid);
+                form.appendChild(inp);
+              });
+            });
+            // Submit
+            modalEl.removeEventListener('hidden.bs.modal', onHidden);
+            confirmBtn.removeEventListener('click', onConfirm);
+            bsModal && bsModal.hide();
+            setTimeout(()=>{ form.submit(); }, 0);
+          };
+          const onHidden = function(){ confirmBtn.removeEventListener('click', onConfirm); modalEl.removeEventListener('hidden.bs.modal', onHidden); };
+          modalEl.addEventListener('hidden.bs.modal', onHidden);
+          confirmBtn.addEventListener('click', onConfirm);
+          bsModal && bsModal.show();
+        } catch (_) { /* fallback: allow submit */ }
+      });
+      });
+    })();
+  </script>
+  <script>
+    // Return with Scan Modal logic (init after DOM is ready)
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        function q(id){ return document.getElementById(id); }
+        var scanner = null, scanning = false;
+        var mdl = q('returnScanModal');
+        var reqDisp = q('rsReq');
+        var modelDisp = q('rsModel');
+        var reqIdEl = q('rsReqId');
+        var inputId = q('rsSerial');
+        var statusEl = q('rsStatus');
+        var startBtn = q('rsStart');
+        var stopBtn = q('rsStop');
+        var readerDiv = q('rsReader');
+        var form = q('rsForm');
+        var imgInput = q('rsImageFile');
+        var returnBtn = q('rsReturnBtn');
+        var camWrap = q('rsCamWrap');
+        var camSelect = q('rsCameraSelect');
+        var camsCache = [];
+        var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        function setStatus(t,cls){ if(statusEl){ statusEl.textContent=t; statusEl.className='small '+(cls||'text-muted'); } }
+        function stop(){ if(scanner && scanning){ scanner.stop().then(()=>{ scanning=false; if(startBtn) startBtn.style.display='inline-block'; if(stopBtn) stopBtn.style.display='none'; setStatus('Scanner stopped.','text-muted');}).catch(()=>{});} }
+        function listCams(){
+          if (!camSelect) return;
+          camSelect.innerHTML = '';
+          if (typeof Html5Qrcode === 'undefined' || !Html5Qrcode.getCameras) return;
+          Html5Qrcode.getCameras().then(function(cams){
+            camsCache = cams || [];
+            camsCache.forEach(function(c, idx){
+              var opt = document.createElement('option');
+              opt.value = c.id;
+              opt.textContent = c.label || ('Camera '+(idx+1));
+              camSelect.appendChild(opt);
+            });
+            var saved = localStorage.getItem('rs_camera');
+            if (saved && camsCache.some(function(c){ return c.id===saved; })) camSelect.value = saved;
+          }).catch(function(){ /* ignore */ });
+        }
+        function startWithSelected(){
+          if (scanning || typeof Html5Qrcode==='undefined') return;
+          setStatus('Starting camera...','text-info');
+          try{
+            if (!scanner) scanner=new Html5Qrcode('rsReader');
+            var id = (camSelect && camSelect.value) ? camSelect.value : (camsCache[0] && camsCache[0].id);
+            if (!id) { setStatus('No camera found','text-danger'); return; }
+            localStorage.setItem('rs_camera', id);
+            scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+              .then(()=>{ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+              .catch(err=>{ setStatus('Camera error: '+(err?.message||'start failure'),'text-danger'); });
+          } catch(e){ setStatus('Scanner init failed','text-danger'); }
+        }
+        function validateCurrentId(){
+          var rid = (reqIdEl && reqIdEl.value) ? reqIdEl.value : '';
+          var sn = (inputId && inputId.value) ? inputId.value.trim() : '';
+          if (!rid || !sn) { if(returnBtn) returnBtn.disabled = true; return; }
+          setStatus('Validating Serial ID...','text-info');
+          var body = 'request_id='+encodeURIComponent(rid)+'&serial_no='+encodeURIComponent(sn);
+          fetch('admin_borrow_center.php?action=validate_return_id', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body })
+            .then(r=>r.json()).then(function(resp){
+              if (resp && resp.ok){ setStatus('Valid: '+(resp.model||'')+' | '+(resp.category||''),'text-success'); if(returnBtn) returnBtn.disabled = false; }
+              else { setStatus(resp && resp.reason ? resp.reason : 'Invalid Serial ID.','text-danger'); if(returnBtn) returnBtn.disabled = true; }
+            }).catch(function(){ setStatus('Validation error','text-danger'); if(returnBtn) returnBtn.disabled = true; });
+        }
+        function parseFlexiblePayload(txt){
+          try { var o = JSON.parse(txt); if (o && typeof o==='object') return o; } catch(_e) {}
+          try {
+            var s = txt.trim();
+            var qs = '';
+            if (/^https?:\/\//i.test(s)) { var u = new URL(s); qs = u.search || ''; }
+            else if (s.includes('=') && (s.includes('&') || s.includes('=') )) { qs = s; }
+            if (qs) {
+              if (qs.startsWith('?')) qs = qs.slice(1);
+              var usp = new URLSearchParams(qs);
+              var obj = {}; usp.forEach((v,k)=>{ obj[k]=v; });
+              if (Object.keys(obj).length) return obj;
+            }
+          } catch(_e) {}
+          try { var obj2 = {}; var parts = txt.split(/[\,\n]+/); parts.forEach(function(p){ var kv = p.split(/[:=]/); if (kv.length>=2){ var k=kv[0].trim(); var v=kv.slice(1).join(':').trim(); if(k) obj2[k]=v; }}); if (Object.keys(obj2).length) return obj2; } catch(_e) {}
+          if (/^\s*[\w\-]+\s*$/.test(txt)) { return { serial_no: txt.trim() }; }
+          return null;
+        }
+        function onScanSuccess(txt){
+          var data = parseFlexiblePayload(txt);
+          if (!data) { setStatus('Invalid QR format','text-danger'); return; }
+          var serial = (data.serial_no || data.serial || data.sn || data.s || data.sid || '').toString().trim();
+          var mdl = (data.model || data.item_name || data.name || '');
+          var cat = (data.category || data.cat || '');
+          if (serial){ if(inputId) inputId.value = String(serial); setStatus('Scanned Serial: '+serial+(mdl||cat?(' ('+[mdl,cat].filter(Boolean).join(' | ')+')'):'') ,'text-success'); stop(); validateCurrentId(); }
+          else { setStatus('QR missing serial_no','text-danger'); }
+        }
+        if (mdl) {
+          mdl.addEventListener('show.bs.modal', function(e){
+            var btn=e.relatedTarget; var rid=btn?.getAttribute('data-reqid')||''; var mdlName=btn?.getAttribute('data-model_name')||'';
+            if (reqIdEl) reqIdEl.value=rid;
+            if (reqDisp) reqDisp.textContent=rid;
+            if (modelDisp) modelDisp.textContent=mdlName||'-';
+            if (inputId) inputId.value='';
+            if (returnBtn) returnBtn.disabled = true;
+            setStatus('Scan the item\'s QR or enter Serial ID manually.','text-muted');
+            if (readerDiv) readerDiv.innerHTML='';
+            if (camWrap) camWrap.style.display = isMobile ? 'none' : 'block';
+            if (isMobile) {
+              if (startBtn) startBtn.disabled = true;
+              if (stopBtn) stopBtn.disabled = true;
+              setStatus('Live camera scanning is available on desktop only. Use image upload or enter Serial ID.','text-muted');
+            } else {
+              listCams();
+              if (startBtn) startBtn.disabled = false;
+              if (stopBtn) stopBtn.disabled = false;
+            }
+          });
+        }
+        if (startBtn) startBtn.addEventListener('click', function(){ if (isMobile) return; startWithSelected(); });
+        if (stopBtn) stopBtn.addEventListener('click', function(){ stop(); });
+        if (form) form.addEventListener('submit', function(){ stop(); });
+        if (inputId) inputId.addEventListener('input', function(){ if(returnBtn) returnBtn.disabled = true; if (this.value.trim()) { validateCurrentId(); } else { setStatus('Scan the item\'s QR or enter Serial ID manually.','text-muted'); } });
+        if (camSelect) camSelect.addEventListener('change', function(){
+          localStorage.setItem('rs_camera', this.value);
+          if (scanning) { stop(); setTimeout(startWithSelected, 100); }
+        });
+        if (imgInput) imgInput.addEventListener('change', function(){ var f=this.files&&this.files[0]; if(!f){return;} stop(); setStatus('Processing image...','text-info');
+          function tryScanSequence(file){
+            if (typeof Html5Qrcode !== 'undefined' && typeof Html5Qrcode.scanFile === 'function') {
+              return Html5Qrcode.scanFile(file, true)
+                .catch(function(){ return Html5Qrcode.scanFile(file, false); })
+                .catch(function(){ var inst = new Html5Qrcode('rsReader'); return inst.scanFile(file, true).finally(function(){ try{inst.clear();}catch(e){} }); });
+            }
+            var inst2 = new Html5Qrcode('rsReader');
+            return inst2.scanFile(file, true).finally(function(){ try{inst2.clear();}catch(e){} });
+          }
+          tryScanSequence(f).then(function(txt){ onScanSuccess(txt); setStatus('QR scanned from image.','text-success'); })
+            .catch(function(){ setStatus('No QR found in image.','text-danger'); });
+        });
+
+        // Fallback: if data-API fails, open programmatically on click
+        document.addEventListener('click', function(ev){
+          var btn = ev.target.closest('[data-bs-target="#returnScanModal"]');
+          if (!btn) return;
+          try {
+            var el = q('returnScanModal');
+            if (!el) return;
+            var rid = btn.getAttribute('data-reqid') || '';
+            var mdlName = btn.getAttribute('data-model_name') || '';
+            if (reqIdEl) reqIdEl.value = rid;
+            if (reqDisp) reqDisp.textContent = rid;
+            if (modelDisp) modelDisp.textContent = mdlName || '-';
+            if (inputId) inputId.value = '';
+            if (returnBtn) returnBtn.disabled = true;
+            setStatus('Scan the item\'s QR or enter Serial ID manually.','text-muted');
+            if (readerDiv) readerDiv.innerHTML='';
+            if (window.bootstrap && bootstrap.Modal) { var inst = bootstrap.Modal.getOrCreateInstance(el); inst.show(); }
+          } catch(_e) {}
+        });
+      });
+    })();
+  </script>
+
+      <?php if (isset($_GET['approved'])): ?>
+        <div class="alert alert-success alert-dismissible fade show mt-3"><i class="bi bi-check2-circle me-2"></i>Request approved successfully.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+      <?php endif; ?>
+      <?php if (isset($_GET['rejected'])): ?>
+        <div class="alert alert-secondary alert-dismissible fade show mt-3"><i class="bi bi-x-circle me-2"></i>Request rejected successfully.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+      <?php endif; ?>
+      <?php if (isset($_GET['insufficient'])): ?>
+        <div class="alert alert-warning alert-dismissible fade show mt-3"><i class="bi bi-exclamation-triangle me-2"></i>Insufficient available units to fulfill the request.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+      <?php endif; ?>
+      <?php if (!empty($_GET['error'])): $err=trim($_GET['error']); ?>
+        <div class="alert alert-danger alert-dismissible fade show mt-3"><i class="bi bi-x-circle me-2"></i>
+          <?php if ($err==='notpend'): ?><?php elseif ($err==='preferred_unavailable'): ?>The specified Model ID is not available.<?php elseif ($err==='item_mismatch'): ?>The scanned/typed item does not match the requested model and category. Please scan the correct item.<?php elseif ($err==='pick'): ?>Failed to lock items for this request. Try again.<?php elseif ($err==='stale'): ?>Update conflict. Refresh and retry.<?php elseif ($err==='tx'): ?>Transaction failed. Please retry.<?php elseif ($err==='time_required'): ?>Please provide valid time values. For Immediate, set Expected Return. For Reservation, set a future Start and End.<?php elseif ($err==='reservation_conflict'): ?>Expected return exceeds the cutoff due to an upcoming reservation. Please set an earlier return time.<?php else: ?>Action failed.<?php endif; ?>
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      <?php endif; ?>
+
+      
+
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div class="input-group input-group-sm" style="max-width: 480px; width: 100%;">
+          <span class="input-group-text"><i class="bi bi-funnel"></i>&nbsp;View</span>
+          <select id="brViewSelect" class="form-select" onchange="window.__brApply && window.__brApply(this.value)">
+            <option value="pending" selected>Pending Requests</option>
+            <option value="borrowed">Borrowed Items</option>
+            <option value="reservations">Approved Reservations</option>
+          </select>
+        </div>
+      </div>
+      <style>
+        /* Center the top Actions dropdown on small screens */
+        @media (max-width: 768px) {
+          #bcActionsDropdown + .actions-menu {
+            position: fixed !important;
+            top: 12% !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            width: min(320px, 92vw) !important;
+            max-height: 70vh !important;
+            overflow: auto !important;
+            z-index: 1080 !important;
+          }
+        }
+        /* Initial state: show only Pending until JS applies selection */
+        #returned-list,
+        #borrowed-col,
+        #reservations-col { display: none; }
+        #pending-col { display: block; }
+        /* Make the visible table area wider and consistent */
+        #pb-row, #returned-list { --bs-gutter-x: 0; margin-left: 0; margin-right: 0; }
+        #pb-row .card,
+        #returned-list .card { width: 100%; }
+        #pb-row .table,
+        #returned-list .table { width: 100%; table-layout: auto; font-size: 0.95rem; }
+        #pb-row .table th, #pb-row .table td,
+        #returned-list .table th, #returned-list .table td { padding: 0.5rem 0.75rem; line-height: 1.25rem; vertical-align: middle; white-space: normal; overflow: visible; text-overflow: clip; }
+        /* Reduce side paddings on the single visible column so the table uses the full page width */
+        #pb-row > .col-12,
+        #returned-list > .col-12 { padding-left: 0 !important; padding-right: 0 !important; }
+        #pb-row > [class^="col-"], #pb-row > [class*=" col-"],
+        #returned-list > [class^="col-"], #returned-list > [class*=" col-"] { padding-left: 0 !important; padding-right: 0 !important; }
+        /* Consistent scrollable area height for all lists */
+        .list-scroll { max-height: 70vh; overflow: auto; }
+        /* Mobile tweak: fit Borrowable List without horizontal scroll */
+        @media (max-width: 576px) {
+          #bm-table-wrap { overflow-x: hidden !important; overflow-y: visible !important; }
+          #bm-table-wrap table { min-width: 100%; font-size: 0.82rem; }
+          #bm-table-wrap table th, #bm-table-wrap table td { padding: 0.25rem 0.4rem; white-space: normal; }
+          #bm-table-wrap .dropdown-toggle { padding: 0.1rem 0.3rem; font-size: 0.8rem; line-height: 1; }
+        }
+      </style>
+      <div id="pb-row" class="row g-3">
+        <div id="pending-col" class="col-12 col-lg-6">
+          <div id="pending-list" class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <strong>Pending Requests</strong>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive list-scroll">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Req ID</th>
+                      <th>Type</th>
+                      <th>User</th>
+                      <th>Student ID</th>
+                      <th class="text-end">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pendingTbody">
+                    <?php if (empty($pending)): ?>
+                      <tr><td colspan="5" class="text-center text-muted">No pending requests.</td></tr>
+                    <?php else: ?>
+                      <?php foreach ($pending as $r): ?>
+                      <tr class="pending-row" role="button" tabindex="0"
+                          data-bs-toggle="modal" data-bs-target="#requestDetailsModal"
+                          data-user="<?php echo htmlspecialchars($r['user_full_name'] ?? $r['username']); ?>"
+                          data-item="<?php echo htmlspecialchars($r['item_name']); ?>"
+                          data-qty="<?php echo isset($r['remaining']) ? (int)$r['remaining'] : (int)$r['quantity']; ?>"
+                          data-loc="<?php echo htmlspecialchars((string)($r['request_location'] ?? ''), ENT_QUOTES); ?>"
+                            data-details="<?php echo htmlspecialchars((string)$r['details'] ?? '', ENT_QUOTES); ?>"
+                            data-avail="<?php echo (int)$r['available_count']; ?>"
+                            data-requested="<?php echo htmlspecialchars(date('h:i A m-d-y', strtotime($r['created_at']))); ?>"
+                            data-reqtype="<?php echo htmlspecialchars((string)($r['type'] ?? 'immediate')); ?>">
+                          <td><?php echo (int)$r['id']; ?></td>
+                          <td><?php echo (isset($r['qr_serial_no']) && trim((string)$r['qr_serial_no']) !== '') ? 'QR' : 'Manual'; ?></td>
+                          <td><?php echo htmlspecialchars($r['user_full_name'] ?? $r['username']); ?></td>
+                          <td><!-- Student ID (filled by JS) --></td>
+                          <td class="text-end">
+                          <div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Actions">
+                              <button type="button" class="btn btn-sm btn-success border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Approve/Scan" aria-label="Approve/Scan" data-bs-toggle="modal" data-bs-target="#approveScanModal" data-reqid="<?php echo (int)$r['id']; ?>" data-item="<?php echo htmlspecialchars($r['item_name']); ?>" data-qty="<?php echo isset($r['remaining']) ? (int)$r['remaining'] : (int)$r['quantity']; ?>" data-reqtype="<?php echo htmlspecialchars((string)($r['type'] ?? 'immediate')); ?>" data-expected_return_at="<?php echo htmlspecialchars((string)($r['expected_return_at'] ?? '')); ?>" data-reserved_from="<?php echo htmlspecialchars((string)($r['reserved_from'] ?? '')); ?>" data-reserved_to="<?php echo htmlspecialchars((string)($r['reserved_to'] ?? '')); ?>" data-qr_serial="<?php echo htmlspecialchars((string)($r['qr_serial_no'] ?? '')); ?>">
+                                <?php $isQr = isset($r['qr_serial_no']) && trim((string)$r['qr_serial_no']) !== ''; ?>
+                                <i class="bi <?php echo $isQr ? 'bi-check2-circle' : 'bi-qr-code-scan'; ?>"></i>
+                              </button>
+                              <a href="admin_borrow_center.php?action=reject&id=<?php echo (int)$r['id']; ?>" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Reject" aria-label="Reject" onclick="return confirm('Reject this request?');"><i class="bi bi-x"></i></a>
+                          </div>
+                            </div>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+              <style>
+                #bm-table-wrap .dropdown-menu{ max-height:60vh; overflow:auto; }
+              </style>
+              <script>
+                (function(){
+                  var floating = null; // track floating menu state on mobile
+                  function isMobile(){ return window.innerWidth <= 768; }
+                  function positionFloating(menu, btnRect){
+                    var gap = 8;
+                    var vw = window.innerWidth, vh = window.innerHeight;
+                    // Prefer below, else above
+                    var top = btnRect.bottom + gap;
+                    var maxHeight = Math.floor(vh * 0.7);
+                    var willOverflowBottom = top + menu.offsetHeight > vh;
+                    if (willOverflowBottom) {
+                      var aboveTop = Math.max(8, btnRect.top - gap - Math.min(maxHeight, menu.offsetHeight));
+                      top = aboveTop;
+                    }
+                    var left = Math.min(Math.max(8, btnRect.right - menu.offsetWidth), vw - menu.offsetWidth - 8);
+                    if (left < 8) left = 8;
+                    menu.style.position = 'fixed';
+                    menu.style.top = top + 'px';
+                    menu.style.left = left + 'px';
+                    menu.style.right = 'auto';
+                    menu.style.bottom = 'auto';
+                    menu.style.transform = 'none';
+                    menu.style.zIndex = '1090';
+                    menu.style.maxHeight = Math.floor(vh * 0.7) + 'px';
+                    menu.style.overflow = 'auto';
+                  }
+                  document.addEventListener('show.bs.dropdown', function(ev){
+                    try {
+                      var btn = ev.target;
+                      if (!btn || !btn.closest) return;
+                      var wrap = btn.closest('#bm-table-wrap');
+                      if (!wrap) return; // only handle borrowable list table
+                      var dropdown = btn.closest('.dropdown');
+                      if (!dropdown) return;
+                      var menu = dropdown.querySelector('.dropdown-menu');
+                      if (!menu) return;
+                      // Desktop/tablet: keep Popper behavior inside scroll parent
+                      if (!isMobile()) {
+                        dropdown.classList.remove('dropup','dropstart');
+                        return;
+                      }
+                      // Mobile: make the menu a floating, fixed overlay attached to body
+                      var rect = btn.getBoundingClientRect();
+                      var placeholder = document.createElement('span'); placeholder.style.display='none';
+                      menu.__origParent = menu.parentNode;
+                      menu.__placeholder = placeholder;
+                      menu.parentNode.insertBefore(placeholder, menu);
+                      document.body.appendChild(menu);
+                      menu.classList.add('show'); // ensure visible when reparented
+                      positionFloating(menu, rect);
+                      function onWinChange(){ try { positionFloating(menu, btn.getBoundingClientRect()); } catch(_){} }
+                      window.addEventListener('scroll', onWinChange, true);
+                      window.addEventListener('resize', onWinChange);
+                      floating = { menu: menu, onWinChange: onWinChange };
+                    } catch(_){ }
+                  });
+                  document.addEventListener('hide.bs.dropdown', function(){
+                    try {
+                      if (floating && floating.menu){
+                        var m = floating.menu;
+                        // restore to original parent/position
+                        if (m.__origParent && m.__placeholder && m.__placeholder.parentNode){
+                          m.__origParent.insertBefore(m, m.__placeholder);
+                          m.__placeholder.remove();
+                        }
+                        // cleanup styles
+                        m.removeAttribute('style');
+                        m.classList.remove('show');
+                        window.removeEventListener('scroll', floating.onWinChange, true);
+                        window.removeEventListener('resize', floating.onWinChange);
+                      }
+                    } catch(_){ }
+                    floating = null;
+                  });
+                })();
+              </script>
+            </div>
+          </div>
+        </div>
+        <script>
+          (function(){
+            document.addEventListener('DOMContentLoaded', function(){
+              var pending = document.getElementById('pending-list');
+              if (!pending) return;
+              pending.addEventListener('click', function(e){
+                var inActions = e.target && e.target.closest && e.target.closest('.segmented-actions');
+                if (inActions) { e.stopPropagation(); }
+              });
+            });
+          })();
+        </script>
+
+        
+
+        <div id="borrowed-col" class="col-12 col-lg-6">
+          <div id="borrowed-list" class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <strong>Borrowed Items</strong>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive list-scroll">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Req ID</th>
+                      <th>Type</th>
+                      <th>User</th>
+                      <th>Student ID</th>
+                      <th>Expected Return</th>
+                      <th class="text-end">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="borrowedTbody">
+                    <?php if (empty($borrowed)): ?>
+                      <tr><td colspan="6" class="text-center text-muted">No active borrowed items.</td></tr>
+                    <?php else: ?>
+                      <?php foreach ($borrowed as $b): ?>
+                        <tr class="borrowed-row" role="button" tabindex="0"
+                            data-bs-toggle="modal" data-bs-target="#borrowedDetailsModal"
+                            data-user="<?php echo htmlspecialchars($b['username']); ?>"
+                            data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"
+                            data-model="<?php echo htmlspecialchars($b['model']); ?>"
+                            data-category="<?php echo htmlspecialchars($b['category']); ?>"
+                            data-location="<?php echo htmlspecialchars((string)($b['location'] ?? '')); ?>"
+                            data-expected_raw="<?php echo htmlspecialchars((string)($b['expected_return_at'] ?? ($b['reserved_to'] ?? ''))); ?>">
+                          <td><?php echo (int)$b['request_id']; ?></td>
+                          <td><?php echo (isset($b['type']) && trim((string)$b['type'])!=='' ? htmlspecialchars($b['type']) : ((isset($b['qr_serial_no']) && trim((string)$b['qr_serial_no'])!=='') ? 'QR' : 'Manual')); ?></td>
+                          <td><?php echo htmlspecialchars($b['username']); ?></td>
+                          <td><!-- Student ID (filled by JS) --></td>
+                          <td><?php 
+                            $rawExp = (string)($b['expected_return_at'] ?? ($b['reserved_to'] ?? ''));
+                            $disp = $rawExp !== '' ? date('h:i A m-d-y', strtotime($rawExp)) : '-';
+                            $isOverdue = ($rawExp !== '' && strtotime($rawExp) && strtotime($rawExp) < time());
+                            echo htmlspecialchars($disp);
+                            if ($isOverdue) { echo ' <span class="text-danger" title="Overdue"><i class="bi bi-exclamation-circle-fill"></i></span>'; }
+                          ?></td>
+                          <td class="text-end">
+                            <div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Borrowed Actions">
+                              <?php $isQrBorrow = (isset($b['type']) && trim((string)$b['type'])==='QR'); ?>
+                              <?php if ($isQrBorrow): ?>
+                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="QR Return" aria-label="QR Return" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-qr-code"></i></button>
+                              <?php else: ?>
+                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Return/Scan" aria-label="Return/Scan" data-bs-toggle="modal" data-bs-target="#returnScanModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-arrow-counterclockwise"></i></button>
+                              <?php endif; ?>
+                              <button type="button" class="btn btn-sm btn-danger border border-dark rounded-0 py-1 px-1 lh-1 fs-6" title="Lost" aria-label="Lost" data-bs-toggle="modal" data-bs-target="#markLostModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_id="<?php echo (int)$b['model_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-exclamation-triangle"></i></button>
+                              <button type="button" class="btn btn-sm btn-warning text-dark border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Maintenance" aria-label="Maintenance" data-bs-toggle="modal" data-bs-target="#markMaintModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_id="<?php echo (int)$b['model_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-tools"></i></button>
+                            </div>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+
+      <div id="lost-damaged"></div>
+
+      <!-- Lost/Damaged Item List Modal -->
+      <div class="modal fade" id="lostDamagedListModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:95vw; width:95vw; max-height:95vh; height:95vh;">
+          <div class="modal-content" style="height:100%;">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Lost/Damaged Item List</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="height:calc(95vh - 120px); overflow:auto;">
+              <div class="row g-3">
+                <div class="col-12 col-xl-6">
+                  <div class="card border-0">
+                    <div class="card-header bg-white"><strong>Lost Item List</strong></div>
+                    <div class="card-body p-0">
+                      <div class="table-responsive" style="max-height:80vh; overflow:auto;">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                          <thead class="table-light">
+                            <tr>
+                              <th>Serial ID</th>
+                              <th>Model</th>
+                              <th>User</th>
+                              <th>Student ID</th>
+                              <th class="text-end">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php if (empty($lostItems)): ?>
+                              <tr><td colspan="5" class="text-center text-muted">No items currently marked as Lost.</td></tr>
+                            <?php else: foreach ($lostItems as $li): ?>
+                              <tr class="lost-row"
+                                  data-serial="<?php echo htmlspecialchars((string)($li['serial_no'] ?? '')); ?>"
+                                  data-model="<?php echo htmlspecialchars($li['model_key']); ?>"
+                                  data-category="<?php echo htmlspecialchars($li['category']); ?>"
+                                  data-location="<?php echo htmlspecialchars((string)($li['location'] ?? '')); ?>"
+                                  data-marked_by="<?php echo htmlspecialchars($li['marked_by'] ?: '-'); ?>"
+                                  data-student_id="<?php echo htmlspecialchars((string)($li['student_school_id'] ?? '')); ?>"
+                                  data-marked_at="<?php echo htmlspecialchars($li['marked_at'] ? date('Y-m-d H:i:s', strtotime($li['marked_at'])) : ''); ?>"
+                                  data-remarks="<?php echo htmlspecialchars((string)($li['notes'] ?? '')); ?>">
+                                <td><?php echo htmlspecialchars((string)($li['serial_no'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars($li['model_key']); ?></td>
+                                <td><?php echo htmlspecialchars((string)($li['user_name'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars((string)($li['student_school_id'] ?? '')); ?></td>
+                                <td class="text-end">
+                                  <form method="POST" action="admin_borrow_center.php" class="d-inline">
+                                    <input type="hidden" name="model_id" value="<?php echo (int)$li['model_id']; ?>" />
+                                    <button type="submit" name="do" value="mark_found" class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1" title="Mark Found" aria-label="Mark Found">
+                                      <i class="bi bi-check2-circle"></i>
+                                    </button>
+                                  </form>
+                                  <form method="POST" action="admin_borrow_center.php" class="d-inline ms-1" onsubmit="return confirmPermanentLost(this);">
+                                    <input type="hidden" name="model_id" value="<?php echo (int)$li['model_id']; ?>" />
+                                    <button type="submit" name="do" value="mark_permanent_lost" class="btn btn-sm btn-danger border border-dark py-1 px-1 lh-1" title="Permanently Lost" aria-label="Permanently Lost">
+                                      <i class="bi bi-x-octagon"></i>
+                                    </button>
+                                  </form>
+                                </td>
+                              </tr>
+                            <?php endforeach; endif; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-12 col-xl-6">
+                  <div class="card border-0">
+                    <div class="card-header bg-white"><strong>Damaged Item List</strong></div>
+                    <div class="card-body p-0">
+                      <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                          <thead class="table-light">
+                            <tr>
+                              <th>Serial ID</th>
+                              <th>Model</th>
+                              <th>User</th>
+                              <th>Student ID</th>
+                              <th class="text-end">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php if (empty($damagedItems)): ?>
+                              <tr><td colspan="5" class="text-center text-muted">No items currently under maintenance.</td></tr>
+                            <?php else: foreach ($damagedItems as $di): ?>
+                              <tr class="damaged-row"
+                                  data-serial="<?php echo htmlspecialchars((string)($di['serial_no'] ?? '')); ?>"
+                                  data-model="<?php echo htmlspecialchars($di['model_key']); ?>"
+                                  data-category="<?php echo htmlspecialchars($di['category']); ?>"
+                                  data-location="<?php echo htmlspecialchars((string)($di['location'] ?? '')); ?>"
+                                  data-marked_by="<?php echo htmlspecialchars($di['marked_by'] ?: '-'); ?>"
+                                  data-student_id="<?php echo htmlspecialchars((string)($di['student_school_id'] ?? '')); ?>"
+                                  data-marked_at="<?php echo htmlspecialchars($di['marked_at'] ? date('Y-m-d H:i:s', strtotime($di['marked_at'])) : ''); ?>"
+                                  data-remarks="<?php echo htmlspecialchars((string)($di['notes'] ?? '')); ?>">
+                                <td><?php echo htmlspecialchars((string)($di['serial_no'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars($di['model_key']); ?></td>
+                                <td><?php echo htmlspecialchars((string)($di['user_name'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars((string)($di['student_school_id'] ?? '')); ?></td>
+                                <td class="text-end">
+                                  <form method="POST" action="admin_borrow_center.php" class="d-inline">
+                                    <input type="hidden" name="model_id" value="<?php echo (int)$di['model_id']; ?>" />
+                                    <button type="submit" name="do" value="mark_fixed" class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1" title="Mark Fixed" aria-label="Mark Fixed">
+                                      <i class="bi bi-wrench-adjustable-circle"></i>
+                                    </button>
+                                  </form>
+                                  <form method="POST" action="admin_borrow_center.php" class="d-inline ms-1" onsubmit="var t=prompt('Type DISPOSE to confirm disposing this item.'); if(!t||t.trim()!=='DISPOSE'){ return false; } this.querySelector('input[name=confirm_text]').value=t; return true;">
+                                    <input type="hidden" name="model_id" value="<?php echo (int)$di['model_id']; ?>" />
+                                    <input type="hidden" name="confirm_text" value="" />
+                                    <button type="submit" name="do" value="dispose_item" class="btn btn-sm btn-danger border border-dark py-1 px-1 lh-1" title="Dispose" aria-label="Dispose">
+                                      <i class="bi bi-trash3"></i>
+                                    </button>
+                                  </form>
+                                </td>
+                              </tr>
+                            <?php endforeach; endif; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nested details modal for Lost/Damaged rows -->
+      <div class="modal fade" id="lostDamagedDetailsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Item Details</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div><strong>Category:</strong> <span id="lddCategory"></span></div>
+              <div><strong>Location:</strong> <span id="lddLocation"></span></div>
+              <div><strong>Marked By:</strong> <span id="lddMarkedBy"></span></div>
+              <div><strong>Marked At:</strong> <span id="lddMarkedAt"></span></div>
+              <div><strong>Remarks:</strong> <span id="lddRemarks"></span></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function(){
+          function fillDetailsFromRow(tr){
+            document.getElementById('lddCategory').textContent = tr.getAttribute('data-category')||'';
+            document.getElementById('lddLocation').textContent = tr.getAttribute('data-location')||'';
+            document.getElementById('lddMarkedBy').textContent = tr.getAttribute('data-marked_by')||'';
+            document.getElementById('lddMarkedAt').textContent = tr.getAttribute('data-marked_at')||'';
+            document.getElementById('lddRemarks').textContent = tr.getAttribute('data-remarks')||'';
+          }
+          document.addEventListener('DOMContentLoaded', function(){
+            var parent = document.getElementById('lostDamagedListModal');
+            if (!parent) return;
+            parent.addEventListener('click', function(e){
+              var t = e.target;
+              if (t.closest('.text-end, .btn, button, a, form, input, select, textarea')) return; // ignore action cells/controls
+              var row = t.closest('tr.lost-row, tr.damaged-row');
+              if (!row) return;
+              e.stopPropagation();
+              var child = document.getElementById('lostDamagedDetailsModal');
+              if (!child) return;
+              fillDetailsFromRow(row);
+              // keep parent open while child shows
+              function preventHide(ev){ ev.preventDefault(); }
+              parent.addEventListener('hide.bs.modal', preventHide);
+              var inst = new bootstrap.Modal(child, {backdrop: 'static'});
+              inst.show();
+              function onHidden(){
+                parent.removeEventListener('hide.bs.modal', preventHide);
+                child.removeEventListener('hidden.bs.modal', onHidden);
+                try { parent.focus(); } catch(_){ }
+              }
+              child.addEventListener('hidden.bs.modal', onHidden);
+            });
+          });
+        })();
+      </script>
+
+      <!-- Overdue Items Modal -->
+      <div class="modal fade" id="overdueModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:95vw; width:95vw; max-height:95vh; height:95vh;">
+          <div class="modal-content" style="height:100%;">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="bi bi-hourglass-split me-2"></i>Overdue Items</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="height:calc(95vh - 120px); overflow:auto;">
+              <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Serial ID</th>
+                      <th>Item</th>
+                      <th>Location</th>
+                      <th>Borrowed By</th>
+                      <th>Student ID</th>
+                    </tr>
+                  </thead>
+                  <tbody id="overdueTbody">
+                    <tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <a href="admin_borrow_center.php?action=print_overdue" target="_blank" class="btn btn-primary">
+                <i class="bi bi-printer me-1"></i>Print Overdue
+              </a>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <script>
+        (function(){
+          function gid(id){ return document.getElementById(id); }
+          function esc(s){ return String(s==null?'':s); }
+          function fmt(dt){ try{ if(!dt) return ''; var d=new Date(dt.replace(' ','T')); if(isNaN(d)) return esc(dt); var h=d.getHours()%12||12, m=('0'+d.getMinutes()).slice(-2), ap=d.getHours()<12?'AM':'PM'; var mo=('0'+(d.getMonth()+1)).slice(-2), da=('0'+d.getDate()).slice(-2), yr=d.getFullYear().toString().slice(-2); return h+':'+m+' '+ap+' '+mo+'-'+da+'-'+yr; }catch(e){ return esc(dt); } }
+          function render(items){
+            var tb = gid('overdueTbody'); if(!tb) return;
+            if(!Array.isArray(items) || !items.length){ tb.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No overdue items.</td></tr>'; return; }
+            var html = items.map(function(r){
+              return '<tr class="overdue-row" role="button" tabindex="0" data-bs-toggle="modal" data-bs-target="#overdueDetailsModal"'
+                + ' data-approved_by="'+esc(r.approved_by)+'"'
+                + ' data-remarks="'+esc(r.remarks)+'"'
+                + ' data-due_at="'+esc(r.due_at)+'"'
+                + '>'
+                + '<td>'+esc(r.serial)+'</td>'
+                + '<td>'+esc(r.model)+'</td>'
+                + '<td>'+esc(r.location)+'</td>'
+                + '<td>'+esc(r.borrowed_by)+'</td>'
+                + '<td>'+esc(r.school_id||'')+'</td>'
+              + '</tr>';
+            }).join('');
+            tb.innerHTML = html;
+          }
+          function load(){
+            var tb = gid('overdueTbody'); if (tb) tb.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>';
+            fetch('admin_borrow_center.php?action=overdue_json', {cache:'no-store'})
+              .then(function(r){ return r.json(); })
+              .then(function(j){ if(!j||j.ok!==true) throw new Error('bad'); render(j.items||[]); })
+              .catch(function(){ if(tb) tb.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Failed to load.</td></tr>'; });
+          }
+          function init(){ var m = gid('overdueModal'); if(!m) return; m.addEventListener('show.bs.modal', load); }
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+        })();
+      </script>
+
+      <!-- Overdue Details Modal -->
+      <div class="modal fade" id="overdueDetailsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Overdue Details</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-2"><strong>Approved By:</strong> <span id="odApprovedBy"></span></div>
+              <div class="mb-2"><strong>Remarks:</strong> <span id="odRemarks"></span></div>
+              <div class="mb-2"><strong>Due At:</strong> <span id="odDueAt"></span></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function(){
+          function gid(id){ return document.getElementById(id); }
+          function fmt(dt){ try{ if(!dt) return ''; var d=new Date(String(dt).replace(' ','T')); if(isNaN(d)) return String(dt); var h=d.getHours()%12||12, m=('0'+d.getMinutes()).slice(-2), ap=d.getHours()<12?'AM':'PM'; var mo=('0'+(d.getMonth()+1)).slice(-2), da=('0'+d.getDate()).slice(-2), yr=d.getFullYear(); return mo+'-'+da+'-'+yr+' '+h+':'+m+ap; }catch(e){ return String(dt); } }
+          var mdl = document.getElementById('overdueDetailsModal');
+          if (mdl) {
+            mdl.addEventListener('show.bs.modal', function (event) {
+              var trg = event.relatedTarget;
+              var approved = trg ? (trg.getAttribute('data-approved_by')||'') : '';
+              var remarks = trg ? (trg.getAttribute('data-remarks')||'') : '';
+              var dueAt = trg ? (trg.getAttribute('data-due_at')||'') : '';
+              var elA = gid('odApprovedBy'), elR = gid('odRemarks'), elD = gid('odDueAt');
+              if (elA) elA.textContent = approved;
+              if (elR) elR.textContent = remarks;
+              if (elD) elD.textContent = fmt(dueAt);
+            });
+          }
+        })();
+      </script>
+
+      <div class="row g-3 mt-1" id="returned-list">
+        <div id="reservations-col" class="col-12 col-md-6">
+          <div id="reservations-list" class="card border-0 shadow-sm mt-3 h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <strong>Approved Reservations</strong>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive list-scroll">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Req ID</th>
+                      <th>User</th>
+                      <th>Student ID</th>
+                      <th>Item</th>
+                      <th class="text-end">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reservationsTbody"><tr><td colspan="5" class="text-center text-muted">No approved reservations.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1 align-items-stretch">
+        <div class="col-12 col-xl-7">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+              <strong>Borrowable List</strong>
+            </div>
+            <div class="card-body p-0">
+              <div id="bm-table-wrap" class="table-responsive" style="overflow: visible;">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Category</th>
+                      <th>Model</th>
+                      <th>Quantity</th>
+                      <th>Active</th>
+                      <th class="text-end">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php if (empty($borrowables)): ?>
+                      <tr><td colspan="5" class="text-center text-muted">No borrowable entries yet.</td></tr>
+                    <?php else: ?>
+                      <?php foreach ($borrowables as $bm): ?>
+                        <tr>
+                          <td><?php echo htmlspecialchars($bm['category']); ?></td>
+                          <td><?php echo htmlspecialchars($bm['model_name']); ?></td>
+                          <td>
+                            <?php 
+                              $c = (string)$bm['category']; $m = (string)$bm['model_name'];
+                              $cs = $c; $ms = $m;
+                              $row = null;
+                              if (isset($qtyStats[$cs]) && isset($qtyStats[$cs][$ms])) { $row = $qtyStats[$cs][$ms]; }
+                              else {
+                                $cl = null; $ml = mb_strtolower($ms);
+                                foreach ($qtyStats as $kc => $arr) { if (mb_strtolower($kc) === mb_strtolower($cs)) { $cl = $kc; break; } }
+                                if ($cl !== null) {
+                                  if (isset($qtyStats[$cl][$ms])) { $row = $qtyStats[$cl][$ms]; }
+                                  else {
+                                    foreach ($qtyStats[$cl] as $km => $v) { if (mb_strtolower($km) === $ml) { $row = $v; break; } }
+                                  }
+                                }
+                              }
+                              // Show current borrowable capacity (borrow_limit), not current availability.
+                              // This reflects how many units are in the borrowable list out of total existing units.
+                              $curLimit = 0;
+                              if (isset($borrowLimitMap[$cs]) && isset($borrowLimitMap[$cs][$ms])) {
+                                $curLimit = (int)$borrowLimitMap[$cs][$ms];
+                              } else {
+                                // case-insensitive fallback
+                                $cl2 = null; $ml2 = mb_strtolower($ms);
+                                foreach ($borrowLimitMap as $kc2 => $arr2) { if (mb_strtolower($kc2) === mb_strtolower($cs)) { $cl2 = $kc2; break; } }
+                                if ($cl2 !== null) {
+                                  if (isset($borrowLimitMap[$cl2][$ms])) { $curLimit = (int)$borrowLimitMap[$cl2][$ms]; }
+                                  else { foreach ($borrowLimitMap[$cl2] as $km2 => $v2) { if (mb_strtolower($km2) === $ml2) { $curLimit = (int)$v2; break; } } }
+                                }
+                              }
+                              $avail = $row && isset($row['available']) ? (int)$row['available'] : 0;
+                              $total = $row && isset($row['total']) ? (int)$row['total'] : 0;
+                              if ($total < 0) { $total = 0; }
+                              if ($curLimit < 0) { $curLimit = 0; }
+                              if ($avail < 0) { $avail = 0; }
+                              if ($curLimit > $total) { $curLimit = $total; }
+                              if ($avail > $total) { $avail = $total; }
+                              // Compute consumed: active borrows + pending returns + held
+                              $consumed = 0;
+                              // direct match
+                              if (isset($activeConsumed[$cs]) && isset($activeConsumed[$cs][$ms])) { $consumed += (int)$activeConsumed[$cs][$ms]; }
+                              if (isset($pendingReturned[$cs]) && isset($pendingReturned[$cs][$ms])) { $consumed += (int)$pendingReturned[$cs][$ms]; }
+                              if (isset($heldCounts[$cs]) && isset($heldCounts[$cs][$ms])) { $consumed += (int)$heldCounts[$cs][$ms]; }
+                              // case-insensitive fallbacks
+                              if ($consumed === 0) {
+                                $cl3 = null; $ml3 = mb_strtolower($ms);
+                                foreach ($activeConsumed as $kc3 => $arr3) { if (mb_strtolower($kc3) === mb_strtolower($cs)) { $cl3 = $kc3; break; } }
+                                if ($cl3 !== null) {
+                                  foreach (($activeConsumed[$cl3] ?? []) as $km3 => $v3) { if (mb_strtolower($km3) === $ml3) { $consumed += (int)$v3; break; } }
+                                }
+                                $cl4 = null;
+                                foreach ($pendingReturned as $kc4 => $arr4) { if (mb_strtolower($kc4) === mb_strtolower($cs)) { $cl4 = $kc4; break; } }
+                                if ($cl4 !== null) {
+                                  foreach (($pendingReturned[$cl4] ?? []) as $km4 => $v4) { if (mb_strtolower($km4) === $ml3) { $consumed += (int)$v4; break; } }
+                                }
+                                $cl5 = null;
+                                foreach ($heldCounts as $kc5 => $arr5) { if (mb_strtolower($kc5) === mb_strtolower($cs)) { $cl5 = $kc5; break; } }
+                                if ($cl5 !== null) {
+                                  foreach (($heldCounts[$cl5] ?? []) as $km5 => $v5) { if (mb_strtolower($km5) === $ml3) { $consumed += (int)$v5; break; } }
+                                }
+                              }
+                              // Remaining within borrowable capacity cannot exceed available
+                              $show = max(0, min($curLimit - $consumed, $avail));
+                              echo htmlspecialchars($show.' / '.$total);
+                            ?>
+                          </td>
+                          <td>
+                            <span class="badge bg-<?php echo ((int)$bm['active']===1?'success':'secondary'); ?>"><?php echo ((int)$bm['active']===1?'Active':'Inactive'); ?></span>
+                          </td>
+                          <td class="text-end">
+                            <div class="dropdown position-relative">
+                              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle py-0 px-1 lh-1" style="font-size:.85rem;" data-bs-toggle="dropdown" data-bs-boundary="scrollParent" data-bs-display="static" data-bs-reference="parent" data-bs-offset="0,6" aria-expanded="false">
+                                <i class="bi bi-gear"></i>
+                              </button>
+                              <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                  <form method="POST" class="px-3 py-1">
+                                    <input type="hidden" name="do" value="toggle_borrowable" />
+                                    <input type="hidden" name="category" value="<?php echo htmlspecialchars($bm['category']); ?>" />
+                                    <input type="hidden" name="model" value="<?php echo htmlspecialchars($bm['model_name']); ?>" />
+                                    <input type="hidden" name="active" value="<?php echo ((int)$bm['active']===1?0:1); ?>" />
+                                    <button type="submit" class="dropdown-item">
+                                      <i class="bi <?php echo ((int)$bm['active']===1?'bi-eye-slash':'bi-eye'); ?> me-1"></i><?php echo ((int)$bm['active']===1?'Deactivate':'Activate'); ?>
+                                    </button>
+                                  </form>
+                                </li>
+                                <li>
+                                  <button type="button" class="dropdown-item bm-view-units"
+                                    data-category="<?php echo htmlspecialchars($bm['category']); ?>"
+                                    data-model="<?php echo htmlspecialchars($bm['model_name']); ?>"
+                                    data-bs-toggle="modal" data-bs-target="#bmViewUnitsModal">
+                                    <i class="bi bi-list-ul me-1"></i>View
+                                  </button>
+                                </li>
+                                <li>
+                                  <button type="button" class="dropdown-item text-danger bm-delete-units"
+                                    data-category="<?php echo htmlspecialchars($bm['category']); ?>"
+                                    data-model="<?php echo htmlspecialchars($bm['model_name']); ?>"
+                                    data-bs-toggle="modal" data-bs-target="#bmDeleteUnitsModal">
+                                    <i class="bi bi-trash me-1"></i>Delete
+                                  </button>
+                                </li>
+                              </ul>
+                            </div>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-xl-5">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center"><strong>Add From Category</strong></div>
+            <div class="card-body d-flex flex-column">
+              <form method="POST" id="bm_add_form">
+                <input type="hidden" name="do" value="add_borrowable" />
+                <div class="mb-3">
+                  <label class="form-label fw-bold" for="bm_bulk_category">Category</label>
+                  <select id="bm_bulk_category" name="category" class="form-select" required>
+                    <option value="">Select Category</option>
+                    <?php foreach (array_keys($invCatModels) as $cat): ?>
+                      <?php $cnt = isset($categoryCounts[$cat]) ? (int)$categoryCounts[$cat] : 0; ?>
+                      <option value="<?php echo htmlspecialchars($cat); ?>">
+                        <?php echo htmlspecialchars($cat . ' (' . $cnt . ' models)'); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <strong>Models</strong>
+                  <div>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="bm_bulk_select_all">Select All</button>
+                  </div>
+                </div>
+                <div class="table-responsive flex-grow-1" style="min-height:0; overflow:auto;">
+                  <table class="table table-sm align-middle mb-2">
+                    <thead>
+                      <tr>
+                        <th style="width:42px;"><input type="checkbox" id="bm_master_check" /></th>
+                        <th>Model</th>
+                        <th>Remaining / Total</th>
+                        <th style="width:120px;">Limit</th>
+                      </tr>
+                    </thead>
+                    <tbody id="bm_models_body">
+                      <!-- populated by JS -->
+                    </tbody>
+                  </table>
+                </div>
+                <div class="d-grid">
+                  <button type="submit" class="btn btn-success"><i class="bi bi-collection me-1"></i>Add Selected</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        document.addEventListener('DOMContentLoaded', function(){
+          try {
+            var url = new URL(window.location.href);
+            var sc = url.searchParams.get('scroll');
+            var targetId = '';
+            if (sc === 'lost') targetId = 'lost-damaged';
+            else if (sc === 'returned') targetId = 'returned-list';
+            else if (sc === 'borrowed') targetId = 'borrowed-list';
+            else if (window.location.hash) targetId = window.location.hash.replace(/^#/, '');
+            if (targetId) {
+              var el = document.getElementById(targetId);
+              if (el) { setTimeout(function(){ el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150); }
+            }
+          } catch(e) { /* no-op */ }
+        });
+      </script>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    // Live 1s polling for Pending, Borrowed, and Reservations tables
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+    function renderPending(d){ const tb=document.getElementById('pendingTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.pending))?d.pending:[]; if(!list.length){ rows.push('<tr><td colspan="5" class="text-center text-muted">No pending requests.</td></tr>'); } else { list.forEach(function(r){ const dt = r.created_at_display? String(r.created_at_display) : (r.created_at? String(r.created_at):''); const typ = (r && r.qr_serial_no && String(r.qr_serial_no).trim()!=='') ? 'QR' : 'Manual'; rows.push('<tr class="pending-row" role="button" tabindex="0" data-bs-toggle="modal" data-bs-target="#requestDetailsModal"'+
+      ' data-user="'+escapeHtml((r.user_full_name||r.username||''))+'"'+
+      ' data-item="'+escapeHtml(r.item_name||'')+'"'+
+      ' data-qty="'+parseInt((r.remaining!=null?r.remaining:r.quantity)||0,10)+'"'+
+      ' data-loc="'+escapeHtml(r.request_location||'')+'"'+
+      ' data-details="'+escapeHtml(r.details||'')+'"'+
+      ' data-avail="'+parseInt(r.available_count||0,10)+'"'+
+      ' data-requested="'+escapeHtml(dt)+'"'+
+      ' data-reqtype="'+escapeHtml(String(r.type||'immediate'))+'"'+
+      '>'+ 
+      '<td>'+parseInt(r.id||0,10)+'</td>'+ 
+      '<td>'+escapeHtml(typ)+'</td>'+ 
+      '<td>'+escapeHtml((r.user_full_name||r.username||''))+'</td>'+ 
+      '<td>'+escapeHtml(r.school_id||'')+'</td>'+ 
+      '<td class="text-end">'+ 
+        '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Actions">'+
+          '<button type="button" class="btn btn-sm btn-success border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Approve/Scan" aria-label="Approve/Scan" data-bs-toggle="modal" data-bs-target="#approveScanModal" data-reqid="'+parseInt(r.id||0,10)+'" data-item="'+escapeHtml(r.item_name||'')+'" data-qty="'+parseInt((r.remaining!=null?r.remaining:r.quantity)||0,10)+'" data-reqtype="'+escapeHtml(String(r.type||''))+'" data-expected_return_at="'+escapeHtml(String(r.expected_return_at||''))+'" data-reserved_from="'+escapeHtml(String(r.reserved_from||''))+'" data-reserved_to="'+escapeHtml(String(r.reserved_to||''))+'" data-qr_serial="'+escapeHtml(String(r.qr_serial_no||''))+'"><i class=\"bi '+(typ==='QR'?'bi-check2-circle':'bi-qr-code-scan')+'\"></i></button>'+
+          '<a href="admin_borrow_center.php?action=reject&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Reject" aria-label="Reject" onclick="return confirm(\'Reject this request?\');"><i class=\"bi bi-x\"></i></a>'+
+        '</div>'+
+      '</td>'+
+    '</tr>'); }); }
+      tb.innerHTML=rows.join(''); }
+    function renderBorrowed(d){ const tb=document.getElementById('borrowedTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.borrowed))?d.borrowed:[]; if(!list.length){ rows.push('<tr><td colspan="6" class="text-center text-muted">No active borrowed items.</td></tr>'); } else { list.forEach(function(b){ const dt = b.expected_return_display? String(b.expected_return_display) : (b.expected_return_at? String(b.expected_return_at):''); const typ = (b && b.type) ? String(b.type) : (((b && b.qr_serial_no) ? 'QR' : 'Manual')); const rawExp=(b && (b.expected_return_at||b.reserved_to))? String(b.expected_return_at||b.reserved_to):''; let t=NaN; if(rawExp){ try{ t=new Date(rawExp.replace(' ','T')).getTime(); }catch(_){ t=NaN; } } const overdue = !!(rawExp && !isNaN(t) && t < Date.now()); const expHtml = escapeHtml(dt) + (overdue ? ' <span class="text-danger" title="Overdue"><i class="bi bi-exclamation-circle-fill"></i></span>' : ''); rows.push('<tr class="borrowed-row" role="button" tabindex="0" data-bs-toggle="modal" data-bs-target="#borrowedDetailsModal"'+
+      ' data-user="'+escapeHtml(b.username||'')+'"'+
+      ' data-serial="'+escapeHtml(b.serial_no||'')+'"'+
+      ' data-model="'+escapeHtml(b.model||'')+'"'+
+      ' data-category="'+escapeHtml(b.category||'')+'"'+
+      ' data-location="'+escapeHtml(b.location||'')+'"'+
+      ' data-expected_raw="'+escapeHtml(String(b.expected_return_at||b.reserved_to||''))+'"'+
+      '>'+ 
+      '<td>'+parseInt(b.request_id||0,10)+'</td>'+ 
+      '<td>'+escapeHtml(typ)+'</td>'+ 
+      '<td>'+escapeHtml(b.username||'')+'</td>'+ 
+      '<td>'+escapeHtml(b.school_id||'')+'</td>'+ 
+      '<td>'+expHtml+'</td>'+ 
+      '<td class="text-end">'+ 
+        '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Borrowed Actions">'+ 
+         (String(typ).toUpperCase()==='QR'
+            ? '<button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="QR Return" aria-label="QR Return" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-qr-code"></i></button>'
+            : '<button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Return/Scan" aria-label="Return/Scan" data-bs-toggle="modal" data-bs-target="#returnScanModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-arrow-counterclockwise"></i></button>'
+         )+ 
+         '<button type="button" class="btn btn-sm btn-danger border border-dark rounded-0 py-1 px-1 lh-1 fs-6" title="Lost" aria-label="Lost" data-bs-toggle="modal" data-bs-target="#markLostModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_id="'+parseInt(b.model_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-exclamation-triangle"></i></button>'+ 
+         '<button type="button" class="btn btn-sm btn-warning text-dark border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Maintenance" aria-label="Maintenance" data-bs-toggle="modal" data-bs-target="#markMaintModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_id="'+parseInt(b.model_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-tools"></i></button>'+ 
+        '</div>'+ 
+      '</td>'+ 
+    '</tr>'); }); } 
+      tb.innerHTML=rows.join(''); }
+    function fmt(dt){ if(!dt) return ''; try{ let s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); const d=new Date(s); if(isNaN(d.getTime())) return String(dt); const mm=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2), yyyy=d.getFullYear(); let h=d.getHours(), m=('0'+d.getMinutes()).slice(-2); const ap=h>=12?'PM':'AM'; h=h%12; if(h===0)h=12; h=('0'+h).slice(-2); return mm+'-'+dd+'-'+yyyy+' '+h+':'+m+ap; }catch(_){ return String(dt);} }
+    function renderReservations(d){ const tb=document.getElementById('reservationsTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.reservations))?d.reservations:[]; if(!list.length){ rows.push('<tr><td colspan="5" class="text-center text-muted">No approved reservations.</td></tr>'); } else { list.forEach(function(r){ rows.push('<tr class="reservation-row" role="button" tabindex="0"'+
+      ' data-user="'+escapeHtml(r.username||'')+'"'+
+      ' data-school_id="'+escapeHtml(r.school_id||'')+'"'+
+      ' data-item="'+escapeHtml(r.item_name||'')+'"'+
+      ' data-category="'+escapeHtml(r.category||'')+'"'+
+      ' data-location="'+escapeHtml(r.location||'')+'"'+
+      ' data-rstart_raw="'+escapeHtml(String(r.reserved_from||''))+'"'+
+      ' data-rend_raw="'+escapeHtml(String(r.reserved_to||''))+'"'+
+      '>'+
+      '<td>'+parseInt(r.id||0,10)+'</td>'+
+      '<td>'+escapeHtml(r.username||'')+'</td>'+
+      '<td>'+escapeHtml(r.school_id||'')+'</td>'+
+      '<td>'+escapeHtml(r.item_name||'')+'</td>'+
+      '<td class="text-end">'+
+        '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Reservation Actions">'+
+          '<a href="admin_borrow_center.php?action=cancel_reservation&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-outline-danger border border-dark rounded py-1 px-1 lh-1 fs-6" title="Cancel" aria-label="Cancel" onclick="return confirm(\'Cancel this reservation?\');"><i class="bi bi-x"></i> Cancel</a>'+
+        '</div>'+
+      '</td>'+
+    '</tr>'); }); }
+      tb.innerHTML=rows.join(''); }
+    document.addEventListener('DOMContentLoaded', function(){
+      setInterval(()=>{ fetch('admin_borrow_center.php?action=pending_json').then(r=>r.json()).then(renderPending).catch(()=>{}); }, 1000);
+      setInterval(()=>{ fetch('admin_borrow_center.php?action=borrowed_json').then(r=>r.json()).then(renderBorrowed).catch(()=>{}); }, 1000);
+      setInterval(()=>{ fetch('admin_borrow_center.php?action=reservations_json').then(r=>r.json()).then(renderReservations).catch(()=>{}); }, 1000);
+    });
+  </script>
+  <!-- Returned Item Details Modal -->
+  <div class="modal fade" id="returnedDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-info-circle me-2"></i>Returned Item Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Request ID:</strong> <span id="rtdReq"></span></div>
+          <div class="mb-2"><strong>Serial ID:</strong> <span id="rtdSerial"></span></div>
+          <div class="mb-2"><strong>Model:</strong> <span id="rtdModel"></span></div>
+          <div class="mb-2"><strong>Category:</strong> <span id="rtdCategory"></span></div>
+          <div class="mb-2"><strong>Last Borrower:</strong> <span id="rtdLast"></span></div>
+          <div class="mb-2"><strong>Student ID:</strong> <span id="rtdSid"></span></div>
+          <div class="mb-2"><strong>Returned At:</strong> <span id="rtdReturned"></span></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Returned list: open details on row click/keyboard
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        var tbody = document.getElementById('returnedTbody');
+        if (!tbody) return;
+        function openFrom(el){ try { window._rtdSrc = el; } catch(_) {}
+          var mdl = document.getElementById('returnedDetailsModal');
+          if (mdl) bootstrap.Modal.getOrCreateInstance(mdl).show();
+        }
+        tbody.addEventListener('click', function(e){
+          var inActions = (e.target && e.target.closest && (e.target.closest('.segmented-actions') || e.target.closest('form')));
+          if (inActions) { e.stopPropagation(); return; }
+          var tr = e.target && e.target.closest && e.target.closest('tr.returned-row');
+          if (tr) openFrom(tr);
+        });
+        tbody.addEventListener('keydown', function(e){
+          var tr = e.target && e.target.closest && e.target.closest('tr.returned-row');
+          if (!tr) return;
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFrom(tr); }
+        });
+      });
+    })();
+  </script>
+
+  <script>
+    // Populate Returned Item Details modal
+    (function(){
+      function fmtLocal(dt){ try { if(!dt) return '-'; var s=String(dt); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if (isNaN(d.getTime())) return String(dt); var mm=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2), yyyy=d.getFullYear().toString().slice(-2); var h=d.getHours()%12||12, m=('0'+d.getMinutes()).slice(-2), ap=d.getHours()<12?'AM':'PM'; return h+':'+m+' '+ap+' '+mm+'-'+dd+'-'+yyyy; } catch(_){ return String(dt)||'-'; } }
+      var mdl = document.getElementById('returnedDetailsModal');
+      if (mdl) {
+        mdl.addEventListener('show.bs.modal', function (event) {
+          var trg = event.relatedTarget;
+          var src = (trg && typeof trg.closest === 'function') ? trg.closest('[data-bs-target="#returnedDetailsModal"]') : null;
+          var el = src || trg || (typeof window !== 'undefined' ? window._rtdSrc : null);
+          var req = el ? (el.getAttribute('data-reqid') || '') : '';
+          var serial = el ? (el.getAttribute('data-serial') || '') : '';
+          var model = el ? (el.getAttribute('data-model') || '') : '';
+          var cat = el ? (el.getAttribute('data-category') || '') : '';
+          var last = el ? (el.getAttribute('data-last_borrower') || '') : '';
+          var sid = el ? (el.getAttribute('data-student_id') || '') : '';
+          var returned = el ? (el.getAttribute('data-returned_at') || '') : '';
+          document.getElementById('rtdReq').textContent = req;
+          document.getElementById('rtdSerial').textContent = serial;
+          document.getElementById('rtdModel').textContent = model;
+          document.getElementById('rtdCategory').textContent = cat || 'Uncategorized';
+          document.getElementById('rtdLast').textContent = last;
+          document.getElementById('rtdSid').textContent = sid;
+          document.getElementById('rtdReturned').textContent = returned ? fmtLocal(returned) : '-';
+        });
+      }
+    })();
+  </script>
+
+  <script>
+    function confirmPermanentLost(form){
+      var msg = 'Type LOST to confirm this item will be marked as Permanently Lost. This action will be recorded and set the item\'s status to Permanently Lost.';
+      var input = window.prompt(msg, '');
+      if (input === null) return false; // cancelled
+      if (String(input).trim().toUpperCase() !== 'LOST') {
+        alert('Confirmation failed. You must type LOST to proceed.');
+        return false;
+      }
+      return true;
+    }
+  </script>
+  <!-- Approve by Scan/ID Modal -->
+  <div class="modal fade" id="approveScanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-qr-code-scan me-2"></i>Scan/Approve Request</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Requested Item:</strong> <span id="asItem"></span></div>
+          <div class="mb-2"><strong>Quantity:</strong> <span id="asQty"></span></div>
+          <div class="mb-3">
+            <label class="form-label small d-block mb-1">Request Type</label>
+            <div><span class="badge bg-secondary" id="asReqTypeDisplay">Immediate</span></div>
+            <div id="immediateFields" class="mt-2">
+              <label class="form-label small mb-1">Expected Return</label>
+              <input type="text" class="form-control form-control-sm" id="asExpectedReturnRO" readonly />
+            </div>
+            <div id="reservationFields" class="mt-2" style="display:none;">
+              <div class="row g-2">
+                <div class="col-12 col-md-6">
+                  <label class="form-label small mb-1">Reserve Start</label>
+                  <input type="text" class="form-control form-control-sm" id="asReserveStartRO" readonly />
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label small mb-1">Reserve End</label>
+                  <input type="text" class="form-control form-control-sm" id="asReserveEndRO" readonly />
+                </div>
+              </div>
+              <div class="form-text">Item remains borrowable until 5 minutes before start.</div>
+            </div>
+          </div>
+          <div class="mb-2"><small id="asStatus" class="text-muted">You can scan a QR or enter ID manually.</small></div>
+          <div id="asReader" class="border rounded p-2 mb-2" style="max-width:360px;"></div>
+          <div class="d-flex gap-2 mb-3">
+            <button type="button" id="asStart" class="btn btn-success btn-sm"><i class="bi bi-camera-video"></i> Start</button>
+            <button type="button" id="asStop" class="btn btn-danger btn-sm" style="display:none;"><i class="bi bi-stop-circle"></i> Stop</button>
+          </div>
+          <div class="mb-3" id="asCamWrap" style="max-width:360px;">
+            <label class="form-label small mb-1">Camera (desktop only)</label>
+            <select id="asCameraSelect" class="form-select form-select-sm"></select>
+          </div>
+          <div class="mt-2">
+            <label class="form-label small mb-1">Or upload QR image</label>
+            <input type="file" id="asImageFile" class="form-control form-control-sm" accept="image/*" />
+          </div>
+          <form id="asForm" method="POST" action="admin_borrow_center.php?action=approve_with">
+            <input type="hidden" name="request_id" id="asReqId" value="" />
+            <!-- Hidden fields retained for compatibility but server ignores them and uses request values -->
+            <input type="hidden" name="req_type" id="asReqType" value="" />
+            <input type="hidden" name="expected_return_at" id="asExpectedReturnField" value="" />
+            <input type="hidden" name="reserved_from" id="asReserveStartField" value="" />
+            <input type="hidden" name="reserved_to" id="asReserveEndField" value="" />
+            <div class="input-group">
+              <span class="input-group-text">Serial ID</span>
+              <input type="text" class="form-control" name="serial_no" id="asSerial" placeholder="Enter Serial ID" required />
+            </div>
+            <div class="mt-3 text-end">
+              <button type="submit" id="asApproveBtn" class="btn btn-primary" disabled><i class="bi bi-check2 me-1"></i>Approve</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Return by Scan/ID Modal -->
+  <div class="modal fade" id="returnScanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-2"></i>Scan/Return Item</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Request ID:</strong> <span id="rsReq"></span></div>
+          <div class="mb-2"><strong>Expected Model:</strong> <span id="rsModel"></span></div>
+          <div class="mb-2"><small id="rsStatus" class="text-muted">Scan the item's QR or enter Serial ID manually.</small></div>
+          <div id="rsReader" class="border rounded p-2 mb-2" style="max-width:360px;"></div>
+          <div class="d-flex gap-2 mb-3">
+            <button type="button" id="rsStart" class="btn btn-success btn-sm"><i class="bi bi-camera-video"></i> Start</button>
+            <button type="button" id="rsStop" class="btn btn-danger btn-sm" style="display:none;"><i class="bi bi-stop-circle"></i> Stop</button>
+          </div>
+          <div class="mb-3" id="rsCamWrap" style="max-width:360px;">
+            <label class="form-label small mb-1">Camera (desktop only)</label>
+            <select id="rsCameraSelect" class="form-select form-select-sm"></select>
+          </div>
+          <div class="mt-2">
+            <label class="form-label small mb-1">Or upload QR image</label>
+            <input type="file" id="rsImageFile" class="form-control form-control-sm" accept="image/*" />
+          </div>
+          <form id="rsForm" method="POST" action="admin_borrow_center.php?action=return_with">
+            <input type="hidden" name="request_id" id="rsReqId" value="" />
+            <div class="input-group">
+              <span class="input-group-text">Serial ID</span>
+              <input type="text" class="form-control" name="serial_no" id="rsSerial" placeholder="Enter Serial ID" required />
+            </div>
+            <div class="mt-3 text-end">
+              <button type="submit" id="rsReturnBtn" class="btn btn-primary" disabled><i class="bi bi-check2 me-1"></i>Return</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Request Details Modal -->
+  <div class="modal fade" id="requestDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-info-circle me-2"></i>Request Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>User:</strong> <span id="rdUser"></span></div>
+          <div class="mb-2"><strong>Request Type:</strong> <span id="rdType"></span></div>
+          <div class="mb-2"><strong>Item:</strong> <span id="rdItem"></span></div>
+          <div class="mb-2"><strong>Location:</strong> <span id="rdLoc"></span></div>
+          <div class="mb-2"><strong>Quantity:</strong> <span id="rdQty"></span></div>
+          <div class="mb-2"><strong>Available:</strong> <span id="rdAvail"></span></div>
+          <div class="mb-2"><strong>Requested At:</strong> <span id="rdRequested"></span></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Reservation Details Modal -->
+  <div class="modal fade" id="reservationDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-info-circle me-2"></i>Reservation Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>User:</strong> <span id="rvUser"></span></div>
+          <div class="mb-2"><strong>Student ID:</strong> <span id="rvSid"></span></div>
+          <div class="mb-2"><strong>Item:</strong> <span id="rvItem"></span></div>
+          <div class="mb-2"><strong>Category:</strong> <span id="rvCategory"></span></div>
+          <div class="mb-2"><strong>Location:</strong> <span id="rvLocation"></span></div>
+          <div class="mb-2"><strong>Reserve Start:</strong> <span id="rvStart"></span></div>
+          <div class="mb-2"><strong>Reserve End:</strong> <span id="rvEnd"></span></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Open Reservation Details from row click/keyboard (delegated)
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        var tbody = document.getElementById('reservationsTbody');
+        if (!tbody) return;
+        function openResFrom(el){ try { window._rvSrc = el; } catch(_) {}
+          var mdl = document.getElementById('reservationDetailsModal');
+          if (mdl) bootstrap.Modal.getOrCreateInstance(mdl).show();
+        }
+        tbody.addEventListener('click', function(e){
+          if (e.target && e.target.closest && e.target.closest('.segmented-actions')) return;
+          var tr = e.target && e.target.closest && e.target.closest('tr.reservation-row');
+          if (tr) openResFrom(tr);
+        });
+        tbody.addEventListener('keydown', function(e){
+          var tr = e.target && e.target.closest && e.target.closest('tr.reservation-row');
+          if (!tr) return;
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openResFrom(tr); }
+        });
+      });
+    })();
+  </script>
+
+  <script>
+    // Populate Reservation Details modal
+    (function(){
+      var mdl = document.getElementById('reservationDetailsModal');
+      if (mdl) {
+        function fmtLocal(dt){ try { if(!dt) return '-'; var s=String(dt); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if (isNaN(d.getTime())) return String(dt); var mm=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2), yyyy=d.getFullYear().toString().slice(-2); var h=d.getHours()%12||12, m=('0'+d.getMinutes()).slice(-2), ap=d.getHours()<12?'AM':'PM'; return h+':'+m+' '+ap+' '+mm+'-'+dd+'-'+yyyy; } catch(_){ return String(dt)||'-'; } }
+        mdl.addEventListener('show.bs.modal', function (event) {
+          var trg = event.relatedTarget;
+          var src = (trg && typeof trg.closest === 'function') ? trg.closest('[data-bs-target="#reservationDetailsModal"]') : null;
+          var el = src || trg || (typeof window !== 'undefined' ? window._rvSrc : null);
+          var user = el ? (el.getAttribute('data-user') || '') : '';
+          var sid = el ? (el.getAttribute('data-school_id') || '') : '';
+          var item = el ? (el.getAttribute('data-item') || '') : '';
+          var cat = el ? (el.getAttribute('data-category') || '') : '';
+          var loc = el ? (el.getAttribute('data-location') || '') : '';
+          var rs = el ? (el.getAttribute('data-rstart_raw') || '') : '';
+          var re = el ? (el.getAttribute('data-rend_raw') || '') : '';
+          document.getElementById('rvUser').textContent = user;
+          document.getElementById('rvSid').textContent = sid;
+          document.getElementById('rvItem').textContent = item;
+          document.getElementById('rvCategory').textContent = cat || 'Uncategorized';
+          document.getElementById('rvLocation').textContent = loc || '';
+          document.getElementById('rvStart').textContent = fmtLocal(rs);
+          document.getElementById('rvEnd').textContent = fmtLocal(re);
+        });
+      }
+    })();
+  </script>
+
+  <!-- Lost/Damaged History Print Header Modal -->
+  <!-- Borrowed Item Details Modal -->
+  <div class="modal fade" id="borrowedDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-info-circle me-2"></i>Borrowed Item Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>User:</strong> <span id="bdUser"></span></div>
+          <div class="mb-2"><strong>Serial ID:</strong> <span id="bdSerial"></span></div>
+          <div class="mb-2"><strong>Item:</strong> <span id="bdModel"></span></div>
+          <div class="mb-2"><strong>Category:</strong> <span id="bdCategory"></span></div>
+          <div class="mb-2"><strong>Location:</strong> <span id="bdLocation"></span></div>
+          <div class="mb-2"><strong>Expected Return:</strong> <span id="bdExpected"></span></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Ensure borrowed rows open details modal (delegated)
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        var tbody = document.getElementById('borrowedTbody');
+        if (!tbody) return;
+        function openDetailsFrom(el){ try { window._bdSrc = el; } catch(_) {}
+          var mdl = document.getElementById('borrowedDetailsModal');
+          if (mdl) bootstrap.Modal.getOrCreateInstance(mdl).show();
+        }
+        tbody.addEventListener('click', function(e){
+          if (e.target && e.target.closest && e.target.closest('.segmented-actions')) return;
+          var tr = e.target && e.target.closest && e.target.closest('tr.borrowed-row');
+          if (tr) openDetailsFrom(tr);
+        });
+        tbody.addEventListener('keydown', function(e){
+          var tr = e.target && e.target.closest && e.target.closest('tr.borrowed-row');
+          if (!tr) return;
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetailsFrom(tr); }
+        });
+      });
+    })();
+  </script>
+
+  <script>
+    // Populate Borrowed Item Details modal
+    (function(){
+      var mdl = document.getElementById('borrowedDetailsModal');
+      if (mdl) {
+        mdl.addEventListener('show.bs.modal', function (event) {
+          var trg = event.relatedTarget;
+          var src = (trg && typeof trg.closest === 'function') ? trg.closest('[data-bs-target="#borrowedDetailsModal"]') : null;
+          var el = src || trg || (typeof window !== 'undefined' ? window._bdSrc : null);
+          var user = el ? (el.getAttribute('data-user') || '') : '';
+          var serial = el ? (el.getAttribute('data-serial') || '') : '';
+          var model = el ? (el.getAttribute('data-model') || '') : '';
+          var category = el ? (el.getAttribute('data-category') || '') : '';
+          var location = el ? (el.getAttribute('data-location') || '') : '';
+          var expRaw = el ? (el.getAttribute('data-expected_raw') || '') : '';
+          var expTxt = expRaw ? (function(s){ try { return s ? new Date(s.replace(' ','T')).toLocaleString() : ''; } catch(_) { return s; } })(expRaw) : '';
+          document.getElementById('bdUser').textContent = user;
+          document.getElementById('bdSerial').textContent = serial;
+          document.getElementById('bdModel').textContent = model;
+          document.getElementById('bdCategory').textContent = category;
+          document.getElementById('bdLocation').textContent = location;
+          document.getElementById('bdExpected').textContent = expTxt || '-';
+        });
+      }
+    })();
+  </script>
+  <div class="modal fade" id="ldPrintHeaderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-printer me-2"></i>Print Header</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="ldPrintHistoryForm" method="GET" action="admin_borrow_center.php" target="_blank">
+          <input type="hidden" name="action" value="print_lost_damaged" />
+          <input type="hidden" name="event" id="ldPrintEvent" value="" />
+          <input type="hidden" name="status" id="ldPrintStatus" value="" />
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">Department</label>
+              <input type="text" name="department" class="form-control" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Date</label>
+              <input type="date" name="date" class="form-control" value="<?php echo date('Y-m-d'); ?>" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Prepared by</label>
+              <input type="text" name="prepared_by" class="form-control" value="<?php echo htmlspecialchars($adminFullNameDefault); ?>" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Checked by</label>
+              <input type="text" name="checked_by" class="form-control" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Whitelisted Serials Modal -->
+  <div class="modal fade" id="bmDeleteUnitsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-trash me-2"></i>Delete Whitelisted Serials</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div><strong>Category:</strong> <span id="bmDelCat"></span> &nbsp; <strong>Model:</strong> <span id="bmDelModel"></span></div>
+            <div><button type="button" class="btn btn-sm btn-outline-secondary" id="bmDelSelectAll">Select All</button></div>
+          </div>
+          <div id="bmDeleteBody"><div class="text-muted">Loading whitelisted serials...</div></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="bmDeleteConfirmBtn">Delete Selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Populate Request Details modal
+    (function(){
+      var mdl = document.getElementById('requestDetailsModal');
+      if (mdl) {
+        mdl.addEventListener('show.bs.modal', function (event) {
+          var trg = event.relatedTarget;
+          var src = (trg && typeof trg.closest === 'function') ? trg.closest('[data-bs-target="#requestDetailsModal"]') : null;
+          var el = src || trg;
+          var user = el ? (el.getAttribute('data-user') || '') : '';
+          var item = el ? (el.getAttribute('data-item') || '') : '';
+          var qty  = el ? (el.getAttribute('data-qty') || '') : '';
+          var loc  = el ? (el.getAttribute('data-loc') || '') : '';
+          var avail = el ? (el.getAttribute('data-avail') || '') : '';
+          var requested = el ? (el.getAttribute('data-requested') || '') : '';
+          var reqtype = el ? (el.getAttribute('data-reqtype') || '') : '';
+          document.getElementById('rdUser').textContent = user;
+          document.getElementById('rdItem').textContent = item;
+          document.getElementById('rdQty').textContent = qty;
+          var rl = document.getElementById('rdLoc'); if (rl) rl.textContent = loc || '';
+          var ra = document.getElementById('rdAvail'); if (ra) ra.textContent = avail || '';
+          var rr = document.getElementById('rdRequested'); if (rr) rr.textContent = requested || '';
+          var rt = document.getElementById('rdType'); if (rt) rt.textContent = (reqtype||'').trim() ? reqtype : 'immediate';
+        });
+      }
+      // Sync print form with current filters on submit
+      document.addEventListener('DOMContentLoaded', function(){
+        var pf = document.getElementById('ldPrintHistoryForm');
+        if (pf) {
+          pf.addEventListener('submit', function(){
+            var ev = document.getElementById('ldEventFilter');
+            var cs = document.getElementById('ldCurrentFilter');
+            var evOut = document.getElementById('ldPrintEvent');
+            var csOut = document.getElementById('ldPrintStatus');
+            if (evOut) evOut.value = (ev && ev.value) ? ev.value : 'All';
+            if (csOut) csOut.value = (cs && cs.value) ? cs.value : 'All';
+          });
+        }
+      });
+    })();
+
+    // Approve with Scan Modal logic
+    (function(){
+      var mdl = document.getElementById('approveScanModal');
+      var reqIdEl = document.getElementById('asReqId');
+      var itemEl = document.getElementById('asItem');
+      var qtyEl = document.getElementById('asQty');
+      var inputId = document.getElementById('asSerial');
+      var statusEl = document.getElementById('asStatus');
+      var startBtn = document.getElementById('asStart');
+      var stopBtn = document.getElementById('asStop');
+      var readerDiv = document.getElementById('asReader');
+      var form = document.getElementById('asForm');
+      var imgInput = document.getElementById('asImageFile');
+      var camWrap = document.getElementById('asCamWrap');
+      var camSelect = document.getElementById('asCameraSelect');
+      var scanner = null, scanning=false;
+      var approveBtn = document.getElementById('asApproveBtn');
+      var reqTypeField = document.getElementById('asReqType');
+      var typeBadge = document.getElementById('asReqTypeDisplay');
+      var rtImmediateDiv = document.getElementById('immediateFields');
+      var rtReserveDiv = document.getElementById('reservationFields');
+      var expRetRO = document.getElementById('asExpectedReturnRO');
+      var expRetField = document.getElementById('asExpectedReturnField');
+      var resStartRO = document.getElementById('asReserveStartRO');
+      var resEndRO = document.getElementById('asReserveEndRO');
+      var resStartField = document.getElementById('asReserveStartField');
+      var resEndField = document.getElementById('asReserveEndField');
+      var camsCache = [];
+      var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      function two(n){ n=parseInt(n,10); return (n<10?'0':'')+n; }
+      function fmtDisplay(dt){
+        if (!dt) return '';
+        try {
+          // Accept ISO like 2025-10-29T10:00 or 'YYYY-MM-DD HH:MM[:SS]'
+          let d=null;
+          if (typeof dt==='string') {
+            let s=dt.trim();
+            // Normalize space format to 'YYYY-MM-DDTHH:MM'
+            if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) { s = s.replace(' ', 'T'); }
+            d = new Date(s);
+            if (isNaN(d.getTime())) {
+              // Manual parse
+              const m = dt.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+              if (m) { d = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), parseInt(m[4],10), parseInt(m[5],10), 0); }
+            }
+          } else if (dt instanceof Date) { d = dt; }
+          if (!d || isNaN(d.getTime())) return String(dt);
+          let h=d.getHours(); const m=two(d.getMinutes()); const ampm = h>=12?'PM':'AM'; h = h%12; if (h===0) h=12; const mm=two(d.getMonth()+1); const dd=two(d.getDate()); const yyyy=d.getFullYear();
+          return mm+'-'+dd+'-'+yyyy+' '+two(h)+':'+m+ampm;
+        } catch(_) { return String(dt); }
+      }
+      function applyReqType(val, expRet, rs, re){
+        reqTypeField.value = val || '';
+        if (val === 'reservation') {
+          typeBadge.textContent = 'Reservation';
+          rtReserveDiv.style.display='block'; rtImmediateDiv.style.display='none';
+          resStartRO.value = fmtDisplay(rs||'');
+          resEndRO.value = fmtDisplay(re||'');
+          resStartField.value = rs || '';
+          resEndField.value = re || '';
+          expRetRO.value = '';
+          expRetField.value = '';
+        } else {
+          typeBadge.textContent = 'Immediate';
+          rtReserveDiv.style.display='none'; rtImmediateDiv.style.display='block';
+          expRetRO.value = fmtDisplay(expRet||'');
+          expRetField.value = expRet || '';
+          resStartRO.value = '';
+          resEndRO.value = '';
+          resStartField.value = '';
+          resEndField.value = '';
+        }
+      }
+      function setStatus(t,cls){ if(statusEl){ statusEl.textContent=t; statusEl.className='small '+(cls||'text-muted'); } }
+      function stop(){ if(scanner && scanning){ scanner.stop().then(()=>{ scanning=false; startBtn.style.display='inline-block'; stopBtn.style.display='none'; setStatus('Scanner stopped.','text-muted');}).catch(()=>{});} }
+      function listCams(){
+        if (!camSelect) return;
+        camSelect.innerHTML = '';
+        if (typeof Html5Qrcode === 'undefined' || !Html5Qrcode.getCameras) return;
+        Html5Qrcode.getCameras().then(function(cams){
+          camsCache = cams || [];
+          camsCache.forEach(function(c, idx){
+            var opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.label || ('Camera '+(idx+1));
+            camSelect.appendChild(opt);
+          });
+          var saved = localStorage.getItem('as_camera');
+          if (saved && camsCache.some(function(c){ return c.id===saved; })) camSelect.value = saved;
+        }).catch(function(){ /* ignore */ });
+      }
+      function startWithSelected(){
+        if (scanning || typeof Html5Qrcode==='undefined') return;
+        setStatus('Starting camera...','text-info');
+        try{
+          if (!scanner) scanner=new Html5Qrcode('asReader');
+          var id = (camSelect && camSelect.value) ? camSelect.value : (camsCache[0] && camsCache[0].id);
+          if (!id) { setStatus('No camera found','text-danger'); return; }
+          localStorage.setItem('as_camera', id);
+          scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+            .then(()=>{ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+            .catch(err=>{ setStatus('Camera error: '+(err?.message||'start failure'),'text-danger'); });
+        } catch(e){ setStatus('Scanner init failed','text-danger'); }
+      }
+      function validateCurrentId(modelId){
+        var rid = (reqIdEl && reqIdEl.value) ? reqIdEl.value : '';
+        var sn = (inputId && inputId.value) ? inputId.value.trim() : '';
+        if (!rid || !sn) { approveBtn && (approveBtn.disabled = true); return; }
+        setStatus('Validating Serial ID...','text-info');
+        var body = 'request_id='+encodeURIComponent(rid)+'&serial_no='+encodeURIComponent(sn);
+        fetch('admin_borrow_center.php?action=validate_model_id', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body })
+          .then(r=>r.json()).then(function(resp){
+            if (resp && resp.ok){ setStatus('Valid: '+(resp.model||'')+' | '+(resp.category||''),'text-success'); approveBtn && (approveBtn.disabled = false); }
+            else { setStatus(resp && resp.reason ? resp.reason : 'Invalid Serial ID.','text-danger'); approveBtn && (approveBtn.disabled = true); }
+          }).catch(function(){ setStatus('Validation error','text-danger'); approveBtn && (approveBtn.disabled = true); });
+      }
+      function parseFlexiblePayload(txt){
+        // Try JSON first
+        try { var o = JSON.parse(txt); if (o && typeof o==='object') return o; } catch(_e) {}
+        // Try URL or query string
+        try {
+          var s = txt.trim();
+          var qs = '';
+          if (/^https?:\/\//i.test(s)) { var u = new URL(s); qs = u.search || ''; }
+          else if (s.includes('=') && (s.includes('&') || s.includes('=') )) { qs = s; }
+          if (qs) {
+            if (qs.startsWith('?')) qs = qs.slice(1);
+            var usp = new URLSearchParams(qs);
+            var obj = {};
+            usp.forEach((v,k)=>{ obj[k]=v; });
+            if (Object.keys(obj).length) return obj;
+          }
+        } catch(_e) {}
+        // Try key:value pairs separated by newlines/commas
+        try {
+          var obj2 = {}; var parts = txt.split(/[,\n]+/);
+          parts.forEach(function(p){ var kv = p.split(/[:=]/); if (kv.length>=2){ var k=kv[0].trim(); var v=kv.slice(1).join(':').trim(); if(k) obj2[k]=v; }});
+          if (Object.keys(obj2).length) return obj2;
+        } catch(_e) {}
+        // If pure text/number, treat as serial_no (Serial ID)
+        if (/^\s*[\w\-]+\s*$/.test(txt)) { return { serial_no: txt.trim() }; }
+        return null;
+      }
+      function onScanSuccess(txt){
+        var data = parseFlexiblePayload(txt);
+        if (!data) { setStatus('Invalid QR format','text-danger'); return; }
+        var serial = (data.serial_no || data.serial || data.sn || data.s || data.sid || '').toString().trim();
+        var mdl = (data.model || data.item_name || data.name || '');
+        var cat = (data.category || data.cat || '');
+        if (serial){ inputId.value = String(serial); setStatus('Scanned Serial: '+serial+(mdl||cat?(' ('+[mdl,cat].filter(Boolean).join(' | ')+')'):'') ,'text-success'); stop(); validateCurrentId(); }
+        else { setStatus('QR missing serial_no','text-danger'); }
+      }
+      mdl && mdl.addEventListener('show.bs.modal', function(e){
+        var btn=e.relatedTarget; var rid=btn?.getAttribute('data-reqid')||''; var item=btn?.getAttribute('data-item')||''; var qty=btn?.getAttribute('data-qty')||'';
+        var rtype = btn?.getAttribute('data-reqtype')||'';
+        var exp = btn?.getAttribute('data-expected_return_at')||'';
+        var rs = btn?.getAttribute('data-reserved_from')||'';
+        var re = btn?.getAttribute('data-reserved_to')||'';
+        var qrSerial = btn?.getAttribute('data-qr_serial')||'';
+        reqIdEl.value=rid; itemEl.textContent=item; qtyEl.textContent=qty; inputId.value=''; approveBtn && (approveBtn.disabled = true); readerDiv.innerHTML='';
+        applyReqType((rtype||'').toLowerCase()==='reservation'?'reservation':'immediate', exp, rs, re);
+        if (qrSerial && qrSerial.trim() !== '') {
+          // Prefilled from QR: lock UI to the provided serial
+          inputId.value = qrSerial;
+          try { inputId.readOnly = true; inputId.classList.add('bg-light'); } catch(_){ }
+          if (startBtn) startBtn.style.display='none';
+          if (stopBtn) stopBtn.style.display='none';
+          if (camWrap) camWrap.style.display='none';
+          var img = document.getElementById('asImageFile'); if (img) img.closest('.mt-2')?.classList.add('d-none');
+          setStatus('Serial provided by QR submission. Scanning disabled for this request.','text-info');
+          // Auto-validate the serial to enable Approve button
+          validateCurrentId();
+        } else {
+          // Normal flow with scanner allowed
+          try { inputId.readOnly = false; inputId.classList.remove('bg-light'); } catch(_){ }
+          if (startBtn) startBtn.style.display='inline-block';
+          if (stopBtn) stopBtn.style.display='none';
+          (function(){ var img = document.getElementById('asImageFile'); if (img) { var w = img.closest('.mt-2'); if (w) w.classList.remove('d-none'); } })();
+          setStatus('You can scan a QR or enter ID manually.','text-muted');
+          if (camWrap) camWrap.style.display = isMobile ? 'none' : 'block';
+          if (isMobile) {
+            if (startBtn) startBtn.disabled = true;
+            if (stopBtn) stopBtn.disabled = true;
+            setStatus('Live camera scanning is available on desktop only. Use image upload or enter Serial ID.','text-muted');
+          } else {
+            listCams();
+            if (startBtn) startBtn.disabled = false;
+            if (stopBtn) stopBtn.disabled = false;
+          }
+        }
+      });
+      startBtn && startBtn.addEventListener('click', function(){ if (isMobile) return; startWithSelected(); });
+      stopBtn && stopBtn.addEventListener('click', function(){ stop(); });
+      form && form.addEventListener('submit', function(){ stop(); /* server uses request values; hidden fields already set for compatibility */ });
+      inputId && inputId.addEventListener('input', function(){ approveBtn && (approveBtn.disabled = true); if (this.value.trim()) { validateCurrentId(); } else { setStatus('You can scan a QR or enter ID manually.','text-muted'); } });
+      camSelect && camSelect.addEventListener('change', function(){
+        localStorage.setItem('as_camera', this.value);
+        if (scanning) { stop(); setTimeout(startWithSelected, 100); }
+      });
+      imgInput && imgInput.addEventListener('change', function(){ var f=this.files&&this.files[0]; if(!f){return;} stop(); setStatus('Processing image...','text-info');
+        function tryScanSequence(file){
+          // 1) Static scanFile with preview
+          if (typeof Html5Qrcode !== 'undefined' && typeof Html5Qrcode.scanFile === 'function') {
+            return Html5Qrcode.scanFile(file, true)
+              .catch(function(){
+                // 2) Static scanFile without preview
+                return Html5Qrcode.scanFile(file, false);
+              })
+              .catch(function(){
+                // 3) Instance scan
+                var inst = new Html5Qrcode('asReader');
+                return inst.scanFile(file, true).finally(function(){ try{inst.clear();}catch(e){} });
+              });
+          }
+          // Fallback to instance only
+          var inst2 = new Html5Qrcode('asReader');
+          return inst2.scanFile(file, true).finally(function(){ try{inst2.clear();}catch(e){} });
+        }
+        tryScanSequence(f).then(function(txt){ onScanSuccess(txt); setStatus('QR scanned from image.','text-success'); })
+          .catch(function(){
+            setStatus('No QR found in image. Tips: use a clear, high-contrast PNG/JPG, ensure the QR is large and flat (no tilt), and try re-exporting the QR.', 'text-danger');
+          });
+      });
+    })();
+  </script>
+
+  <!-- Lost/Damaged History Modal -->
+  <div class="modal fade" id="ldHistoryModal" tabindex="-1" aria-labelledby="ldHistoryLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header d-flex align-items-center justify-content-between">
+          <h5 class="modal-title" id="ldHistoryLabel"><i class="bi bi-clock-history me-2"></i>Lost/Damaged History</h5>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#ldPrintHeaderModal"><i class="bi bi-printer me-1"></i>Print</button>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-12 col-md-3">
+              <label class="form-label">Event</label>
+              <select class="form-select form-select-sm" id="ldEventFilter">
+                <option value="">All</option>
+                <option>Lost</option>
+                <option>Permanently Lost</option>
+                <option>Disposed</option>
+                <option>Found</option>
+                <option>Under Maintenance</option>
+                <option>Fixed</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label">Current Status</label>
+              <select class="form-select form-select-sm" id="ldCurrentFilter">
+                <option value="">All</option>
+                <option value="Lost">Still Lost</option>
+                <option value="Permanently Lost">Permanently Lost</option>
+                <option value="Disposed">Disposed</option>
+                <option value="Under Maintenance">Still Damaged</option>
+                <option value="Found">Found</option>
+                <option value="Fixed">Fixed</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label">Search (Model/Category)</label>
+              <input type="text" class="form-control form-control-sm" id="ldSearchFilter" placeholder="Type to search..." />
+            </div>
+          </div>
+          <!-- Print header details handled via a secondary modal -->
+          <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle" id="ldHistoryTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Serial ID</th>
+                  <th>Model</th>
+                  <th>Category</th>
+                  <th>User</th>
+                  <th>Student ID</th>
+                  <th>Location</th>
+                  <th>Event</th>
+                  <th>By</th>
+                  <th id="ldDateCol1">Date Damaged/Lost</th>
+                  <th id="ldDateCol2">Date Fixed/Found</th>
+                  <th>Remarks</th>
+                  <th>Current Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php if (empty($ldHistory)): ?>
+                  <tr class="ld-row"><td colspan="12" class="text-center text-muted">No history yet.</td></tr>
+                <?php else: foreach ($ldHistory as $h): ?>
+                  <?php $ca = trim((string)($h['current_action'] ?? '')); ?>
+                  <tr class="ld-row" data-event="<?php echo htmlspecialchars($h['action']); ?>" data-current="<?php echo htmlspecialchars($ca); ?>" data-model="<?php echo htmlspecialchars($h['model_key']); ?>" data-category="<?php echo htmlspecialchars($h['category']); ?>">
+                    <td><?php echo htmlspecialchars((string)($h['serial_no'] ?? '')); ?></td>
+                    <td><?php echo htmlspecialchars($h['model_key']); ?></td>
+                    <td><?php echo htmlspecialchars($h['category']); ?></td>
+                    <td><?php echo htmlspecialchars($h['username'] ?: '-'); ?></td>
+                    <td><?php echo htmlspecialchars((string)($h['user_school_id'] ?? '')); ?></td>
+                    <td><?php echo htmlspecialchars((string)($h['location'] ?? '')); ?></td>
+                    <td>
+                      <?php
+                        $ev = trim((string)$h['action']);
+                        // Normalize display for badge style; show Permanently Lost explicitly
+                        if ($ev === 'Permanently Lost') { $evDisplay = 'Permanently Lost'; $evCls = 'danger'; }
+                        else { $evDisplay = ($ev === 'Lost' || $ev === 'Found') ? 'Lost' : 'Damaged'; $evCls = ($evDisplay === 'Lost') ? 'danger' : 'warning text-dark'; }
+                      ?>
+                      <span class="badge bg-<?php echo $evCls; ?>"><?php echo htmlspecialchars($evDisplay); ?></span>
+                    </td>
+                    <td><?php echo htmlspecialchars($h['username'] ?: '-'); ?></td>
+                    <td>
+                      <?php
+                        $lostDamagedDate = '';
+                        $evNow = (string)($h['action'] ?? '');
+                        // If this specific log row is Lost or Under Maintenance, show its own timestamp
+                        if ($evNow === 'Lost' || $evNow === 'Under Maintenance') {
+                          $lostDamagedDate = (string)($h['created_at'] ?? '');
+                        }
+                        // Fallback to the latest known lost/damaged timestamps per model
+                        if ($lostDamagedDate === '') {
+                          if (!empty($h['last_lost_at'])) { $lostDamagedDate = (string)$h['last_lost_at']; }
+                          elseif (!empty($h['last_maint_at'])) { $lostDamagedDate = (string)$h['last_maint_at']; }
+                        }
+                        echo $lostDamagedDate ? htmlspecialchars(date('h:i A m-d-y', strtotime($lostDamagedDate))) : '-';
+                      ?>
+                    </td>
+                    <td>
+                      <?php
+                        $foundFixedDate = '';
+                        if (!empty($h['last_found_at'])) { $foundFixedDate = (string)$h['last_found_at']; }
+                        elseif (!empty($h['last_fixed_at'])) { $foundFixedDate = (string)$h['last_fixed_at']; }
+                        echo $foundFixedDate ? htmlspecialchars(date('h:i A m-d-y', strtotime($foundFixedDate))) : '-';
+                      ?>
+                    </td>
+                    <td><?php echo htmlspecialchars((string)($h['notes'] ?? '')) ?: '-'; ?></td>
+                    <td>
+                      <?php
+                        if ($ca === 'Lost') { echo '<span class="badge bg-danger">Still Lost</span>'; }
+                        elseif ($ca === 'Permanently Lost') { echo '<span class="badge bg-danger">Permanently Lost</span>'; }
+                        elseif ($ca === 'Disposed') { echo '<span class="badge bg-danger">Disposed</span>'; }
+                        elseif ($ca === 'Under Maintenance') { echo '<span class="badge bg-warning text-dark">Still Damaged</span>'; }
+                        elseif ($ca === 'Found') { echo '<span class="badge bg-success">Found</span>'; }
+                        elseif ($ca === 'Fixed') { echo '<span class="badge bg-success">Fixed</span>'; }
+                        else { echo '<span class="badge bg-secondary">Unknown</span>'; }
+                      ?>
+                    </td>
+                  </tr>
+                <?php endforeach; endif; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Populate Request Details modal
+    (function(){
+      var mdl = document.getElementById('requestDetailsModal');
+      if (mdl) {
+        mdl.addEventListener('show.bs.modal', function (event) {
+          var btn = event.relatedTarget;
+          var user = btn?.getAttribute('data-user') || '';
+          var item = btn?.getAttribute('data-item') || '';
+          var qty  = btn?.getAttribute('data-qty') || '';
+          var details = btn?.getAttribute('data-details') || '';
+          document.getElementById('rdUser').textContent = user;
+          document.getElementById('rdItem').textContent = item;
+          document.getElementById('rdQty').textContent = qty;
+          var d = document.getElementById('rdDetails');
+          d.textContent = details && details.trim() ? details : 'No details provided.';
+        });
+      }
+    })();
+
+    // Filters for Lost/Damaged Event Log
+    (function(){
+      function updateLdDateColumns(){
+        var ev = (document.getElementById('ldEventFilter')?.value || '').trim();
+        var col1 = document.getElementById('ldDateCol1');
+        var col2 = document.getElementById('ldDateCol2');
+        // Determine which date types to show
+        var showPair = 'all';
+        if (ev === 'Lost' || ev === 'Found') showPair = 'lost';
+        else if (ev === 'Under Maintenance' || ev === 'Fixed') showPair = 'damaged';
+        // Set headers
+        if (showPair === 'lost') { if (col1) col1.textContent = 'Date Lost'; if (col2) col2.textContent = 'Date Found'; }
+        else if (showPair === 'damaged') { if (col1) col1.textContent = 'Date Damaged'; if (col2) col2.textContent = 'Date Fixed'; }
+        else { if (col1) col1.textContent = 'Date Damaged/Lost'; if (col2) col2.textContent = 'Date Fixed/Found'; }
+        // Show/hide spans inside cells accordingly
+        document.querySelectorAll('#ldHistoryTable tbody tr').forEach(function(tr){
+          // Reset all spans hidden
+          tr.querySelectorAll('.ld-date').forEach(function(sp){ sp.style.display = 'none'; });
+          var tds = tr.querySelectorAll('td');
+          var date1 = tds[5]; var date2 = tds[6];
+          if (showPair === 'lost') {
+            if (date1) { date1.querySelectorAll('.ld-date-lost').forEach(function(sp){ sp.style.display = ''; }); }
+            if (date2) { date2.querySelectorAll('.ld-date-found').forEach(function(sp){ sp.style.display = ''; }); }
+          } else if (showPair === 'damaged') {
+            if (date1) { date1.querySelectorAll('.ld-date-damaged').forEach(function(sp){ sp.style.display = ''; }); }
+            if (date2) { date2.querySelectorAll('.ld-date-fixed').forEach(function(sp){ sp.style.display = ''; }); }
+          } else {
+            // All: first column shows one of Damaged/Lost (prefer Damaged), second shows one of Found/Fixed (prefer Found)
+            if (date1) {
+              var dmg = date1.querySelector('.ld-date-damaged');
+              var lst = date1.querySelector('.ld-date-lost');
+              if (dmg && dmg.textContent.trim()) { dmg.style.display = ''; }
+              else if (lst && lst.textContent.trim()) { lst.style.display = ''; }
+            }
+            if (date2) {
+              var fnd = date2.querySelector('.ld-date-found');
+              var fxd = date2.querySelector('.ld-date-fixed');
+              if (fnd && fnd.textContent.trim()) { fnd.style.display = ''; }
+              else if (fxd && fxd.textContent.trim()) { fxd.style.display = ''; }
+            }
+          }
+        });
+      }
+
+      function applyLdFilters(){
+        var ev = document.getElementById('ldEventFilter')?.value.toLowerCase() || '';
+        var cur = document.getElementById('ldCurrentFilter')?.value.toLowerCase() || '';
+        var q = (document.getElementById('ldSearchFilter')?.value || '').toLowerCase();
+        document.querySelectorAll('#ldHistoryTable tbody tr.ld-row').forEach(function(tr){
+          var tev = (tr.getAttribute('data-event') || '').toLowerCase();
+          var tcur = (tr.getAttribute('data-current') || '').toLowerCase();
+          var tmodel = (tr.getAttribute('data-model') || '').toLowerCase();
+          var tcat = (tr.getAttribute('data-category') || '').toLowerCase();
+          var ok = true;
+          if (ev && tev !== ev) ok = false;
+          if (cur && tcur !== cur) ok = false;
+          if (q && !(tmodel.includes(q) || tcat.includes(q))) ok = false;
+          tr.style.display = ok ? '' : 'none';
+        });
+        updateLdDateColumns();
+      }
+      ['ldEventFilter','ldCurrentFilter','ldSearchFilter'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', applyLdFilters);
+        if (el) el.addEventListener('change', applyLdFilters);
+      });
+      document.getElementById('ldHistoryModal')?.addEventListener('shown.bs.modal', function(){ updateLdDateColumns(); applyLdFilters(); });
+    })();
+    const bmCatModels = <?php echo json_encode($invCatModels, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+    const qtyStats = <?php echo json_encode($qtyStats, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+    const borrowLimitMap = <?php echo json_encode($borrowLimitMap, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+    const bmBulkCatSelect = document.getElementById('bm_bulk_category');
+    const bmModelsBody = document.getElementById('bm_models_body');
+    const bmMasterCheck = document.getElementById('bm_master_check');
+    const bmBulkSelectAllBtn = document.getElementById('bm_bulk_select_all');
+    const heldCounts = <?php echo json_encode($heldCounts, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+    function buildModelsTable() {
+      const c = bmBulkCatSelect ? bmBulkCatSelect.value : '';
+      const models = (c && bmCatModels[c]) ? bmCatModels[c].slice() : [];
+      bmModelsBody.innerHTML = '';
+      if (!models.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="4" class="text-center text-muted">No models found for this category.</td>';
+        bmModelsBody.appendChild(tr);
+        return;
+      }
+      models.forEach((m)=>{
+        const key = String(m);
+        const stats = (qtyStats[c] && qtyStats[c][key]) ? qtyStats[c][key] : {available:0,total:0};
+        const total = (stats.total ?? 0);
+        // Use current borrow_limit to compute how many more units can be added to the borrowable list.
+        // This avoids blocking when all units are Available (which previously made remaining 0).
+        const curLimit = (borrowLimitMap[c] && typeof borrowLimitMap[c][key] !== 'undefined')
+          ? parseInt(borrowLimitMap[c][key], 10)
+          : 0;
+        const remaining = Math.max(0, total - (isNaN(curLimit) ? 0 : curLimit));
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input type="checkbox" class="bm-row-check" name="models[]" value="${key.replace(/"/g,'&quot;')}" /></td>
+          <td>${key}</td>
+          <td>${remaining} / ${total}</td>
+          <td><input type="number" class="form-control form-control-sm" name="limits[${key.replace(/"/g,'&quot;')}]" min="0" max="${remaining}" value="0" /></td>
+        `;
+        bmModelsBody.appendChild(tr);
+      });
+      // Attach change listeners so checking a row auto-fills its limit to remaining, unchecking sets to 0
+      document.querySelectorAll('#bm_models_body .bm-row-check').forEach(function(cb){
+        cb.addEventListener('change', function(){
+          const tr = cb.closest('tr');
+          const inp = tr ? tr.querySelector('input[name^="limits["]') : null;
+          if (!inp) return;
+          const max = parseInt(inp.getAttribute('max') || '0', 10) || 0;
+          inp.value = cb.checked ? String(max) : '0';
+        });
+      });
+      // When limits are edited manually, reflect in checkbox state
+      document.querySelectorAll('#bm_models_body input[name^="limits["]').forEach(function(inp){
+        inp.addEventListener('input', function(){
+          const tr = inp.closest('tr');
+          const cb = tr ? tr.querySelector('.bm-row-check') : null;
+          if (!cb) return;
+          const val = parseInt(inp.value || '0', 10) || 0;
+          cb.checked = val > 0;
+        });
+      });
+    }
+    bmBulkCatSelect && bmBulkCatSelect.addEventListener('change', buildModelsTable);
+    bmBulkSelectAllBtn && bmBulkSelectAllBtn.addEventListener('click', function(){
+      document.querySelectorAll('#bm_models_body .bm-row-check').forEach(cb=>{
+        cb.checked = true;
+        const tr = cb.closest('tr');
+        const inp = tr ? tr.querySelector('input[name^="limits["]') : null;
+        if (inp) {
+          const max = parseInt(inp.getAttribute('max') || '0', 10) || 0;
+          inp.value = String(max);
+        }
+      });
+    });
+    bmMasterCheck && bmMasterCheck.addEventListener('change', function(){
+      const checked = bmMasterCheck.checked;
+      document.querySelectorAll('#bm_models_body .bm-row-check').forEach(cb=>{
+        cb.checked = checked;
+        const tr = cb.closest('tr');
+        const inp = tr ? tr.querySelector('input[name^="limits["]') : null;
+        if (inp) {
+          const max = parseInt(inp.getAttribute('max') || '0', 10) || 0;
+          inp.value = checked ? String(max) : '0';
+        }
+      });
+    });
+    // Build once on load if a category is already selected
+    document.addEventListener('DOMContentLoaded', function(){
+      if (bmBulkCatSelect && bmBulkCatSelect.value) { buildModelsTable(); }
+    });
+    function toggleSidebar(){ const sidebar=document.getElementById('sidebar-wrapper'); sidebar.classList.toggle('active'); if (window.innerWidth<=768){ document.body.classList.toggle('sidebar-open', sidebar.classList.contains('active')); } }
+    document.addEventListener('click', function(event){ const sidebar=document.getElementById('sidebar-wrapper'); const toggleBtn=document.querySelector('.mobile-menu-toggle'); if (window.innerWidth<=768){ if (sidebar && toggleBtn && !sidebar.contains(event.target) && !toggleBtn.contains(event.target)) { sidebar.classList.remove('active'); document.body.classList.remove('sidebar-open'); } } });
+  </script>
+  <script>
+    (function(){
+      let fetchingDot = false;
+      function pollDot(){
+        if (document.visibilityState !== 'visible') return;
+        if (fetchingDot) return; fetchingDot = true;
+        fetch('admin_borrow_center.php?action=pending_json')
+          .then(r=>r.json())
+          .then(d=>{
+            const items = (d && Array.isArray(d.pending)) ? d.pending : [];
+            try {
+              const navLink = document.querySelector('a[href="admin_borrow_center.php"]');
+              if (navLink) {
+                let dot = navLink.querySelector('.nav-borrow-dot');
+                const shouldShow = items.length > 0;
+                if (shouldShow) {
+                  if (!dot) {
+                    dot = document.createElement('span');
+                    dot.className = 'nav-borrow-dot ms-2 d-inline-block rounded-circle';
+                    dot.style.width = '8px';
+                    dot.style.height = '8px';
+                    dot.style.backgroundColor = '#dc3545';
+                    dot.style.verticalAlign = 'middle';
+                    dot.style.display = 'inline-block';
+                    navLink.appendChild(dot);
+                  } else {
+                    dot.style.display = 'inline-block';
+                  }
+                } else if (dot) {
+                  dot.style.display = 'none';
+                }
+              }
+            } catch(_){}
+          })
+          .catch(()=>{})
+          .finally(()=>{ fetchingDot = false; });
+      }
+      pollDot();
+      setInterval(pollDot, 2000);
+    })();
+    // Delete whitelisted serials modal logic
+    (function(){
+      const modalEl = document.getElementById('bmDeleteUnitsModal');
+      const bodyEl = document.getElementById('bmDeleteBody');
+      const catEl = document.getElementById('bmDelCat');
+      const modelEl = document.getElementById('bmDelModel');
+      const btnAll = document.getElementById('bmDelSelectAll');
+      const btnConfirm = document.getElementById('bmDeleteConfirmBtn');
+      let curCat = '', curModel = '';
+      async function loadWhitelisted(cat, model){
+        bodyEl.innerHTML = '<div class="text-muted">Loading whitelisted serials...</div>';
+        try {
+          const url = 'admin_borrow_center.php?action=list_borrowable_units&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
+          const r = await fetch(url); const j = await r.json().catch(()=>({ok:false,items:[]}));
+          const items = (j && j.ok && Array.isArray(j.items)) ? j.items : [];
+          if (!items.length) { bodyEl.innerHTML = '<div class="text-muted">No whitelisted serials.</div>'; return; }
+          const parts = ['<div class="d-flex flex-wrap gap-2">'];
+          items.forEach(it=>{
+            const mid = parseInt(it.model_id||0,10)||0; const sn = String(it.serial_no||'');
+            parts.push('<label class="border rounded px-2 py-1 d-inline-flex align-items-center">'+
+              '<input type="checkbox" class="form-check-input me-2 bm-del-check" value="'+mid+'" />'+
+              '<span class="small">'+(sn?String(sn).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])):'(no serial)')+'</span>'+
+            '</label>');
+          });
+          parts.push('</div>');
+          bodyEl.innerHTML = parts.join('');
+        } catch(_) { bodyEl.innerHTML = '<div class="text-danger">Failed to load.</div>'; }
+      }
+      document.querySelectorAll('.bm-delete-units').forEach(btn=>{
+        btn.addEventListener('click', function(){
+          curCat = this.getAttribute('data-category')||''; curModel = this.getAttribute('data-model')||'';
+          if (catEl) catEl.textContent = curCat; if (modelEl) modelEl.textContent = curModel;
+          loadWhitelisted(curCat, curModel);
+        });
+      });
+      btnAll && btnAll.addEventListener('click', function(){
+        bodyEl.querySelectorAll('.bm-del-check').forEach(cb=>{ cb.checked = true; });
+      });
+      btnConfirm && btnConfirm.addEventListener('click', function(){
+        const picks = Array.from(bodyEl.querySelectorAll('.bm-del-check:checked')).map(cb=>cb.value);
+        if (!picks.length) { const m = bootstrap.Modal.getInstance(modalEl); if (m) m.hide(); return; }
+        const form = document.createElement('form'); form.method='POST'; form.action='admin_borrow_center.php';
+        const add=(n,v)=>{ const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=String(v); form.appendChild(i); };
+        add('do','delete_units'); add('category',curCat); add('model',curModel);
+        picks.forEach(id=>{ const i=document.createElement('input'); i.type='hidden'; i.name='ids[]'; i.value=String(id); form.appendChild(i); });
+        document.body.appendChild(form); form.submit();
+      });
+    })();
+  </script>
+  <script>
+    (function(){
+      function gid(id){ return document.getElementById(id); }
+      function showEl(e){ if(!e) return; e.classList.remove('d-none'); e.style.display='block'; }
+      function hideEl(e){ if(!e) return; e.classList.add('d-none'); e.style.display='none'; }
+      function widen(col){
+        if (!col) return;
+        if (!col.dataset._orig) col.dataset._orig = col.className;
+        // Force full-width: strip Bootstrap grid col- classes and set to col-12
+        var cls = col.className || '';
+        cls = cls.split(/\s+/).filter(function(c){ return !/^col-(sm|md|lg|xl|xxl)?-\d+$/.test(c); }).join(' ');
+        col.className = (cls ? (cls + ' ') : '') + 'col-12';
+      }
+      function resetCols(){
+        ['pending-col','borrowed-col','reservations-col','returned-col'].forEach(function(id){
+          var el = gid(id);
+          if (el && el.dataset._orig) { el.className = el.dataset._orig; }
+        });
+      }
+      function parseDefault(){
+        // Force default to 'pending' regardless of hash or query params
+        return 'pending';
+      }
+      function apply(mode){
+        mode = (mode||'').toLowerCase();
+        var pbRow = gid('pb-row');
+        var retRow = gid('returned-list');
+        var pCol = gid('pending-col');
+        var bCol = gid('borrowed-col');
+        var rsvCol = gid('reservations-col');
+        var retCol = gid('returned-col');
+        var pCard = gid('pending-list');
+        var bCard = gid('borrowed-list');
+        var rsvCard = gid('reservations-list');
+        var retCard = gid('returned-card');
+        hideEl(pbRow); hideEl(retRow);
+        hideEl(pCol); hideEl(bCol); hideEl(rsvCol); hideEl(retCol);
+        hideEl(pCard); hideEl(bCard); hideEl(rsvCard); hideEl(retCard);
+        resetCols();
+        if (mode === 'borrowed') { showEl(pbRow); showEl(bCol); showEl(bCard); widen(bCol); }
+        else if (mode === 'reservations') { showEl(retRow); showEl(rsvCol); showEl(rsvCard); widen(rsvCol); }
+        else if (mode === 'returned') { showEl(retRow); showEl(retCol); showEl(retCard); widen(retCol); }
+        else { showEl(pbRow); showEl(pCol); showEl(pCard); widen(pCol); }
+      }
+      // Expose for inline onchange
+      window.__brApply = apply;
+      function init(){
+        var sel = gid('brViewSelect');
+        if (!sel) return;
+        var def = parseDefault();
+        sel.value = def;
+        apply(def);
+        sel.addEventListener('change', function(){ apply(this.value); });
+        window.addEventListener('hashchange', function(){ var d=parseDefault(); sel.value=d; apply(d); });
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+    })();
+  </script>
+  <style>
+    @media (max-width: 768px) {
+      .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; transition: transform .2s ease-in-out; }
+      .bottom-nav.hidden{ transform: translateY(100%); }
+      .bottom-nav a{ text-decoration:none; font-size:12px; color:#333; display:flex; flex-direction:column; align-items:center; gap:4px; }
+      .bottom-nav a .bi{ font-size:18px; }
+      .bottom-nav-toggle{ position: fixed; right: 14px; bottom: 14px; z-index: 1060; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: bottom .2s ease-in-out; }
+      .bottom-nav-toggle.raised{ bottom: 78px; }
+      .bottom-nav-toggle .bi{ font-size: 1.2rem; }
+    }
+  </style>
+  <button type="button" class="btn btn-primary bottom-nav-toggle d-md-none" id="bnToggleBC" aria-controls="bcBottomNav" aria-expanded="false" title="Open menu">
+    <i class="bi bi-list"></i>
+  </button>
+  <nav class="bottom-nav d-md-none hidden" id="bcBottomNav">
+    <a href="admin_dashboard.php" aria-label="Dashboard">
+      <i class="bi bi-speedometer2"></i>
+      <span>Dashboard</span>
+    </a>
+    <a href="admin_borrow_center.php" aria-label="Borrow">
+      <i class="bi bi-clipboard-check"></i>
+      <span>Borrow</span>
+    </a>
+    <a href="qr_scanner.php" aria-label="QR">
+      <i class="bi bi-qr-code-scan"></i>
+      <span>QR</span>
+    </a>
+    <a href="change_password.php" aria-label="Password">
+      <i class="bi bi-key"></i>
+      <span>Password</span>
+    </a>
+    <a href="logout.php" aria-label="Logout" onclick="return confirm('Logout now?');">
+      <i class="bi bi-box-arrow-right"></i>
+      <span>Logout</span>
+    </a>
+  </nav>
+  <script>
+    (function(){
+      var btn = document.getElementById('bnToggleBC');
+      var nav = document.getElementById('bcBottomNav');
+      if (btn && nav) {
+        btn.addEventListener('click', function(){
+          var hid = nav.classList.toggle('hidden');
+          btn.setAttribute('aria-expanded', String(!hid));
+          // move button up when nav is visible and swap icon/title
+          if (!hid) {
+            btn.classList.add('raised');
+            btn.title = 'Close menu';
+            var i = btn.querySelector('i'); if (i) { i.className = 'bi bi-x'; }
+          } else {
+            btn.classList.remove('raised');
+            btn.title = 'Open menu';
+            var i2 = btn.querySelector('i'); if (i2) { i2.className = 'bi bi-list'; }
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

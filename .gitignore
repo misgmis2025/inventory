@@ -1,0 +1,30 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# Environment and secrets
+.env
+.env.*
+inventory/config/mongo.php
+
+# Composer artifacts
+/composer.phar
+# Keep composer.lock committed for PHP projects; if you prefer otherwise, uncomment the next line
+# /composer.lock
+
+# Runtime/cache
+/tmp_sessions/
+/qr_codes/
+*.log
+*.cache
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Misc
+*.bak
+*.tmp

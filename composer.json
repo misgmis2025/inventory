@@ -1,0 +1,7 @@
+{
+    "name": "inventory/app",
+    "description": "Inventory web app",
+    "require": {
+        "mongodb/mongodb": "^2.1"
+    }
+}
