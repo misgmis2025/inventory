@@ -93,32 +93,7 @@ if (defined('USE_MONGO') && USE_MONGO) {
   } catch (\Throwable $e) { $usedMongo = false; }
 }
 
-if (!$usedMongo) {
-  $conn = new mysqli('localhost','root','','inventory_system');
-  if ($conn->connect_error) { http_response_code(500); echo 'DB connection failed'; exit(); }
-  $sql = "SELECT id, item_name, serial_no, category, location, status, date_acquired FROM inventory_items WHERE 1";
-  $params = [];$types='';
-  if ($search_q !== '') {
-    if ($isAdmin) { $sql .= " AND id = ?"; $params[] = intval($search_q); $types.='i'; }
-    else { $sql .= " AND item_name LIKE ?"; $params[] = "%$search_q%"; $types.='s'; }
-  }
-  if ($filter_status !== '') { $sql .= " AND status = ?"; $params[]=$filter_status; $types.='s'; }
-  if ($filter_category !== '') { $sql .= " AND category = ?"; $params[]=$filter_category; $types.='s'; }
-  if ($filter_condition !== '') { $sql .= " AND `condition` = ?"; $params[]=$filter_condition; $types.='s'; }
-  if ($filter_supply !== '') {
-    if ($filter_supply==='low') { $sql .= " AND quantity < 10"; }
-    elseif ($filter_supply==='average') { $sql .= " AND quantity > 10 AND quantity < 50"; }
-    elseif ($filter_supply==='high') { $sql .= " AND quantity > 50"; }
-  }
-  if ($date_from !== '' && $date_to !== '') { $sql .= " AND date_acquired BETWEEN ? AND ?"; $params[]=$date_from; $params[]=$date_to; $types.='ss'; }
-  elseif ($date_from !== '') { $sql .= " AND date_acquired >= ?"; $params[]=$date_from; $types.='s'; }
-  elseif ($date_to !== '') { $sql .= " AND date_acquired <= ?"; $params[]=$date_to; $types.='s'; }
-  $sql .= " ORDER BY category ASC, item_name ASC, id ASC";
-  if ($types!=='') { $stmt=$conn->prepare($sql); $stmt->bind_param($types, ...$params); $stmt->execute(); $res=$stmt->get_result(); while($row=$res->fetch_assoc()){ $items[]=$row; } $stmt->close(); }
-  else { $res=$conn->query($sql); if($res){ while($row=$res->fetch_assoc()){ $items[]=$row; } } }
-  $cres = $conn->query('SELECT name FROM categories ORDER BY name');
-  if ($cres) { while($r=$cres->fetch_assoc()){ $categoryOptions[]=$r['name']; } $cres->close(); }
-}
+if (!$usedMongo) { $items = []; $categoryOptions = []; }
 
 // Optional category and location filtering similar to inventory_print
 $catIdByName = [];

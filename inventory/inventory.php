@@ -72,14 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
                 $exists = $itemsCol->countDocuments($query) > 0;
             }
         } catch (Throwable $e) {
-            // Fallback to MySQL
-            if (!$MONGO_FILLED) {
-                $sidEsc = $conn->real_escape_string($sid);
-                $sql = "SELECT COUNT(*) AS c FROM inventory_items WHERE serial_no = '".$sidEsc."'";
-                if ($exclude > 0) { $sql .= " AND id <> ".intval($exclude); }
-                $res = $conn->query($sql);
-                if ($res && ($r = $res->fetch_assoc())) { $exists = (intval($r['c'],10) > 0); }
-            }
+            // No MySQL fallback in production; leave $exists=false
         }
         echo json_encode(['exists'=>$exists]);
         exit();
@@ -187,7 +180,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
             header("Location: inventory.php?deleted=1");
             exit();
         } catch (Throwable $e) {
-            // fall through to MySQL legacy below
+            http_response_code(500);
+            echo 'Database unavailable';
+            exit();
         }
     }
     if ($act === 'delete_item' && isset($_GET['item_id']) && isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin') {
@@ -238,7 +233,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
                 }
             }
         } catch (Throwable $e) {
-            // fall through to MySQL legacy below
+            http_response_code(500);
+            echo 'Database unavailable';
+            exit();
         }
     }
 }
@@ -304,11 +301,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Throwable $e) {
             http_response_code(500);
-            echo json_encode(['success'=>false,'error'=>'Mongo error']);
+            echo 'Database unavailable';
+            exit();
         }
         exit();
     }
-    // Handle admin form submits via MongoDB before any MySQL code
+    // Handle admin form submits via MongoDB only
     require_once __DIR__ . '/../vendor/autoload.php';
     require_once __DIR__ . '/db/mongo.php';
     try {
@@ -459,7 +457,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'location' => $location,
                             'notes' => $remarks,
                         ]);
-                    } catch (Throwable $_eLog) { /* ignore logging errors */ }
+                    } catch (Throwable $_eLog) { }
                 }
             }
             header('Location: inventory.php?item_updated=1');
@@ -597,7 +595,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $erCol->updateMany(['item_name'=>$modelKey,'status'=>'Pending'], ['$set'=>['status'=>'Rejected','rejected_at'=>date('Y-m-d H:i:s')]]);
                             }
                         }
-                    } catch (Throwable $_e3) { /* ignore */ }
+                    } catch (Throwable $_e3) { }
                 }
             }
             header('Location: inventory.php?deleted_item=1');
@@ -642,11 +640,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } catch (Throwable $e) {
-        // Fallback to existing MySQL logic below on error
+        http_response_code(500);
+        echo 'Database unavailable';
+        exit();
     }
 }
 
-$MONGO_FILLED = false;
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     require_once __DIR__ . '/../vendor/autoload.php';
     require_once __DIR__ . '/db/mongo.php';
@@ -852,269 +851,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
         $MONGO_FILLED = true;
     } catch (Throwable $e) {
-        $MONGO_FILLED = false;
-    }
-}
-
-if (!$MONGO_FILLED) {
-    $conn = new mysqli("localhost", "root", "", "inventory_system");
-    if ($conn->connect_error) {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            http_response_code(500);
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'error' => 'DB connection failed']);
-        } else {
-            http_response_code(500);
-            echo 'DB connection failed';
-        }
-        exit();
-    }
-}
-
-// Ensure inventory_items table exists for master item records
-if (!$MONGO_FILLED) $conn->query("CREATE TABLE IF NOT EXISTS inventory_items (
-    id INT(11) NOT NULL AUTO_INCREMENT,
-    item_name VARCHAR(255) NOT NULL,
-    category VARCHAR(100) DEFAULT NULL,
-    quantity INT(11) NOT NULL DEFAULT 1,
-    location VARCHAR(100) DEFAULT NULL,
-    `condition` VARCHAR(100) DEFAULT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'Available',
-    date_acquired DATE DEFAULT NULL,
-    remarks TEXT DEFAULT NULL,
-    serial_no VARCHAR(100) DEFAULT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-// Ensure serial_no column exists (for legacy schemas)
-if (!$MONGO_FILLED) $conn->query("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS serial_no VARCHAR(100) NULL AFTER remarks;");
-
-// Ensure deletion history table for inventory
-if (!$MONGO_FILLED) $conn->query("CREATE TABLE IF NOT EXISTS inventory_delete_log (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  item_id INT NOT NULL,
-  deleted_by VARCHAR(50) NOT NULL,
-  deleted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  reason VARCHAR(255) NULL,
-  item_name VARCHAR(255) NOT NULL,
-  model VARCHAR(150) NULL,
-  category VARCHAR(100) NOT NULL,
-  quantity INT NOT NULL,
-  status VARCHAR(50) NOT NULL,
-  serial_no VARCHAR(100) DEFAULT NULL,
-  INDEX idx_item_id (item_id),
-  INDEX idx_deleted_at (deleted_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-
-// Ensure borrowable_models table exists for admin-managed whitelist
-if (!$MONGO_FILLED) $conn->query("CREATE TABLE IF NOT EXISTS borrowable_models (
-  id INT(11) NOT NULL AUTO_INCREMENT,
-  model_name VARCHAR(150) NOT NULL,
-  category VARCHAR(100) NOT NULL,
-  active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uniq_model_category (model_name, category),
-  INDEX idx_active (active)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-
-// Ensure categories table exists for managing item categories
-if (!$MONGO_FILLED) $conn->query("CREATE TABLE IF NOT EXISTS categories (
-    id INT(11) NOT NULL AUTO_INCREMENT,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-
-// Ensure models table exists (models per category)
-if (!$MONGO_FILLED) $conn->query("CREATE TABLE IF NOT EXISTS models (
-    id INT(11) NOT NULL AUTO_INCREMENT,
-    category_id INT(11) NOT NULL,
-    name VARCHAR(150) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uniq_cat_model (category_id, name),
-    INDEX idx_category_id (category_id),
-    CONSTRAINT fk_models_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-
-// Ensure model column exists on inventory_items
-if (!$MONGO_FILLED) $conn->query("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS model VARCHAR(150) NULL AFTER category;");
-// Ensure serial_no column exists for per-item serial ID editing
-if (!$MONGO_FILLED) $conn->query("ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS serial_no VARCHAR(100) NULL AFTER model;");
-
-// Ensure inventory_scans has model_id for upsert-by-ModelID and index uniqueness
-if (!$MONGO_FILLED) {
-    @$conn->query("ALTER TABLE inventory_scans ADD COLUMN IF NOT EXISTS model_id INT(11) NULL AFTER id;");
-    // Try to add a unique index on model_id (ignore if it already exists)
-    @$conn->query("CREATE UNIQUE INDEX IF NOT EXISTS uniq_inventory_scans_model_id ON inventory_scans (model_id)");
-}
-
-// Handle delete action (GET)
-if (!$MONGO_FILLED && $_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'], $_GET['id']) && $_GET['action'] === 'delete') {
-	$id = intval($_GET['id']);
-	$del = $conn->prepare("DELETE FROM inventory_scans WHERE id = ?");
-	$del->bind_param("i", $id);
-	$del->execute();
-	$del->close();
-	header("Location: inventory.php?deleted=1");
-	exit();
-}
-
-// Handle delete inventory item (GET) for admin
-if (
-    $_SERVER['REQUEST_METHOD'] === 'GET'
-    && isset($_GET['action'], $_GET['item_id'])
-    && $_GET['action'] === 'delete_item'
-    && isset($_SESSION['usertype'])
-    && $_SESSION['usertype'] === 'admin'
-) {
-    if ($MONGO_FILLED) { /* handled earlier */ } else {
-    $itemId = intval($_GET['item_id']);
-    $reason = trim($_GET['reason'] ?? '');
-    if ($itemId > 0) {
-        // Log snapshot before delete
-        if ($ins = $conn->prepare("INSERT INTO inventory_delete_log
-            (item_id, deleted_by, reason, item_name, model, category, quantity, status, serial_no)
-            SELECT id, ?, ?, item_name, model, COALESCE(NULLIF(category,''),'Uncategorized'), quantity, status, serial_no
-            FROM inventory_items WHERE id=? AND status <> 'In Use'")) {
-            $ins->bind_param('ssi', $_SESSION['username'], $reason, $itemId);
-            $ins->execute();
-            $ins->close();
-        }
-        // Delete item
-        if ($del = $conn->prepare("DELETE FROM inventory_items WHERE id = ? AND status <> 'In Use'")) {
-            $del->bind_param("i", $itemId);
-            $del->execute();
-            $del->close();
-        }
-    }
-    header("Location: inventory.php?item_deleted=1");
-    exit();
-    }
-}
-
- 
-
-// Flags for admin item creation
-$item_created = false;
-$item_updated = false;
-$new_item_id = 0;
-$new_item = [];
-
-// Handle POST: distinguish JSON scanner vs. admin form submit
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-    $isJson = stripos($contentType, 'application/json') !== false;
-
-    if ($isJson) {
-		header('Content-Type: application/json');
-		$raw = file_get_contents('php://input');
-		$data = json_decode($raw, true);
-		if (!$data || empty($data['item_name'])) {
-			http_response_code(400);
-			echo json_encode(['success' => false, 'error' => 'Invalid payload']);
-			exit();
-		}
-		$item_name = trim($data['item_name'] ?? '');
-		$status = trim($data['status'] ?? '');
-		$form_type = trim($data['form_type'] ?? '');
-		$room = trim($data['room'] ?? '');
-		$generated_date = trim($data['generated_date'] ?? null);
-		$raw_qr = $raw;
-		$scanned_by = $_SESSION['username'];
-
-		// Determine model_id priority: use QR-provided model_id if available, otherwise try to resolve by item_name
-		$model_id = intval($data['model_id'] ?? 0);
-		if ($model_id <= 0 && $item_name !== '') {
-			$lookup = $conn->prepare("SELECT id FROM inventory_items WHERE item_name = ? ORDER BY id ASC LIMIT 1");
-			if ($lookup) {
-				$lookup->bind_param('s', $item_name);
-				$lookup->execute();
-				$res = $lookup->get_result();
-				if ($row = $res->fetch_assoc()) { $model_id = intval($row['id']); }
-				$lookup->close();
-			}
-		}
-
-		if ($model_id > 0) {
-			// Upsert by unique model_id: repeat scans only update scanned_at and fields
-			$sql = "INSERT INTO inventory_scans (model_id, item_name, status, form_type, room, generated_date, scanned_by, raw_qr, scanned_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-					ON DUPLICATE KEY UPDATE
-					item_name=VALUES(item_name),
-					status=VALUES(status),
-					form_type=VALUES(form_type),
-					room=VALUES(room),
-					generated_date=VALUES(generated_date),
-					scanned_by=VALUES(scanned_by),
-					raw_qr=VALUES(raw_qr),
-					scanned_at=NOW()";
-			$stmt = $conn->prepare($sql);
-			if ($stmt) {
-				// Note: bind 9 params as strings/ints matching placeholders
-				$stmt->bind_param('isssssss', $model_id, $item_name, $status, $form_type, $room, $generated_date, $scanned_by, $raw_qr);
-				$ok = $stmt->execute();
-				$stmt->close();
-				if ($ok) {
-					echo json_encode(['success' => true, 'model_id' => $model_id]);
-				} else {
-					http_response_code(500);
-					echo json_encode(['success' => false, 'error' => 'Upsert failed']);
-				}
-			} else {
-				http_response_code(500);
-				echo json_encode(['success' => false, 'error' => 'DB prepare failed']);
-			}
-		} else {
-			// Fallback: insert without model_id (legacy QR codes). May create duplicates if same item_name exists.
-			$stmt = $conn->prepare("INSERT INTO inventory_scans (item_name, status, form_type, room, generated_date, scanned_by, raw_qr) VALUES (?, ?, ?, ?, ?, ?, ?)");
-			$stmt->bind_param("sssssss", $item_name, $status, $form_type, $room, $generated_date, $scanned_by, $raw_qr);
-			if ($stmt->execute()) {
-				echo json_encode(['success' => true, 'id' => $stmt->insert_id]);
-			} else {
-				http_response_code(500);
-				echo json_encode(['success' => false, 'error' => 'Insert failed']);
-			}
-			$stmt->close();
-		}
-		$conn->close();
-		exit();
-    }
-
-    // Admin form submit to create a new inventory item
-    if (isset($_POST['create_item']) && isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin') {
-        $item_name = trim($_POST['item_name'] ?? '');
-        $category = trim($_POST['category'] ?? '');
-        $model = trim($_POST['model'] ?? '');
-        $quantity = max(0, intval($_POST['quantity'] ?? 1));
-        $location = trim($_POST['location'] ?? '');
-        $condition = trim($_POST['condition'] ?? '');
-        $status = trim($_POST['status'] ?? 'Available');
-        $date_acquired = trim($_POST['date_acquired'] ?? '');
-        $remarks = trim($_POST['remarks'] ?? '');
-        if ($item_name === '' && $model !== '') { $item_name = $model; }
-        if ($item_name !== '' && $quantity > 0) {
-            // When quantity > 1, create separate rows so each has its own unique ID (Model ID)
-            $stmt = $conn->prepare("INSERT INTO inventory_items (item_name, category, model, quantity, location, `condition`, status, date_acquired, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            if ($stmt) {
-                // Insert N rows with quantity = 1 each
-                for ($i = 0; $i < $quantity; $i++) {
-                    $one = 1;
-                    $stmt->bind_param('sssisssss', $item_name, $category, $model, $one, $location, $condition, $status, $date_acquired, $remarks);
-                    if ($stmt->execute()) {
-                        $item_created = true;
-                        // Track last inserted item basic info (optional, kept for possible future use)
-                        $new_item_id = $stmt->insert_id;
-                        $new_item = [
-                            'id' => $new_item_id,
-                            'item_name' => $item_name,
-                            'status' => $status,
-                            'category' => $category,
-                            'model' => $model,
-                            'location' => $location
-                        ];
+        http_response_code(500);
+        echo 'Database unavailable';
                     }
                 }
                 $stmt->close();

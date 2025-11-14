@@ -5,22 +5,16 @@ if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? 'user') !== 'user
     exit();
 }
 
-$conn = new mysqli('localhost', 'root', '', 'inventory_system');
-if ($conn->connect_error) { die('DB connection failed'); }
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/db/mongo.php';
+try { $db = get_mongo_db(); } catch (Throwable $e) { http_response_code(500); echo 'Database unavailable'; exit(); }
 
 // Ensure user_borrows table exists
-$conn->query("CREATE TABLE IF NOT EXISTS user_borrows (
-  id INT(11) NOT NULL AUTO_INCREMENT,
-  username VARCHAR(50) NOT NULL,
-  model_id INT(11) NOT NULL,
-  borrowed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  returned_at TIMESTAMP NULL DEFAULT NULL,
-  status ENUM('Borrowed','Returned') NOT NULL DEFAULT 'Borrowed',
-  PRIMARY KEY (id),
-  INDEX idx_user (username),
-  INDEX idx_model (model_id),
-  INDEX idx_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
+// MongoDB collections
+$ubCol = $db->selectCollection('user_borrows');
+$iiCol = $db->selectCollection('inventory_items');
+$erCol = $db->selectCollection('equipment_requests');
+$ldCol = $db->selectCollection('lost_damaged_log');
 
 // Ensure user_reports table exists
 // (user_reports table intentionally not managed here; user reporting disabled by design)
@@ -34,34 +28,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'borrow') {
         $model_id = intval($_POST['model_id'] ?? 0);
         if ($model_id > 0) {
-            // Only if the model exists
-            $chk = $conn->prepare('SELECT id FROM inventory_items WHERE id = ? LIMIT 1');
-            if ($chk) {
-                $chk->bind_param('i', $model_id);
-                $chk->execute();
-                $res = $chk->get_result();
-                if ($res && $res->fetch_assoc()) {
-                    // Avoid duplicate active borrow for same model and user
-                    $dup = $conn->prepare("SELECT id FROM user_borrows WHERE username = ? AND model_id = ? AND status = 'Borrowed' LIMIT 1");
-                    $dup->bind_param('si', $_SESSION['username'], $model_id);
-                    $dup->execute();
-                    $dupRes = $dup->get_result();
-                    if ($dupRes && $dupRes->fetch_assoc()) {
-                        $message = 'Already marked as borrowed.';
-                    } else {
-                        $ins = $conn->prepare('INSERT INTO user_borrows (username, model_id) VALUES (?, ?)');
-                        if ($ins) {
-                            $ins->bind_param('si', $_SESSION['username'], $model_id);
-                            if ($ins->execute()) { $message = 'Item marked as borrowed.'; }
-                            else { $error = 'Failed to mark as borrowed.'; }
-                            $ins->close();
-                        }
-                    }
-                    $dup->close();
+            // Validate item exists
+            $exists = $iiCol->findOne(['id' => $model_id]);
+            if ($exists) {
+                // Avoid duplicate active borrow
+                $dup = $ubCol->findOne(['username' => (string)$_SESSION['username'], 'model_id' => $model_id, 'status' => 'Borrowed']);
+                if ($dup) {
+                    $message = 'Already marked as borrowed.';
                 } else {
-                    $error = 'Invalid item.';
+                    $last = $ubCol->findOne([], ['sort' => ['id' => -1], 'projection' => ['id' => 1]]);
+                    $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
+                    $ubCol->insertOne([
+                        'id' => $nextId,
+                        'username' => (string)$_SESSION['username'],
+                        'model_id' => $model_id,
+                        'borrowed_at' => date('Y-m-d H:i:s'),
+                        'returned_at' => null,
+                        'status' => 'Borrowed',
+                    ]);
+                    $message = 'Item marked as borrowed.';
                 }
-                $chk->close();
+            } else {
+                $error = 'Invalid item.';
             }
         } else {
             $error = 'Missing item information.';
@@ -71,99 +59,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Recent scans by this user (last 10)
 $recent_scans = [];
-$rs = $conn->prepare('SELECT id, model_id, item_name, status, form_type, room, generated_date, scanned_at FROM inventory_scans WHERE scanned_by = ? ORDER BY scanned_at DESC, id DESC LIMIT 10');
-if ($rs) {
-    $rs->bind_param('s', $_SESSION['username']);
-    $rs->execute();
-    $res = $rs->get_result();
-    while ($row = $res->fetch_assoc()) { $recent_scans[] = $row; }
-    $rs->close();
-}
+try {
+    $scCol = $db->selectCollection('inventory_scans');
+    $cur = $scCol->find(['scanned_by' => (string)$_SESSION['username']], ['sort' => ['scanned_at' => -1, 'id' => -1], 'limit' => 10]);
+    foreach ($cur as $r) {
+        $recent_scans[] = [
+            'id' => (int)($r['id'] ?? 0),
+            'model_id' => (int)($r['model_id'] ?? 0),
+            'item_name' => (string)($r['item_name'] ?? ''),
+            'status' => (string)($r['status'] ?? ''),
+            'form_type' => (string)($r['form_type'] ?? ''),
+            'room' => (string)($r['room'] ?? ''),
+            'generated_date' => (string)($r['generated_date'] ?? ''),
+            'scanned_at' => (string)($r['scanned_at'] ?? ''),
+        ];
+    }
+} catch (Throwable $_) { }
 
 // My borrowed items (active)
 $my_borrowed = [];
-$sql = "SELECT 
-            ub.id AS borrow_id,
-            (
-              SELECT er2.id
-              FROM equipment_requests er2
-              WHERE er2.username = ub.username
-                AND (er2.item_name = COALESCE(NULLIF(ii.model,''), ii.item_name) OR er2.item_name = ii.item_name)
-              ORDER BY ABS(TIMESTAMPDIFF(SECOND, er2.created_at, ub.borrowed_at)) ASC, er2.id DESC
-              LIMIT 1
-            ) AS request_id,
-            ub.borrowed_at,
-            ii.id AS model_id, ii.item_name, ii.model, ii.category, ii.`condition`
-        FROM user_borrows ub
-        JOIN inventory_items ii ON ii.id = ub.model_id
-        WHERE ub.username = ? AND ub.status = 'Borrowed'
-        ORDER BY ub.borrowed_at DESC, ub.id DESC";
-$bs = $conn->prepare($sql);
-if ($bs) {
-    $bs->bind_param('s', $_SESSION['username']);
-    $bs->execute();
-    $res = $bs->get_result();
-    while ($row = $res->fetch_assoc()) {
-        $row['__status'] = 'Borrowed';
-        $row['__ts'] = $row['borrowed_at'];
-        // set row_id to matched request_id if present; fallback to borrow_id
-        $row['row_id'] = (int)($row['request_id'] ?? $row['borrow_id'] ?? 0);
-        $my_borrowed[] = $row;
+try {
+    $cur = $ubCol->find(['username' => (string)$_SESSION['username'], 'status' => 'Borrowed'], ['sort' => ['borrowed_at' => -1, 'id' => -1]]);
+    foreach ($cur as $ub) {
+        $mid = (int)($ub['model_id'] ?? 0);
+        $itm = $mid > 0 ? $iiCol->findOne(['id' => $mid]) : null;
+        $modelName = $itm ? (string)($itm['model'] ?? ($itm['item_name'] ?? '')) : '';
+        $cat = $itm ? (string)($itm['category'] ?? 'Uncategorized') : 'Uncategorized';
+        $cond = $itm ? (string)($itm['condition'] ?? '') : '';
+        $req = $erCol->findOne([
+            'username' => (string)$_SESSION['username'],
+            'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))],
+        ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
+        $my_borrowed[] = [
+            'request_id' => (int)($req['id'] ?? 0),
+            'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
+            'model_id' => $mid,
+            'model' => $modelName,
+            'item_name' => $itm ? (string)($itm['item_name'] ?? '') : '',
+            'category' => ($cat !== '' ? $cat : 'Uncategorized'),
+            'condition' => $cond,
+            '__status' => 'Borrowed',
+            '__ts' => (string)($ub['borrowed_at'] ?? ''),
+            'row_id' => (int)($req['id'] ?? ($ub['id'] ?? 0)),
+        ];
     }
-    $bs->close();
-}
+} catch (Throwable $_) { }
 
 // Do not include requests; only show actual borrowed items
 $my_borrowed_combined = $my_borrowed;
 
 // My borrow history (this user only)
 $my_history = [];
-$hsql = "SELECT 
-                ub.id AS borrow_id,
-                (
-                  SELECT er2.id
-                  FROM equipment_requests er2
-                  WHERE er2.username = ub.username
-                    AND (er2.item_name = COALESCE(NULLIF(ii.model,''), ii.item_name) OR er2.item_name = ii.item_name)
-                  ORDER BY ABS(TIMESTAMPDIFF(SECOND, er2.created_at, ub.borrowed_at)) ASC, er2.id DESC
-                  LIMIT 1
-                ) AS request_id,
-                ub.borrowed_at, ub.returned_at, ub.status,
-                ii.id AS model_id, ii.item_name, ii.model, ii.category, ii.status AS item_status,
-                (
-                  SELECT l.created_at FROM lost_damaged_log l
-                  WHERE l.model_id = ub.model_id AND l.action = 'Lost'
-                  ORDER BY l.id DESC LIMIT 1
-                ) AS last_lost_at,
-                (
-                  SELECT l.created_at FROM lost_damaged_log l
-                  WHERE l.model_id = ub.model_id AND l.action = 'Found'
-                  ORDER BY l.id DESC LIMIT 1
-                ) AS last_found_at,
-                (
-                  SELECT l.created_at FROM lost_damaged_log l
-                  WHERE l.model_id = ub.model_id AND l.action = 'Under Maintenance'
-                  ORDER BY l.id DESC LIMIT 1
-                ) AS last_maint_at,
-                (
-                  SELECT l.created_at FROM lost_damaged_log l
-                  WHERE l.model_id = ub.model_id AND l.action = 'Fixed'
-                  ORDER BY l.id DESC LIMIT 1
-                ) AS last_fixed_at
-         FROM user_borrows ub
-         LEFT JOIN inventory_items ii ON ii.id = ub.model_id
-         WHERE ub.username = ?
-         ORDER BY ub.borrowed_at DESC, ub.id DESC LIMIT 200";
-$hs = $conn->prepare($hsql);
-if ($hs) {
-    $hs->bind_param('s', $_SESSION['username']);
-    $hs->execute();
-    $res = $hs->get_result();
-    while ($row = $res->fetch_assoc()) { $my_history[] = $row; }
-    $hs->close();
-}
-
-$conn->close();
+try {
+    $cur = $ubCol->find(['username' => (string)$_SESSION['username']], ['sort' => ['borrowed_at' => -1, 'id' => -1], 'limit' => 200]);
+    foreach ($cur as $ub) {
+        $mid = (int)($ub['model_id'] ?? 0);
+        $itm = $mid > 0 ? $iiCol->findOne(['id' => $mid]) : null;
+        $modelName = $itm ? (string)($itm['model'] ?? ($itm['item_name'] ?? '')) : '';
+        $cat = $itm ? (string)($itm['category'] ?? 'Uncategorized') : 'Uncategorized';
+        $req = $erCol->findOne([
+            'username' => (string)$_SESSION['username'],
+            'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))],
+        ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
+        // last status markers
+        $last_lost = $ldCol->findOne(['model_id' => $mid, 'action' => 'Lost'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
+        $last_found = $ldCol->findOne(['model_id' => $mid, 'action' => 'Found'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
+        $last_maint = $ldCol->findOne(['model_id' => $mid, 'action' => 'Under Maintenance'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
+        $last_fixed = $ldCol->findOne(['model_id' => $mid, 'action' => 'Fixed'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
+        $my_history[] = [
+            'request_id' => (int)($req['id'] ?? 0),
+            'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
+            'returned_at' => (string)($ub['returned_at'] ?? ''),
+            'status' => (string)($ub['status'] ?? ''),
+            'model_id' => $mid,
+            'item_name' => $itm ? (string)($itm['item_name'] ?? '') : '',
+            'model' => $modelName,
+            'category' => ($cat !== '' ? $cat : 'Uncategorized'),
+            'item_status' => (string)($itm['status'] ?? ''),
+            'last_lost_at' => (string)($last_lost['created_at'] ?? ''),
+            'last_found_at' => (string)($last_found['created_at'] ?? ''),
+            'last_maint_at' => (string)($last_maint['created_at'] ?? ''),
+            'last_fixed_at' => (string)($last_fixed['created_at'] ?? ''),
+        ];
+    }
+} catch (Throwable $_) { }
 ?>
 <!DOCTYPE html>
 <html lang="en">

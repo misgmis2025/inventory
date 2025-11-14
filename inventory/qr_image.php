@@ -46,24 +46,8 @@ try {
             'serial_no' => (string)($doc['serial_no'] ?? ''),
         ];
     }
-} catch (Throwable $e) {
-    // fall through to MySQL
-}
+} catch (Throwable $e) { }
 
-// Fallback to MySQL if Mongo not available or item not found
-if ($item === null) {
-    $conn = @new mysqli('localhost', 'root', '', 'inventory_system');
-    if (!$conn->connect_error) {
-        if ($stmt = $conn->prepare("SELECT item_name, model, category, location, status, serial_no FROM inventory_items WHERE id = ?")) {
-            $stmt->bind_param('i', $id);
-            $stmt->execute();
-            $res = $stmt->get_result();
-            $item = $res ? $res->fetch_assoc() : null;
-            $stmt->close();
-        }
-        $conn->close();
-    }
-}
 
 if (!$item) {
     http_response_code(404);

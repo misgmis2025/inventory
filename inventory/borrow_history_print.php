@@ -106,47 +106,7 @@ try {
     $usedMongo = false;
 }
 
-// Fallback to MySQL
-if (!$usedMongo) {
-    $conn = @new mysqli('localhost', 'root', '', 'inventory_system');
-    if (!$conn || $conn->connect_error) {
-        $conn = null; // leave $history empty; page will still render
-    } else {
-        $q = "SELECT ub.username, ub.borrowed_at, ub.returned_at, ub.status,
-                     ii.id AS model_id,
-                     ii.serial_no AS serial_no,
-                     COALESCE(NULLIF(ii.model,''), ii.item_name) AS model_name,
-                     COALESCE(NULLIF(ii.category,''),'Uncategorized') AS category,
-                     COALESCE(NULLIF(u.full_name,''), ub.username) AS full_name,
-                     u.id AS user_id,
-                     u.school_id AS school_id
-              FROM user_borrows ub
-              LEFT JOIN inventory_items ii ON ii.id = ub.model_id
-              LEFT JOIN users u ON u.username = ub.username
-              WHERE 1";
-        $params = [];
-        $types = '';
-        if ($username !== '') { $q .= ' AND ub.username = ?'; $params[] = $username; $types .= 's'; }
-        if ($date_from !== '' && $date_to !== '') { $q .= ' AND ub.borrowed_at BETWEEN ? AND ?'; $params[] = $date_from; $params[] = $date_to; $types .= 'ss'; }
-        elseif ($date_from !== '') { $q .= ' AND ub.borrowed_at >= ?'; $params[] = $date_from; $types .= 's'; }
-        elseif ($date_to !== '') { $q .= ' AND ub.borrowed_at <= ?'; $params[] = $date_to; $types .= 's'; }
-        $q .= ' ORDER BY ub.borrowed_at DESC, ub.id DESC LIMIT 1000';
-
-        if ($types !== '') {
-            if ($st = $conn->prepare($q)) {
-                $st->bind_param($types, ...$params);
-                $st->execute();
-                $res = $st->get_result();
-                while ($row = $res->fetch_assoc()) { $history[] = $row; }
-                $st->close();
-            }
-        } else {
-            $res = $conn->query($q);
-            if ($res) { while ($row = $res->fetch_assoc()) { $history[] = $row; } }
-        }
-        $conn->close();
-    }
-}
+// If Mongo failed, leave $history empty and render safely
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
 // Build fixed-size pages for printing (20 rows per page)
 $pages = array_chunk($history, 20);

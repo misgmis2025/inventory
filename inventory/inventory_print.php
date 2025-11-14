@@ -271,146 +271,13 @@ if (defined('USE_MONGO') && USE_MONGO) {
     }
     $usedMongo = true;
   } catch (Throwable $e) {
-    $usedMongo = false; // fallback to MySQL
+    $usedMongo = false;
   }
 }
 
 if (!$usedMongo) {
-    $conn = new mysqli("localhost", "root", "", "inventory_system");
-    if ($conn->connect_error) {
-        http_response_code(500);
-        echo 'DB connection failed';
-        exit();
-    }
-    $sql = "SELECT id, item_name, serial_no, category, quantity, location, `condition`, status, date_acquired
-            FROM inventory_items WHERE 1";
-    $params = [];
-    $types = '';
-
-    if ($search_q !== '') {
-        if ($isAdmin) {
-            $sql .= " AND id = ?";
-            $params[] = intval($search_q);
-            $types .= 'i';
-        } else {
-            $sql .= " AND item_name LIKE ?";
-            $params[] = "%$search_q%";
-            $types .= 's';
-        }
-    }
-    if ($filter_status !== '') {
-        if ($filter_status === 'Out of Order') {
-            $sql .= " AND quantity = 0";
-        } else {
-            $sql .= " AND status = ?"; $params[] = $filter_status; $types .= 's';
-        }
-    }
-    if ($filter_category !== '') { $sql .= " AND category = ?"; $params[] = $filter_category; $types .= 's'; }
-    if ($filter_condition !== '') { $sql .= " AND `condition` = ?"; $params[] = $filter_condition; $types .= 's'; }
-    if ($filter_supply !== '') {
-        if ($filter_supply === 'low') { $sql .= " AND quantity < 10"; }
-        elseif ($filter_supply === 'average') { $sql .= " AND quantity > 10 AND quantity < 50"; }
-        elseif ($filter_supply === 'high') { $sql .= " AND quantity > 50"; }
-    }
-    if ($date_from !== '' && $date_to !== '') { $sql .= " AND date_acquired BETWEEN ? AND ?"; $params[] = $date_from; $params[] = $date_to; $types .= 'ss'; }
-    elseif ($date_from !== '') { $sql .= " AND date_acquired >= ?"; $params[] = $date_from; $types .= 's'; }
-    elseif ($date_to !== '') { $sql .= " AND date_acquired <= ?"; $params[] = $date_to; $types .= 's'; }
-
-    $sql .= " ORDER BY category ASC, item_name ASC, id ASC";
-
-    $categoryOptions = [];
     $items = [];
-    if ($types !== '') {
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) { $items[] = $row; }
-        $stmt->close();
-    } else {
-        $res = $conn->query($sql);
-        if ($res) { while ($row = $res->fetch_assoc()) { $items[] = $row; } }
-    }
-
-    // When listing Lost, Damaged, or Under Maintenance, enrich with marker and responsible borrower details (MySQL)
-    $ldExtraMap = [];
-    $needLD = in_array($filter_status, ['Lost','Under Maintenance','Damaged'], true);
-    if ($needLD && !empty($items)) {
-      $modelIds = array_values(array_unique(array_map(function($r){ return (int)($r['id'] ?? 0); }, $items)));
-      $idList = implode(',', array_map('intval', $modelIds));
-      if ($idList !== '') {
-        // Marker from lost_damaged_log
-        $sqlLD = "SELECT l.model_id, l.username AS marker_username FROM lost_damaged_log l WHERE l.model_id IN ($idList) AND l.action = ? ORDER BY l.id DESC";
-        if ($stLD = $conn->prepare($sqlLD)) {
-          $ldAction = ($filter_status === 'Damaged') ? 'Under Maintenance' : $filter_status;
-          $stLD->bind_param('s', $ldAction);
-          if ($stLD->execute()) {
-            $resLD = $stLD->get_result();
-            $seenLD = [];
-            while ($r = $resLD->fetch_assoc()) { $mid = (int)$r['model_id']; if (isset($seenLD[$mid])) continue; $seenLD[$mid]=true; $ldExtraMap[$mid] = [ 'marker_username' => (string)$r['marker_username'], 'marker_full_name' => '', 'by_username' => '', 'by_full_name' => '' ]; }
-          }
-          $stLD->close();
-        }
-        // Resolve marker full names
-        if (!empty($ldExtraMap)) {
-          $usernames = array_values(array_unique(array_filter(array_map(function($e){ return (string)($e['marker_username'] ?? ''); }, $ldExtraMap))));
-          if (!empty($usernames)) {
-            $inUsers = implode(",", array_fill(0, count($usernames), '?'));
-            $typesU = str_repeat('s', count($usernames));
-            $sqlU = "SELECT username, COALESCE(NULLIF(full_name,''), username) AS full_name FROM users WHERE username IN ($inUsers)";
-            if ($stU = $conn->prepare($sqlU)) {
-              $stU->bind_param($typesU, ...$usernames);
-              if ($stU->execute()) {
-                $resU = $stU->get_result();
-                $mapName = [];
-                while ($ur = $resU->fetch_assoc()) { $mapName[(string)$ur['username']] = (string)$ur['full_name']; }
-                foreach ($ldExtraMap as $mid => $e) { $u = (string)($e['marker_username'] ?? ''); $ldExtraMap[$mid]['marker_full_name'] = $mapName[$u] ?? $u; }
-              }
-              $stU->close();
-            }
-          }
-        }
-        // Responsible borrower at or before the log time per model; leave blank if none/log missing
-        foreach ($ldExtraMap as $mid => $e) {
-          $midI = (int)$mid; if ($midI <= 0) continue;
-          $markerUserTmp = $e['marker_username'] ?? '';
-          // Find latest borrow returned on/before the log time
-          $qUB = "SELECT ub.username FROM user_borrows ub JOIN lost_damaged_log l ON l.model_id = ub.model_id WHERE ub.model_id = ? AND l.action = ? AND ub.returned_at IS NOT NULL AND l.created_at IS NOT NULL AND ub.returned_at <= l.created_at ORDER BY ub.returned_at DESC, ub.id DESC, l.id DESC LIMIT 1";
-          if ($stB = $conn->prepare($qUB)) {
-            $stB->bind_param('is', $midI, $ldAction);
-            if ($stB->execute()) {
-              $rs = $stB->get_result();
-              if ($rowB = $rs->fetch_assoc()) {
-                $u = (string)$rowB['username'];
-                $ldExtraMap[$mid]['by_username'] = $u;
-              }
-            }
-            $stB->close();
-          }
-        }
-        // Resolve by_full_name for any filled usernames
-        $userSet = [];
-        foreach ($ldExtraMap as $mid => $e) { $u = (string)($e['by_username'] ?? ''); if ($u !== '') $userSet[$u] = true; }
-        if (!empty($userSet)) {
-          $uArr = array_keys($userSet);
-          $inU = implode(",", array_fill(0, count($uArr), '?'));
-          $typesB = str_repeat('s', count($uArr));
-          $sqlNames = "SELECT username, COALESCE(NULLIF(full_name,''), username) AS full_name FROM users WHERE username IN ($inU)";
-          if ($stN = $conn->prepare($sqlNames)) {
-            $stN->bind_param($typesB, ...$uArr);
-            if ($stN->execute()) { $resN=$stN->get_result(); $map=[]; while($ur=$resN->fetch_assoc()){ $map[(string)$ur['username']] = (string)$ur['full_name']; } foreach ($ldExtraMap as $mid=>&$e){ $u=(string)($e['by_username']??''); if ($u!=='') { $e['by_full_name'] = $map[$u] ?? $u; } } unset($e); }
-            $stN->close();
-          }
-        }
-      }
-    }
-
-    // Load categories for filter selects
-    $cres = $conn->query("SELECT id, name FROM categories ORDER BY name");
-    if ($cres) {
-        while ($r = $cres->fetch_assoc()) { $categoryOptions[] = $r['name']; }
-        $cres->close();
-    }
+    $categoryOptions = [];
 }
 
 // Category ID or Name search. Build mapping from current item categories.
@@ -551,55 +418,11 @@ $ldShow = in_array($filter_status, ['Lost','Under Maintenance'], true);
 
 // Admin Borrow History (for print below inventory list)
 $borrow_history = $borrow_history ?? [];
-if ($isAdmin && !$usedMongo) {
-  $qh = "SELECT ub.username, ub.borrowed_at, ub.returned_at, ub.status,
-               ii.id AS model_id,
-               ii.serial_no AS serial_no,
-               COALESCE(NULLIF(ii.model,''), ii.item_name) AS model_name,
-               COALESCE(NULLIF(ii.category,''),'Uncategorized') AS category,
-               COALESCE(NULLIF(u.full_name,''), ub.username) AS full_name,
-               u.id AS user_id,
-               u.school_id AS school_id
-         FROM user_borrows ub
-         LEFT JOIN inventory_items ii ON ii.id = ub.model_id
-         LEFT JOIN users u ON u.username = ub.username
-         ORDER BY ub.borrowed_at DESC, ub.id DESC
-         LIMIT 500";
-  if (!$reservationMode) {
-    // Only BORROW history
-    $rh = $conn->query($qh);
-    if ($rh) { while ($row = $rh->fetch_assoc()) { $borrow_history[] = $row; } $rh->close(); }
-  } else {
-    // Only RESERVATION history
-    $qr = "SELECT er.username, er.reserved_from AS borrowed_at, er.reserved_to AS returned_at, er.status AS status,
-                 er.reserved_model_id AS model_id,
-                 er.reserved_serial_no AS serial_no,
-                 COALESCE(NULLIF(ii.model,''), COALESCE(NULLIF(ii.item_name,''), er.item_name)) AS model_name,
-                 COALESCE(NULLIF(ii.category,''),'Uncategorized') AS category,
-                 COALESCE(NULLIF(u.full_name,''), er.username) AS full_name,
-                 u.id AS user_id,
-                 u.school_id AS school_id
-          FROM equipment_requests er
-          LEFT JOIN inventory_items ii ON ii.id = er.reserved_model_id
-          LEFT JOIN users u ON u.username = er.username
-          WHERE er.type = 'reservation'
-          ORDER BY er.reserved_from DESC, er.id DESC
-          LIMIT 500";
-    if ($rrs = $conn->query($qr)) { while ($r = $rrs->fetch_assoc()) { if ($r['category'] === '') { $r['category'] = 'Uncategorized'; } $borrow_history[] = $r; } $rrs->close(); }
-  }
-  // Sort combined
-  usort($borrow_history, function($a,$b){
-    $ta = strtotime((string)($a['borrowed_at'] ?? '')) ?: 0;
-    $tb = strtotime((string)($b['borrowed_at'] ?? '')) ?: 0;
-    if ($ta === $tb) { return 0; }
-    return ($ta > $tb) ? -1 : 1;
-  });
-}
-elseif ($isAdmin && $usedMongo) {
+if ($isAdmin && $usedMongo) {
   // Already populated above in Mongo-first block; no-op to avoid duplicates.
 }
 
-if (isset($conn) && $conn instanceof mysqli) { $conn->close(); }
+// No MySQL connection to close
 // Add scroll class for Borrow History if entries are 13 or more
 $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
 ?>

@@ -168,13 +168,7 @@ try {
 
     $DASH_MONGO_FILLED = true;
 } catch (Throwable $e) {
-    $DASH_MONGO_FILLED = false; // fallback to MySQL below
-}
-
-// DB
-if (!$DASH_MONGO_FILLED) {
-    $conn = new mysqli("localhost", "root", "", "inventory_system");
-    if ($conn->connect_error) { die('DB connection failed'); }
+    $DASH_MONGO_FILLED = false;
 }
 
 // Filters
@@ -195,67 +189,12 @@ elseif ($date_to !== '') { $where[] = "date_acquired <= ?"; $params[] = $date_to
 $whereSql = '';
 if (!empty($where)) { $whereSql = 'WHERE ' . implode(' AND ', $where); }
 
-// Aggregate quantities by item_name
-if (!$DASH_MONGO_FILLED) {
-    $itemsAgg = [];
-    $sql = "SELECT item_name, COALESCE(SUM(quantity),0) AS total_qty FROM inventory_items $whereSql GROUP BY item_name ORDER BY item_name";
-    if ($types !== '') {
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($r = $res->fetch_assoc()) { $itemsAgg[] = $r; }
-        $stmt->close();
-    } else {
-        $res = $conn->query($sql);
-        if ($res) { while ($r = $res->fetch_assoc()) { $itemsAgg[] = $r; } }
-    }
-}
+// If Mongo failed, leave aggregates empty but render page
+if (!$DASH_MONGO_FILLED) { $itemsAgg = []; }
 
-// Compute stats (MySQL fallback)
+// Compute stats placeholders when Mongo failed
 if (!$DASH_MONGO_FILLED) {
-    $lowCount = 0;     // total_qty between 1 and 9
-    $outCount = 0;     // from borrowable catalog with total_qty = 0
-    $highCount = 0;    // total_qty > 50
-    $totalItems = count($itemsAgg); // unique item_name
-    $totalUnits = 0;  // sum of total_qty across items
-    foreach ($itemsAgg as $row) {
-        $qty = (int)($row['total_qty'] ?? 0);
-        $totalUnits += $qty;
-        if ($qty < 10 && $qty > 0) { $lowCount++; }
-        elseif ($qty > 50) { $highCount++; }
-    }
-
-    // Compute Out of Stock list from active borrowable_models using constrained availability
-    $outBorrowables = [];
-    if (isset($conn) && $conn instanceof mysqli) {
-        // Ensure borrowable_models table exists
-        @$conn->query("CREATE TABLE IF NOT EXISTS borrowable_models (
-          id INT(11) NOT NULL AUTO_INCREMENT,
-          model_name VARCHAR(150) NOT NULL,
-          category VARCHAR(100) NOT NULL,
-          active TINYINT(1) NOT NULL DEFAULT 1,
-          borrow_limit INT(11) NOT NULL DEFAULT 0,
-          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          UNIQUE KEY uniq_model_category (model_name, category)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-        $sqlOut = "SELECT bm.model_name AS item_name, bm.category,
-                          LEAST(bm.borrow_limit, COALESCE(SUM(CASE WHEN ii.status='Available' THEN ii.quantity ELSE 0 END),0)) AS available_qty
-                   FROM borrowable_models bm
-                   LEFT JOIN inventory_items ii
-                     ON ( (ii.model = bm.model_name OR ii.item_name = bm.model_name)
-                          AND COALESCE(NULLIF(ii.category,''),'Uncategorized') = bm.category )
-                   WHERE bm.active = 1
-                   GROUP BY bm.category, bm.model_name
-                   HAVING available_qty <= 0
-                   ORDER BY bm.category, bm.model_name";
-        if ($resOb = $conn->query($sqlOut)) {
-            while ($r = $resOb->fetch_assoc()) { $r['oos_date'] = date('Y-m-d'); $outBorrowables[] = $r; }
-            $resOb->close();
-        }
-        $outCount = count($outBorrowables);
-    }
+    $lowCount = 0; $outCount = 0; $highCount = 0; $totalItems = 0; $totalUnits = 0; $outBorrowables = [];
 }
 
 // Prepare chart data (MySQL fallback)
@@ -268,34 +207,9 @@ if (!$DASH_MONGO_FILLED) {
     }
 }
 
-if (!$DASH_MONGO_FILLED) {
-    $groupFormat = ($period === 'yearly') ? "%Y" : "%Y-%m";
-    $groupLabel  = ($period === 'yearly') ? 'Year' : 'Month';
-    $stocksTitle = 'Stocks (Sum of Units Added - ' . ucfirst($period) . ')';
-}
+if (!$DASH_MONGO_FILLED) { $groupLabel = ($period === 'yearly') ? 'Year' : 'Month'; $stocksTitle = 'Stocks (Sum of Units Added - ' . ucfirst($period) . ')'; }
 
-if (!$DASH_MONGO_FILLED) {
-    $stocksAgg = [];
-    $sqlM = "SELECT DATE_FORMAT(date_acquired, '$groupFormat') AS grp, COALESCE(SUM(quantity),0) AS qty
-             FROM inventory_items
-             $whereSql
-             GROUP BY grp
-             ORDER BY grp";
-    if ($types !== '') {
-        $stmt = $conn->prepare($sqlM);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($r = $res->fetch_assoc()) { if (!empty($r['grp'])) $stocksAgg[] = $r; }
-        $stmt->close();
-    } else {
-        $res = $conn->query($sqlM);
-        if ($res) { while ($r = $res->fetch_assoc()) { if (!empty($r['grp'])) $stocksAgg[] = $r; } }
-    }
-
-    $stocksLabels = array_map(function($r){ return $r['grp']; }, $stocksAgg);
-    $stocksValues = array_map(function($r){ return (int)$r['qty']; }, $stocksAgg);
-}
+if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
 
 // Close later after HTML renders (we might reuse $conn if needed)
 ?>

@@ -92,38 +92,7 @@ try {
         if (count($items) >= 300) break 2;
       }
     }
-} catch (Throwable $e) {
-    $conn = @new mysqli('localhost', 'root', '', 'inventory_system');
-    if (!$conn->connect_error) {
-        $conn->query("CREATE TABLE IF NOT EXISTS borrowable_models (
-          id INT(11) NOT NULL AUTO_INCREMENT,
-          model_name VARCHAR(150) NOT NULL,
-          category VARCHAR(100) NOT NULL,
-          active TINYINT(1) NOT NULL DEFAULT 1,
-          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          UNIQUE KEY uniq_model_category (model_name, category),
-          INDEX idx_active (active)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-        $sql = "SELECT 
-                  bm.category,
-                  bm.model_name AS model,
-                  LEAST(bm.borrow_limit, COALESCE(SUM(CASE WHEN ii.status='Available' THEN ii.quantity ELSE 0 END),0)) AS available_qty
-                FROM borrowable_models bm
-                LEFT JOIN inventory_items ii
-                  ON ( (ii.model = bm.model_name OR ii.item_name = bm.model_name)
-                       AND COALESCE(NULLIF(ii.category,''),'Uncategorized') = bm.category )
-                WHERE bm.active = 1
-                GROUP BY bm.category, bm.model_name
-                HAVING available_qty > 0
-                ORDER BY bm.category, bm.model_name DESC LIMIT 300";
-        if ($res = $conn->query($sql)) {
-            while ($row = $res->fetch_assoc()) { $items[] = $row; }
-            $res->close();
-        }
-        $conn->close();
-    }
-}
+} catch (Throwable $e) { $items = []; }
 if ($embed) {
     // Minimal embedded view (no sidebar) for modal/iframe
     ?><!DOCTYPE html>

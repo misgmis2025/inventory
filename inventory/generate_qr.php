@@ -32,16 +32,8 @@ try {
 } catch (Throwable $e) {
     $catsMongoFailed = true;
 }
-// Fallback to MySQL only if Mongo failed
-if ($catsMongoFailed) {
-    $conn = @new mysqli("localhost", "root", "", "inventory_system");
-    if (!$conn->connect_error) {
-        $cres = $conn->query("SELECT id, name FROM categories ORDER BY name");
-        if ($cres) { while ($r = $cres->fetch_assoc()) { $categoryOptions[] = $r['name']; } $cres->close(); }
-        if ($isCategoriesJson) { header('Content-Type: application/json'); echo json_encode([ 'categories' => array_values($categoryOptions) ]); $conn->close(); exit(); }
-        $conn->close();
-    }
-}
+// If Mongo failed, do not fallback to MySQL in production
+if ($catsMongoFailed) { if ($isCategoriesJson) { header('Content-Type: application/json'); echo json_encode(['categories'=>[]]); exit(); } }
 
 // Lightweight API: check if a serial exists
 if ($isCheckSerial) {
@@ -55,20 +47,7 @@ if ($isCheckSerial) {
             $dbx = get_mongo_db();
             $itemsCol = $dbx->selectCollection('inventory_items');
             $exists = $itemsCol->countDocuments(['serial_no' => $sid]) > 0;
-        } catch (Throwable $e) {
-            // Fallback to MySQL
-            $db = @new mysqli('localhost', 'root', '', 'inventory_system');
-            if (!$db->connect_error) {
-                if ($stmt = $db->prepare("SELECT COUNT(*) FROM inventory_items WHERE serial_no = ?")) {
-                    $stmt->bind_param('s', $sid);
-                    $stmt->execute();
-                    $stmt->bind_result($cnt);
-                    if ($stmt->fetch()) { $exists = (intval($cnt,10) > 0); }
-                    $stmt->close();
-                }
-                $db->close();
-            }
-        }
+        } catch (Throwable $e) { }
     }
     header('Content-Type: application/json');
     echo json_encode(['exists' => $exists]);
@@ -118,7 +97,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit();
                 }
             }
-            $mongoFailed = false;
             try {
                 require_once __DIR__ . '/../vendor/autoload.php';
                 require_once __DIR__ . '/db/mongo.php';
@@ -155,28 +133,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $message = 'Item(s) saved successfully.';
             } catch (Throwable $e) {
-                $mongoFailed = true;
-            }
-            if ($mongoFailed) {
-                $db = @new mysqli('localhost', 'root', '', 'inventory_system');
-                if (!$db->connect_error) {
-                    $stmt = $db->prepare("INSERT INTO inventory_items (item_name, category, model, quantity, location, `condition`, status, date_acquired, remarks, serial_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                    if ($stmt) {
-                        for ($i = 0; $i < $quantity; $i++) {
-                            $one = 1;
-                            $sid = $serials[$i] ?? '';
-                            $stmt->bind_param('sssissssss', $item_name, $category, $model, $one, $location, $condition, $status, $date_acquired, $remarks, $sid);
-                            $stmt->execute();
-                        }
-                        $stmt->close();
-                        $message = 'Item(s) saved successfully.';
-                    } else {
-                        $message = 'Failed to prepare save statement.';
-                    }
-                    $db->close();
-                } else {
-                    $message = 'Database connection failed.';
-                }
+                http_response_code(500);
+                echo 'Database unavailable';
+                exit();
             }
         } else {
             $message = 'Please provide required fields.';

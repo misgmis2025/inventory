@@ -147,45 +147,12 @@ try {
 }
 
 if (!$USED_MONGO) {
-    // Fetch recent equipment requests for this user (limit 5)
-    $conn = @new mysqli("localhost", "root", "", "inventory_system");
-    if (!$conn->connect_error) {
-        $stmt = $conn->prepare("SELECT id, item_name, status, created_at FROM equipment_requests WHERE username = ? ORDER BY created_at DESC, id DESC LIMIT 5");
-        if ($stmt) { $stmt->bind_param('s', $_SESSION['username']); $stmt->execute(); $res = $stmt->get_result(); while ($row = $res->fetch_assoc()) { $recent_requests[] = $row; } $stmt->close(); }
-        $conn->close();
-    }
-
-    // Dashboard metrics: items that can be borrowed and reserved items (future)
-    $mconn = @new mysqli("localhost", "root", "", "inventory_system");
-    if (!$mconn->connect_error) {
-        // Sum constrained availability across borrowable models
-        $sql1 = "SELECT COALESCE(SUM(available_qty),0) AS cnt FROM (
-                   SELECT bm.category, bm.model_name,
-                     LEAST(bm.borrow_limit, COALESCE(SUM(CASE WHEN ii.status='Available' THEN ii.quantity ELSE 0 END),0)) AS available_qty
-                   FROM borrowable_models bm
-                   LEFT JOIN inventory_items ii
-                     ON ( (ii.model = bm.model_name OR ii.item_name = bm.model_name)
-                          AND COALESCE(NULLIF(ii.category,''),'Uncategorized') = bm.category )
-                   WHERE bm.active = 1
-                   GROUP BY bm.category, bm.model_name
-                 ) t WHERE t.available_qty > 0";
-        if ($res1 = $mconn->query($sql1)) { if ($row1 = $res1->fetch_assoc()) { $borrowable_count = intval($row1['cnt']); } $res1->close(); }
-        // Reserved list for current user (future Approved reservations)
-        $reserved_list = [];
-        $uname = $_SESSION['username'];
-        if ($psr = $mconn->prepare("SELECT item_name, reserved_from, reserved_to FROM equipment_requests WHERE username=? AND type='reservation' AND status='Approved' AND reserved_from > NOW() ORDER BY reserved_from ASC, id DESC LIMIT 100")) {
-            $psr->bind_param('s', $uname);
-            if ($psr->execute()) { $rs = $psr->get_result(); while ($row = $rs->fetch_assoc()) { $reserved_list[] = $row; } $rs->close(); }
-            $psr->close();
-        }
-        $reserved_count = count($reserved_list);
-        if ($stmtB = $mconn->prepare("SELECT COUNT(*) AS cnt FROM user_borrows WHERE username = ? AND status = 'Borrowed'")) {
-            $stmtB->bind_param('s', $_SESSION['username']);
-            if ($stmtB->execute()) { $rb = $stmtB->get_result(); if ($rb && ($rowb = $rb->fetch_assoc())) { $current_borrowed_count = intval($rowb['cnt']); } }
-            $stmtB->close();
-        }
-        $mconn->close();
-    }
+    // Render with safe empty defaults when Mongo is unavailable
+    $recent_requests = [];
+    $borrowable_count = 0;
+    $reserved_list = [];
+    $reserved_count = 0;
+    $current_borrowed_count = 0;
 }
 ?>
 <!DOCTYPE html>
@@ -384,38 +351,7 @@ if (!$USED_MONGO) {
             // fallback to MySQL below if needed
         }
     }
-    if (!$USED_MONGO && empty($borrowed_list)) {
-        $db = new mysqli("localhost", "root", "", "inventory_system");
-        if (!$db->connect_error) {
-            $q = "SELECT 
-                         (
-                           SELECT er2.id
-                           FROM equipment_requests er2
-                           WHERE er2.username = ub.username
-                             AND (er2.item_name = COALESCE(NULLIF(ii.model,''), ii.item_name) OR er2.item_name = ii.item_name)
-                           ORDER BY ABS(TIMESTAMPDIFF(SECOND, er2.created_at, ub.borrowed_at)) ASC, er2.id DESC
-                           LIMIT 1
-                         ) AS request_id,
-                         ub.borrowed_at,
-                         ii.id AS model_id,
-                         COALESCE(NULLIF(ii.model,''), ii.item_name) AS model_name,
-                         COALESCE(NULLIF(ii.category,''),'Uncategorized') AS category,
-                         ii.`condition`
-                  FROM user_borrows ub
-                  JOIN inventory_items ii ON ii.id = ub.model_id
-                  WHERE ub.username = ? AND ub.status = 'Borrowed'
-                  ORDER BY ub.borrowed_at DESC, ub.id DESC";
-            if ($ps = $db->prepare($q)) {
-                $ps->bind_param('s', $_SESSION['username']);
-                if ($ps->execute()) {
-                    $res = $ps->get_result();
-                    while ($row = $res->fetch_assoc()) { $borrowed_list[] = $row; }
-                }
-                $ps->close();
-            }
-            $db->close();
-        }
-    }
+    // No MySQL fallback
     ?>
 
     <!-- Borrowable Items Modal -->

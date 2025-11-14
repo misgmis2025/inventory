@@ -89,84 +89,10 @@ try {
 }
 
 if ($C_MONGO_FAILED) {
-    $conn = new mysqli('localhost', 'root', '', 'inventory_system');
-    if ($conn->connect_error) {
-        http_response_code(500);
-        echo 'DB connection failed';
-        exit();
-    }
-
-    // Ensure categories table exists
-    $conn->query("CREATE TABLE IF NOT EXISTS categories (
-        id INT(11) NOT NULL AUTO_INCREMENT,
-        name VARCHAR(100) NOT NULL UNIQUE,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-
-    // Ensure models table exists (so cascade delete works when removing categories)
-    $conn->query("CREATE TABLE IF NOT EXISTS models (
-        id INT(11) NOT NULL AUTO_INCREMENT,
-        category_id INT(11) NOT NULL,
-        name VARCHAR(150) NOT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        UNIQUE KEY uniq_cat_model (category_id, name),
-        INDEX idx_category_id (category_id),
-        CONSTRAINT fk_models_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
-
-    // Handle add category
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add'])) {
-        $name = trim($_POST['name'] ?? '');
-        if ($name === '') { $err = 'Category name is required'; }
-        else {
-            $stmt = $conn->prepare('INSERT INTO categories (name) VALUES (?)');
-            $stmt->bind_param('s', $name);
-            if ($stmt->execute()) { $ok = 'Category added'; } else { $err = 'Add failed (duplicate?)'; }
-            $stmt->close();
-        }
-    }
-
-    // Handle rename category
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename'])) {
-        $id = (int)($_POST['id'] ?? 0);
-        $name = trim($_POST['name'] ?? '');
-        if ($id <= 0 || $name === '') { $err = 'Invalid rename request'; }
-        else {
-            $oldName='';
-            $gs = $conn->prepare('SELECT name FROM categories WHERE id = ? LIMIT 1');
-            if ($gs) { $gs->bind_param('i', $id); if ($gs->execute()) { $gr=$gs->get_result(); if ($row=$gr->fetch_assoc()) { $oldName=trim($row['name'] ?? ''); } } $gs->close(); }
-            $stmt = $conn->prepare('UPDATE categories SET name = ? WHERE id = ?');
-            $stmt->bind_param('si', $name, $id);
-            if ($stmt->execute()) {
-                $ok = 'Category renamed';
-                if ($oldName !== '' && strcasecmp($oldName, $name) !== 0) {
-                    $up = $conn->prepare('UPDATE inventory_items SET category = ? WHERE category = ?');
-                    if ($up) { $up->bind_param('ss', $name, $oldName); $up->execute(); $up->close(); }
-                }
-            } else { $err = 'Rename failed (duplicate name?)'; }
-            $stmt->close();
-        }
-    }
-
-    // Handle delete category
-    if (isset($_GET['action'], $_GET['id']) && $_GET['action'] === 'delete') {
-        $id = (int)$_GET['id'];
-        if ($id > 0) {
-            $del = $conn->prepare('DELETE FROM categories WHERE id = ?');
-            $del->bind_param('i', $id);
-            if ($del->execute()) { $ok = 'Category deleted'; } else { $err = 'Delete failed'; }
-            $del->close();
-        }
-    }
-
-    // Load categories
+    http_response_code(500);
+    $err = 'Database unavailable';
     $cats = [];
-    $res = $conn->query('SELECT id, name, created_at FROM categories ORDER BY id DESC');
-    if ($res) { while ($r = $res->fetch_assoc()) { $cats[] = $r; } $res->close(); }
-    $conn->close();
-    $shouldScroll = count($cats) > 5;
+    $shouldScroll = false;
 }
 ?>
 <!DOCTYPE html>
