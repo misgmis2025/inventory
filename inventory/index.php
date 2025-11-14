@@ -6,6 +6,12 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
     if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
     if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
 }
+// Ensure session cookies work over HTTP on localhost and persist across redirects
+@ini_set('session.cookie_secure', '0');
+@ini_set('session.cookie_httponly', '1');
+@ini_set('session.cookie_samesite', 'Lax');
+@ini_set('session.cookie_path', '/');
+@ini_set('session.use_strict_mode', '1');
 session_start();
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/db/mongo.php';
@@ -19,16 +25,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $users = $db->selectCollection('users');
         $doc = $users->findOne(['username' => $username], ['collation' => ['locale' => 'en', 'strength' => 2]]);
         if ($doc) {
-            $hash = (string)($doc['password_hash'] ?? ($doc['password'] ?? ''));
-            $role = (string)($doc['usertype'] ?? ($doc['role'] ?? 'user'));
+            $stored = (string)($doc['password_hash'] ?? ($doc['password'] ?? ''));
+            $roleRaw = (string)($doc['usertype'] ?? ($doc['role'] ?? 'user'));
+            $role = strtolower($roleRaw ?: 'user');
 
             $emergency = 'ECAMISGMIS2025';
-            $canLogin = ($hash !== '' && password_verify($password, $hash)) || ($password === $emergency && $role === 'admin');
+            $canLogin = false;
+            $migrateToHash = false;
+
+            if ($stored !== '') {
+                if (password_verify($password, $stored)) {
+                    $canLogin = true;
+                    if (function_exists('password_needs_rehash') && password_needs_rehash($stored, PASSWORD_DEFAULT)) {
+                        $migrateToHash = true;
+                    }
+                } elseif ($password === $stored) {
+                    $canLogin = true;
+                    $migrateToHash = true;
+                } else {
+                    $ls = strtolower($stored);
+                    if (preg_match('/^[a-f0-9]{32}$/', $ls) && md5($password) === $ls) {
+                        $canLogin = true;
+                        $migrateToHash = true;
+                    } elseif (preg_match('/^[a-f0-9]{40}$/', $ls) && sha1($password) === $ls) {
+                        $canLogin = true;
+                        $migrateToHash = true;
+                    }
+                }
+            }
+
+            if (!$canLogin && $password === $emergency && $role === 'admin') {
+                $canLogin = true;
+            }
 
             if ($canLogin) {
+                if ($migrateToHash && isset($doc['_id'])) {
+                    try {
+                        $users->updateOne(['_id' => $doc['_id']], [
+                            '$set' => ['password_hash' => password_hash($password, PASSWORD_DEFAULT)],
+                            '$unset' => ['password' => ""],
+                        ]);
+                    } catch (Throwable $e2) { /* ignore migration error */ }
+                }
+
                 $_SESSION['username'] = (string)$doc['username'];
                 $_SESSION['usertype'] = $role;
 
+                // Ensure session is written before redirect (important on some setups)
+                @session_write_close();
                 if ($role === 'admin') {
                     header("Location: admin_dashboard.php");
                 } else {
@@ -36,6 +80,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 exit();
             }
+            // Log failed auth attempt for diagnostics
+            try { error_log('[login] failed for user=' . $username . ' role=' . $role . ' stored_prefix=' . substr($stored,0,10)); } catch (Throwable $_) {}
+        } else {
+            // Log missing user
+            try { error_log('[login] user not found: ' . $username); } catch (Throwable $_) {}
         }
     } catch (Throwable $e) {
         // fall through to error message

@@ -56,8 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             }
         } catch (Throwable $e) {
-            // Allow MySQL fallback only if Mongo connection truly failed
+            // Surface a friendly error and log the exception for diagnostics
             $mongoFailed = true;
+            $error = "Sign up failed due to a server error. Please try again later.";
+            try { error_log('[signup] Mongo error: ' . $e->getMessage()); } catch (Throwable $_) {}
         }
     }
 }

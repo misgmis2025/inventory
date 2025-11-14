@@ -1,4 +1,16 @@
 <?php
+// Align session settings with index.php to ensure continuity across requests
+$__sess_path = ini_get('session.save_path');
+if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
+    $__alt = __DIR__ . '/../tmp_sessions';
+    if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
+    if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
+}
+@ini_set('session.cookie_secure', '0');
+@ini_set('session.cookie_httponly', '1');
+@ini_set('session.cookie_samesite', 'Lax');
+@ini_set('session.cookie_path', '/');
+@ini_set('session.use_strict_mode', '1');
 session_start();
 if (!isset($_SESSION['username'])) {
     http_response_code(401);

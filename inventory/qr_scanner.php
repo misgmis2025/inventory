@@ -1,4 +1,16 @@
 <?php
+// Align session settings with index.php to ensure continuity across requests
+$__sess_path = ini_get('session.save_path');
+if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
+    $__alt = __DIR__ . '/../tmp_sessions';
+    if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
+    if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
+}
+@ini_set('session.cookie_secure', '0');
+@ini_set('session.cookie_httponly', '1');
+@ini_set('session.cookie_samesite', 'Lax');
+@ini_set('session.cookie_path', '/');
+@ini_set('session.use_strict_mode', '1');
 session_start();
 if (!isset($_SESSION['username'])) {
     header("Location: index.php");
@@ -9,6 +21,62 @@ if (!isset($_SESSION['usertype']) || $_SESSION['usertype'] !== 'admin') {
     exit();
 }
 
+// Admin-only: update item status via AJAX with constrained transitions and lost/damaged logging
+if (isset($_GET['action']) && $_GET['action'] === 'update_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['usertype']) || $_SESSION['usertype'] !== 'admin') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Forbidden']);
+        exit();
+    }
+    try {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true);
+        $mid = intval($data['model_id'] ?? 0);
+        $newStatus = trim((string)($data['new_status'] ?? ''));
+        if ($mid <= 0 || $newStatus === '') { http_response_code(400); echo json_encode(['success'=>false,'error'=>'Invalid payload']); exit(); }
+        require_once __DIR__ . '/../vendor/autoload.php';
+        require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $itemsCol = $db->selectCollection('inventory_items');
+        $item = $itemsCol->findOne(['id' => $mid]);
+        if (!$item) { http_response_code(404); echo json_encode(['success'=>false,'error'=>'Item not found']); exit(); }
+        $curr = (string)($item['status'] ?? '');
+        $allowed = [];
+        if ($curr === 'Available') { $allowed = ['Lost','Under Maintenance','Out of Order']; }
+        elseif ($curr === 'Out of Order') { $allowed = ['Available','Under Maintenance','Lost']; }
+        else { $allowed = []; }
+        if (!in_array($newStatus, $allowed, true)) {
+            http_response_code(409);
+            echo json_encode(['success'=>false,'error'=>'Transition not allowed from '.$curr.' to '.$newStatus]);
+            exit();
+        }
+        $now = date('Y-m-d H:i:s');
+        $itemsCol->updateOne(['id'=>$mid], ['$set'=>['status'=>$newStatus,'updated_at'=>$now,'last_status_changed_by'=>($_SESSION['username']??'system')]]);
+        // Log Lost or Maintenance to lost_damaged_log
+        if ($newStatus === 'Lost' || $newStatus === 'Under Maintenance') {
+            $ldCol = $db->selectCollection('lost_damaged_log');
+            $nextLD = $ldCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+            $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
+            $admin = $_SESSION['username'] ?? 'system';
+            $ldCol->insertOne([
+                'id' => $lid,
+                'model_id' => $mid,
+                'action' => $newStatus === 'Under Maintenance' ? 'Under Maintenance' : 'Lost',
+                'created_at' => $now,
+                // Ensure admin appears in both User and By style columns used elsewhere
+                'username' => $admin,
+                'marked_by' => $admin,
+                'notes' => 'Updated via QR Scanner'
+            ]);
+        }
+        echo json_encode(['success'=>true,'new_status'=>$newStatus]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['success'=>false,'error'=>'Server error']);
+    }
+    exit();
+}
 // Admin-only: update remarks via AJAX
 if (isset($_GET['action']) && $_GET['action'] === 'update_remarks' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
@@ -285,6 +353,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                                 <div>
                                     <span class="badge status-badge" id="status-badge"></span>
                                 </div>
+                                <?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
+                                <div id="status-edit-wrap" class="mt-2" style="display:none; max-width: 380px;">
+                                    <div class="input-group">
+                                        <select class="form-select" id="status-edit-select"></select>
+                                        <button type="button" class="btn btn-primary" id="save-status-btn"><i class="bi bi-save me-1"></i>Save</button>
+                                    </div>
+                                    <div class="form-text">Allowed transitions depend on current status.</div>
+                                </div>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -460,6 +537,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
         function poll(){ if(fetching) return; fetching=true; fetch('admin_borrow_center.php?action=pending_json').then(r=>r.json()).then(d=>{ const items=(d&&Array.isArray(d.pending))? d.pending: []; if (bellDot) bellDot.classList.toggle('d-none', items.length===0); try{ const navLink=document.querySelector('a[href="admin_borrow_center.php"]'); if(navLink){ let dot=navLink.querySelector('.nav-borrow-dot'); const shouldShow = items.length>0; if (shouldShow){ if(!dot){ dot=document.createElement('span'); dot.className='nav-borrow-dot ms-2 d-inline-block rounded-circle'; dot.style.width='8px'; dot.style.height='8px'; dot.style.backgroundColor='#dc3545'; dot.style.verticalAlign='middle'; dot.style.display='inline-block'; navLink.appendChild(dot);} else { dot.style.display='inline-block'; } } else if (dot){ dot.style.display='none'; } } }catch(_){ } renderList(items); const curr=new Set(items.map(it=>parseInt(it.id||0,10))); if(!initialized){ baseline=curr; initialized=true; } else { let hasNew=false; items.forEach(it=>{ const id=parseInt(it.id||0,10); if(!baseline.has(id)){ hasNew=true; showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } }); if(hasNew) playBeep(); baseline=curr; } }).catch(()=>{}).finally(()=>{ fetching=false; }); }
         poll(); setInterval(()=>{ if(document.visibilityState==='visible') poll(); }, 2000);
     })();
+    // Map a status to Bootstrap color class
+    function mapStatusClass(st){
+        switch(String(st||'')){
+            case 'Available': return 'bg-success';
+            case 'In Use': return 'bg-primary';
+            case 'Reserved': return 'bg-info';
+            case 'Under Maintenance': return 'bg-warning';
+            case 'Out of Order': return 'bg-danger';
+            case 'Lost': return 'bg-dark';
+            default: return 'bg-secondary';
+        }
+    }
+    function computeAllowedStatuses(curr){
+        if (curr==='Available') return ['Lost','Under Maintenance','Out of Order'];
+        if (curr==='Out of Order') return ['Available','Under Maintenance','Lost'];
+        return [];
+    }
+    function refreshStatusEditor(){
+        try{
+            const wrap = document.getElementById('status-edit-wrap'); if(!wrap) return;
+            const curr = document.getElementById('status-badge')?.textContent.trim() || '';
+            const allowed = computeAllowedStatuses(curr);
+            const sel = document.getElementById('status-edit-select');
+            sel.innerHTML = '';
+            if (allowed.length===0){ wrap.style.display='none'; return; }
+            allowed.forEach(s=>{ const opt=document.createElement('option'); opt.value=s; opt.textContent=s; sel.appendChild(opt); });
+            wrap.style.display = 'block';
+        }catch(_){ }
+    }
+    function setupStatusSave(){
+        const btn = document.getElementById('save-status-btn'); if(!btn) return;
+        btn.addEventListener('click', async function(){
+            try{
+                const mid = parseInt(document.getElementById('scanned-model-id')?.value||'0',10)||0;
+                const sel = document.getElementById('status-edit-select');
+                const ns = sel ? sel.value : '';
+                if (mid<=0 || !ns){ alert('No item loaded or status not selected.'); return; }
+                const resp = await fetch('qr_scanner.php?action=update_status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({model_id: mid, new_status: ns}) });
+                const data = await resp.json();
+                if (!resp.ok || !data.success){ throw new Error(data.error||'Failed'); }
+                const badge = document.getElementById('status-badge');
+                badge.textContent = data.new_status;
+                badge.className = 'badge status-badge ' + mapStatusClass(data.new_status);
+                refreshStatusEditor();
+                alert('Status updated.');
+            }catch(e){ alert('Error updating status.'); }
+        });
+    }
     let html5Qrcode = null;
     let isScanning = false;
     var isRegularUser = <?php echo json_encode(isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'user'); ?>;
@@ -730,6 +855,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                     const mid = parseInt(data.model_id||0,10)||0;
                     midInput.value = String(mid);
                     setupLocationEdit(mid, loc);
+                    refreshStatusEditor(); setupStatusSave();
                     setupRemarksEdit(mid, rem);
 
                     // Hide borrow/reserve info for legacy payloads
@@ -796,6 +922,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                     const mid2 = parseInt(it.id||0,10)||0;
                     midInput2.value = String(mid2);
                     setupLocationEdit(mid2, loc2);
+                    refreshStatusEditor(); setupStatusSave();
                     setupRemarksEdit(mid2, rem2);
 
                     // Borrow info
@@ -998,6 +1125,7 @@ function onScanFailure(error) {
                                     const mid = parseInt(it.id||0,10)||0;
                                     document.getElementById('scanned-model-id').value = String(mid);
                                     setupLocationEdit(mid, loc);
+                                    refreshStatusEditor(); setupStatusSave();
                                     setupRemarksEdit(mid, rem);
                                     document.getElementById('info-card').style.display = 'block';
                                 })
@@ -1056,6 +1184,7 @@ function onScanFailure(error) {
                         const mid = parseInt(it.id||0,10)||0;
                         document.getElementById('scanned-model-id').value = String(mid);
                         setupLocationEdit(mid, loc);
+                        refreshStatusEditor(); setupStatusSave();
                         setupRemarksEdit(mid, rem);
                         document.getElementById('info-card').style.display = 'block';
                         updateCameraStatus('QR code processed successfully!');

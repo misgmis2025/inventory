@@ -1,7 +1,26 @@
 <?php
+// Align session settings with index.php to ensure continuity across requests
+$__sess_path = ini_get('session.save_path');
+if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
+    $__alt = __DIR__ . '/../tmp_sessions';
+    if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
+    if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
+}
+@ini_set('session.cookie_secure', '0');
+@ini_set('session.cookie_httponly', '1');
+@ini_set('session.cookie_samesite', 'Lax');
+@ini_set('session.cookie_path', '/');
+@ini_set('session.use_strict_mode', '1');
 session_start();
 date_default_timezone_set('Asia/Manila');
+// If not authorized, avoid redirecting for print endpoints so we don't print the login page
+$__act = $_GET['action'] ?? '';
 if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
+  if ($__act === 'print_overdue') {
+    http_response_code(401);
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Not authorized</title></head><body>Not authorized</body></html>';
+    exit();
+  }
   header('Location: index.php');
   exit();
 }
@@ -21,6 +40,7 @@ try {
 if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   @require_once __DIR__ . '/../vendor/autoload.php';
   @require_once __DIR__ . '/db/mongo.php';
+  @header('Content-Type: text/html; charset=UTF-8');
   $prepared = trim($_GET['prepared_by'] ?? '');
   $checked  = trim($_GET['checked_by'] ?? '');
   $dateVal  = trim($_GET['date'] ?? date('Y-m-d'));
@@ -152,34 +172,16 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         </table>
       </div>
 
-      if (mdl) {
-        mdl.addEventListener('show.bs.modal', function (event) {
-          var trg = event.relatedTarget;
-          var src = (trg && typeof trg.closest === 'function') ? trg.closest('[data-bs-target="#borrowedDetailsModal"]') : null;
-          var el = src || trg || (typeof window !== 'undefined' ? window._bdSrc : null);
-          var user = el ? (el.getAttribute('data-user') || '') : '';
-          var serial = el ? (el.getAttribute('data-serial') || '') : '';
-          var model = el ? (el.getAttribute('data-model') || '') : '';
-          var category = el ? (el.getAttribute('data-category') || '') : '';
-          var location = el ? (el.getAttribute('data-location') || '') : '';
-          var expRaw = el ? (el.getAttribute('data-expected_raw') || '') : '';
-          var expTxt = expRaw ? (function(s){ try { return s ? new Date(s.replace(' ','T')).toLocaleString() : ''; } catch(_) { return s; } }) (expRaw) : '';
-          document.getElementById('bdUser').textContent = user;
-          document.getElementById('bdSerial').textContent = serial;
-          document.getElementById('bdModel').textContent = model;
-          document.getElementById('bdCategory').textContent = category;
-          document.getElementById('bdLocation').textContent = location;
-          document.getElementById('bdExpected').textContent = expTxt || '-';
-        });
-      }
-    })();
-  </script>
+    <!-- no modal JS in print view -->
       <div class="eca-footer">
         <div class="field"><label>Prepared by:</label><span class="eca-print-value"><?php echo htmlspecialchars($prepared); ?>&nbsp;</span></div>
         <div class="field"><label>Checked by:</label><span class="eca-print-value"><?php echo htmlspecialchars($checked); ?>&nbsp;</span></div>
       </div>
     </div>
-    <script>window.addEventListener('load', function(){ window.print(); });</script>
+    <script>
+      // Auto-trigger print on load for convenience
+      window.addEventListener('load', function(){ try{ window.print(); }catch(_){ } });
+    </script>
   </body></html><?php
   exit();
 }
@@ -1312,6 +1314,10 @@ if (in_array($act, ['validate_model_id','approve_with','approve','validate_retur
 
 // Early-handle JSON endpoints via MongoDB to avoid MySQL dependency
 if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservations_json') {
+  // Apply a sane default limit for heavy lists to keep responses fast
+  $reqLimit = isset($_GET['limit']) ? (int)$_GET['limit'] : 300;
+  if ($reqLimit < 50) { $reqLimit = 50; }
+  if ($reqLimit > 1000) { $reqLimit = 1000; }
   @require_once __DIR__ . '/../vendor/autoload.php';
   @require_once __DIR__ . '/db/mongo.php';
   header('Content-Type: application/json');
@@ -1345,7 +1351,7 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           }
         }
       } catch (Throwable $_) {}
-      $rq = $er->find(['status' => 'Pending'], ['sort' => ['created_at' => 1, 'id' => 1]]);
+      $rq = $er->find(['status' => 'Pending'], ['sort' => ['created_at' => 1, 'id' => 1], 'limit' => $reqLimit]);
       $itemsCol = $db->selectCollection('inventory_items');
       $allocCol = $db->selectCollection('request_allocations');
       foreach ($rq as $doc) {
@@ -1428,7 +1434,8 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
       $erCol = $db->selectCollection('equipment_requests');
       $iiCol = $db->selectCollection('inventory_items');
       $uCol = $db->selectCollection('users');
-      $allocs = $allocCol->find([], ['sort' => ['id' => -1]]);
+      // Only consider the most recent allocations to avoid scanning the whole collection
+      $allocs = $allocCol->find([], ['sort' => ['id' => -1], 'limit' => $reqLimit, 'projection' => ['request_id' => 1, 'borrow_id' => 1]]);
       foreach ($allocs as $al) {
         $reqId = (int)($al['request_id'] ?? 0);
         $borrowId = (int)($al['borrow_id'] ?? 0);
@@ -1537,7 +1544,8 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
       $rows = [];
       $uCol = $db->selectCollection('users');
       try {
-        $rq = $erCol->find(['type'=>'reservation','status'=>'Approved'], ['sort'=>['reserved_from'=>1,'id'=>1]]);
+        // List upcoming/active approved reservations with a limit to keep UI fast
+        $rq = $erCol->find(['type'=>'reservation','status'=>'Approved'], ['sort'=>['reserved_from'=>1,'id'=>1], 'limit' => $reqLimit, 'projection'=>['id'=>1,'username'=>1,'item_name'=>1,'reserved_from'=>1,'reserved_to'=>1,'request_location'=>1,'qr_serial_no'=>1]]);
         foreach ($rq as $doc) {
           $uname = (string)($doc['username'] ?? '');
           $sid = '';

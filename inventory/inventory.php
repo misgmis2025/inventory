@@ -1,4 +1,16 @@
 <?php
+// Align session settings with index.php to ensure continuity across requests
+$__sess_path = ini_get('session.save_path');
+if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
+    $__alt = __DIR__ . '/../tmp_sessions';
+    if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
+    if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
+}
+@ini_set('session.cookie_secure', '0');
+@ini_set('session.cookie_httponly', '1');
+@ini_set('session.cookie_samesite', 'Lax');
+@ini_set('session.cookie_path', '/');
+@ini_set('session.use_strict_mode', '1');
 session_start();
 date_default_timezone_set('Asia/Manila');
 // Initialize Mongo guard early so it's defined for all branches
@@ -1823,7 +1835,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 										<select name="status" class="form-select">
 											<option value="">Status</option>
 											<?php
-												$statuses = ['Available','Borrowed','In Use','Maintenance','Out of Order','Reserved','Lost','Damaged'];
+												$statuses = ['Available','In Use','Reserved','Lost','Maintenance','Out of Order'];
 												foreach ($statuses as $st) {
 													$sel = ($filter_status ?? '') === $st ? 'selected' : '';
 													echo '<option value="'.htmlspecialchars($st).'" '.$sel.'>'.htmlspecialchars($st).'</option>';

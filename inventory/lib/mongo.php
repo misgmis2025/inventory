@@ -12,13 +12,15 @@ if (!function_exists('mongo_db')) {
         if (!extension_loaded('mongodb')) {
             return null;
         }
-        // Load config constants if present
-        if (!defined('MONGO_URI')) {
+        // Use env first, then config.php constants, then Docker-friendly defaults
+        $envUri = getenv('MONGODB_URI') ?: '';
+        $envDb  = getenv('MONGODB_DB') ?: '';
+        if (!defined('MONGO_URI') || !defined('MONGO_DB')) {
             $cfg = __DIR__ . '/../config.php';
             if (is_file($cfg)) { require_once $cfg; }
         }
-        $uri = defined('MONGO_URI') ? MONGO_URI : 'mongodb://localhost:27017';
-        $dbName = defined('MONGO_DB') ? MONGO_DB : 'inventory_system';
+        $uri = $envUri ?: (defined('MONGO_URI') ? MONGO_URI : 'mongodb://mongo:27017');
+        $dbName = $envDb ?: (defined('MONGO_DB') ? MONGO_DB : 'inventory_system');
         try {
             $client = new Client($uri, [], ['typeMap' => ['root' => 'array', 'document' => 'array', 'array' => 'array']]);
             return $client->selectDatabase($dbName);

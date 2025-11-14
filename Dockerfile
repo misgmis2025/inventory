@@ -19,6 +19,11 @@ WORKDIR /var/www/html
 # Copy app
 COPY . /var/www/html
 
+# Ensure PHP session directory exists and is writable
+RUN mkdir -p /var/www/html/tmp_sessions \
+    && chown -R www-data:www-data /var/www/html/tmp_sessions \
+    && chmod -R 0777 /var/www/html/tmp_sessions
+
 # Install Composer and PHP deps
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 RUN composer install --no-dev --prefer-dist --no-interaction

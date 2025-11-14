@@ -1,4 +1,16 @@
 <?php
+// Align session settings with index.php to ensure continuity across requests
+$__sess_path = ini_get('session.save_path');
+if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
+    $__alt = __DIR__ . '/../tmp_sessions';
+    if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
+    if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
+}
+@ini_set('session.cookie_secure', '0');
+@ini_set('session.cookie_httponly', '1');
+@ini_set('session.cookie_samesite', 'Lax');
+@ini_set('session.cookie_path', '/');
+@ini_set('session.use_strict_mode', '1');
 session_start();
 date_default_timezone_set('Asia/Manila');
 if (!isset($_SESSION['username'])) { header('Location: index.php'); exit(); }
@@ -20,6 +32,7 @@ try {
 if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
   $now = date('Y-m-d H:i:s');
+  $limit = isset($_GET['limit']) ? max(1, min((int)$_GET['limit'], 500)) : 200;
   if ($USED_MONGO && $mongo_db) {
     $rows = [];
     try {
@@ -65,6 +78,7 @@ if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'expected_return_at' => $due,
           'overdue_days' => $days,
         ];
+        if (count($rows) >= $limit) { break; }
       }
     } catch (Throwable $e) { $rows = []; }
     echo json_encode(['overdue'=>$rows]);
@@ -88,7 +102,8 @@ if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
               JOIN inventory_items ii ON ii.id = ub.model_id
               LEFT JOIN request_allocations ra ON ra.borrow_id = ub.id
               WHERE ub.username = ? AND ub.status = 'Borrowed' AND ub.expected_return_at IS NOT NULL AND ub.expected_return_at <> '' AND ub.expected_return_at < ?
-              ORDER BY ub.expected_return_at ASC, ub.id DESC";
+              ORDER BY ub.expected_return_at ASC, ub.id DESC
+              LIMIT " . (int)$limit;
       if ($st = $conn->prepare($sql)) {
         $st->bind_param('ss', $_SESSION['username'], $now);
         if ($st->execute()) { $res = $st->get_result(); while ($r = $res->fetch_assoc()) { 
@@ -307,6 +322,7 @@ if ($__act === 'returnship_verify' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // JSON: my_borrowed (active borrowed items) matching user_items.php logic
 if ($__act === 'my_borrowed' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
+  $limit = isset($_GET['limit']) ? max(1, min((int)$_GET['limit'], 500)) : 200;
   if ($USED_MONGO && $mongo_db) {
     $rows = [];
     try {
@@ -314,7 +330,7 @@ if ($__act === 'my_borrowed' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       $iiCol = $mongo_db->selectCollection('inventory_items');
       $erCol = $mongo_db->selectCollection('equipment_requests');
       $raCol = $mongo_db->selectCollection('request_allocations');
-      $cur = $ubCol->find(['username'=>(string)$_SESSION['username'],'status'=>'Borrowed'], ['sort'=>['borrowed_at'=>-1,'id'=>-1]]);
+      $cur = $ubCol->find(['username'=>(string)$_SESSION['username'],'status'=>'Borrowed'], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit' => $limit]);
       foreach ($cur as $ub) {
         $mid = (int)($ub['model_id'] ?? 0); $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
         $alloc = $raCol->findOne(['borrow_id' => (int)($ub['id'] ?? 0)], ['projection'=>['request_id'=>1]]);
@@ -425,8 +441,9 @@ if ($__act === 'my_borrowed' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     JOIN inventory_items ii ON ii.id = ub.model_id
     LEFT JOIN request_allocations ra ON ra.borrow_id = ub.id
     WHERE ub.username = ? AND ub.status = 'Borrowed'
-    ORDER BY ub.borrowed_at DESC, ub.id DESC"))) {
-      $st->bind_param('s', $_SESSION['username']); if ($st->execute()) { $res=$st->get_result(); while($r=$res->fetch_assoc()){ $rows[]=$r; } } $st->close();
+    ORDER BY ub.borrowed_at DESC, ub.id DESC
+    LIMIT ?"))) {
+      $st->bind_param('si', $_SESSION['username'], $limit); if ($st->execute()) { $res=$st->get_result(); while($r=$res->fetch_assoc()){ $rows[]=$r; } } $st->close();
     }
     echo json_encode(['borrowed'=>$rows]);
   }
@@ -504,53 +521,20 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $doc = $ii->findOne(['$or'=>[['model'=>$model],['item_name'=>$model]]], ['sort'=>['id'=>-1], 'projection'=>['model'=>1,'item_name'=>1,'category'=>1]]);
         $mkey = $doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? $model)) : $model;
         $category = $doc ? ((string)($doc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
-        // Raw available now
-        $availNow = 0;
-        $aggA = $ii->aggregate([
-          ['$match'=>['status'=>'Available','quantity'=>['$gt'=>0],'$or'=>[['model'=>$mkey],['item_name'=>$mkey]],'category'=>$category]],
-          ['$group'=>['_id'=>null,'sum'=>['$sum'=>['$ifNull'=>['$quantity',1]]]]],
-        ])->toArray();
-        $availNow = (int)($aggA[0]['sum'] ?? 0);
-        // Borrow limit for this model/category
+        // Fast path: just count currently Available units for this model/category
+        $availNow = (int)$ii->countDocuments([
+          'status'=>'Available',
+          'quantity'=>['$gt'=>0],
+          '$or'=>[['model'=>$mkey],['item_name'=>$mkey]],
+          'category'=>$category
+        ]);
+        // Borrow limit (cap)
         $bmDoc = $bm->findOne(
           ['active'=>1,'model_name'=>$mkey,'category'=>$category],
           ['projection'=>['borrow_limit'=>1], 'collation'=>['locale'=>'en','strength'=>2]]
         );
         $limit = $bmDoc && isset($bmDoc['borrow_limit']) ? (int)$bmDoc['borrow_limit'] : 0;
-        // Consumed units: active borrows + pending returned_queue + returned_hold
-        $consumed = 0;
-        try {
-          $ub = $mongo_db->selectCollection('user_borrows');
-          $aggUb = $ub->aggregate([
-            ['$match'=>['status'=>'Borrowed']],
-            ['$lookup'=>['from'=>'inventory_items','localField'=>'model_id','foreignField'=>'id','as'=>'item']],
-            ['$unwind'=>'$item'],
-            ['$match'=>['item.category'=>$category, '$or'=>[['item.model'=>$mkey], ['item.item_name'=>$mkey]]]],
-            ['$group'=>['_id'=>null,'cnt'=>['$sum'=>1]]]
-          ])->toArray();
-          $consumed += (int)($aggUb[0]['cnt'] ?? 0);
-        } catch (Throwable $_) {}
-        try {
-          $rq = $mongo_db->selectCollection('returned_queue');
-          $aggRq = $rq->aggregate([
-            ['$match'=>['processed_at'=>['$exists'=>false]]],
-            ['$lookup'=>['from'=>'inventory_items','localField'=>'model_id','foreignField'=>'id','as'=>'item']],
-            ['$unwind'=>'$item'],
-            ['$match'=>['item.category'=>$category, '$or'=>[['item.model'=>$mkey], ['item.item_name'=>$mkey]]]],
-            ['$group'=>['_id'=>null,'cnt'=>['$sum'=>1]]]
-          ])->toArray();
-          $consumed += (int)($aggRq[0]['cnt'] ?? 0);
-        } catch (Throwable $_) {}
-        try {
-          $rh = $mongo_db->selectCollection('returned_hold');
-          $aggRh = $rh->aggregate([
-            ['$match'=>['category'=>$category,'model_name'=>$mkey]],
-            ['$group'=>['_id'=>null,'cnt'=>['$sum'=>1]]]
-          ])->toArray();
-          $consumed += (int)($aggRh[0]['cnt'] ?? 0);
-        } catch (Throwable $_) {}
-        // Final constrained availability
-        $available = max(0, min($limit - $consumed, $availNow));
+        $available = ($limit > 0) ? max(0, min($limit, $availNow)) : max(0, $availNow);
       }
     } catch (Throwable $e) { $available = 0; }
     echo json_encode(['available'=>(int)$available]);
@@ -1115,9 +1099,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $reserved_from = trim($_POST['reserved_from'] ?? '');
   $reserved_to = trim($_POST['reserved_to'] ?? '');
 
-  $item_name = $sel_model !== '' ? $sel_model : ($sel_category !== '' ? $sel_category : '');
+  // Require a specific model; do not fallback to category to avoid creating requests with non-existent model names
+  $item_name = $sel_model;
   if ($item_name === '') {
-    $error = 'Please select a Category and Model.';
+    $error = 'Please select a specific Model.';
   } else {
     // Verify borrowable and available
     $cat = '';
@@ -1271,7 +1256,7 @@ if ($USED_MONGO && $mongo_db) {
   $ps->close(); 
 }
 
-// My borrowed items (active)
+// My borrowed items (active) — limit initial render to speed up first paint
 $my_borrowed = [];
 if (!$USED_MONGO && $conn) {
   $sqlBorrow = "SELECT ub.id AS borrow_id,
@@ -1305,7 +1290,8 @@ if (!$USED_MONGO && $conn) {
        FROM user_borrows ub
        JOIN inventory_items ii ON ii.id = ub.model_id
        WHERE ub.username = ? AND ub.status = 'Borrowed'
-       ORDER BY ub.borrowed_at DESC, ub.id DESC";
+       ORDER BY ub.borrowed_at DESC, ub.id DESC
+       LIMIT 100";
   $bs = $conn->prepare($sqlBorrow);
   if ($bs) {
     $bs->bind_param('s', $_SESSION['username']);
@@ -1321,7 +1307,7 @@ if (!$USED_MONGO && $conn) {
     $ii=$mongo_db->selectCollection('inventory_items'); 
     $ra=$mongo_db->selectCollection('request_allocations'); 
     $er=$mongo_db->selectCollection('equipment_requests'); 
-    $cur=$ub->find(['username'=>(string)$_SESSION['username'],'status'=>'Borrowed'], ['sort'=>['borrowed_at'=>-1,'id'=>-1]]); 
+    $cur=$ub->find(['username'=>(string)$_SESSION['username'],'status'=>'Borrowed'], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit'=>100]); 
     foreach($cur as $b){ 
       $mid=(int)($b['model_id']??0); 
       $itm=$mid>0?$ii->findOne(['id'=>$mid]):null; 
@@ -1387,7 +1373,7 @@ if (!$USED_MONGO && $conn) {
   } catch (Throwable $e) { $my_borrowed=[]; }
 }
 
-// My borrow history (this user only)
+// My borrow history (this user only) — cap to 150 on first load
 $my_history = [];
 if (!$USED_MONGO && $conn) {
   $sqlHistory = "SELECT ub.id AS borrow_id,
@@ -1412,7 +1398,7 @@ if (!$USED_MONGO && $conn) {
        LEFT JOIN inventory_items ii ON ii.id = ub.model_id
        LEFT JOIN request_allocations ra ON ra.borrow_id = ub.id
        WHERE ub.username = ? AND ub.status <> 'Borrowed'
-       ORDER BY ub.borrowed_at DESC, ub.id DESC LIMIT 200";
+       ORDER BY ub.borrowed_at DESC, ub.id DESC LIMIT 150";
   $hs = $conn->prepare($sqlHistory);
   if ($hs) { $hs->bind_param('s', $_SESSION['username']); if ($hs->execute()) { $res = $hs->get_result(); while ($row = $res->fetch_assoc()) { $my_history[] = $row; } } $hs->close(); }
 } elseif ($USED_MONGO && $mongo_db) {
@@ -1422,7 +1408,7 @@ if (!$USED_MONGO && $conn) {
     $ld=$mongo_db->selectCollection('lost_damaged_log'); 
     $ra=$mongo_db->selectCollection('request_allocations'); 
     $er=$mongo_db->selectCollection('equipment_requests'); 
-    $cur=$ub->find(['username'=>(string)$_SESSION['username'],'status'=>['$ne'=>'Borrowed']], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit'=>200]); 
+    $cur=$ub->find(['username'=>(string)$_SESSION['username'],'status'=>['$ne'=>'Borrowed']], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit'=>150]); 
     foreach($cur as $hv){ 
       $mid=(int)($hv['model_id']??0); 
       $itm=$mid>0?$ii->findOne(['id'=>$mid]):null; 
@@ -1823,6 +1809,57 @@ if (!empty($my_requests)) {
                   <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-send me-2"></i>Submit Request</button>
                 </div>
               </form>
+              <script>
+                (function(){
+                  // Preserve Category/Model selections in modal even while page is polling
+                  var modalEl = document.getElementById('submitRequestModal');
+                  var catEl = document.getElementById('category');
+                  var modelEl = document.getElementById('model');
+                  if (!modalEl || !catEl || !modelEl) return;
+                  function saveSel(){ try{ localStorage.setItem('ur_sel_cat', String(catEl.value||'')); localStorage.setItem('ur_sel_model', String(modelEl.value||'')); }catch(_){ } }
+                  var restoring = false;
+                  function restoreSel(){
+                    if (restoring) return; restoring = true;
+                    try {
+                      var c = '';
+                      try { c = localStorage.getItem('ur_sel_cat') || ''; } catch(_){ c=''; }
+                      var m = '';
+                      try { m = localStorage.getItem('ur_sel_model') || ''; } catch(_){ m=''; }
+                      if (m && modelEl) {
+                        if (c && catEl && catEl.value === c) {
+                          for (var i=0,has=false;i<modelEl.options.length;i++){ if (modelEl.options[i].value===m){ has=true; break; } }
+                          if (has) { modelEl.value = m; }
+                        }
+                      }
+                    } finally { restoring = false; }
+                  }
+                  function updateModelEnabled(){
+                    if (catEl && catEl.value) {
+                      modelEl.disabled = false;
+                    } else {
+                      modelEl.disabled = true;
+                    }
+                  }
+                  // Save whenever user changes selections
+                  catEl.addEventListener('change', saveSel);
+                  modelEl.addEventListener('change', saveSel);
+                  catEl.addEventListener('change', updateModelEnabled);
+                  // Restore on open
+                  modalEl.addEventListener('shown.bs.modal', function(){ setTimeout(restoreSel, 50); updateModelEnabled(); });
+                  // Prevent double submissions: lock form and disable submit button after first submit
+                  try {
+                    var form = modalEl.querySelector('form');
+                    var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+                    if (form) {
+                      form.addEventListener('submit', function(e){
+                        if (form.dataset.submitting === '1') { e.preventDefault(); return; }
+                        form.dataset.submitting = '1';
+                        if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('disabled'); submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Submitting...'; }
+                      }, { capture: true });
+                    }
+                  } catch(_){ }
+                })();
+              </script>
             </div>
           </div>
         </div>
@@ -2394,14 +2431,23 @@ if (!empty($my_requests)) {
     ?>;
     const qtyAvailHint = document.getElementById('qtyAvailHint');
     let inFlightAvail = false;
+    let availAbort = null;
     function updateAvailHint() {
       const selModel = modelSelect && modelSelect.value ? modelSelect.value : '';
-      // Live poll endpoint for precision
-      if (!selModel) { if (qtyAvailHint) qtyAvailHint.textContent = 'Available: 0'; return; }
+      if (!selModel) { if (qtyAvailHint) qtyAvailHint.textContent = 'Available: 0'; if (qtyInput){ qtyInput.max='1'; if (parseInt(qtyInput.value||'1',10)<1) qtyInput.value='1'; } return; }
+      // 1) Instant local estimate from modelMaxMap for immediate UX
+      try {
+        const localN = (modelMaxMap && Object.prototype.hasOwnProperty.call(modelMaxMap, selModel)) ? (parseInt(modelMaxMap[selModel]||0,10)||0) : 0;
+        if (qtyAvailHint) qtyAvailHint.textContent = 'Available: ' + String(localN);
+        if (qtyInput){ const clamp = Math.max(1, localN); qtyInput.max = String(clamp); if (parseInt(qtyInput.value||'1',10) > localN){ qtyInput.value = String(clamp); } }
+      } catch(_){ }
+      // 2) Refresh from server (cancel previous), but only when visible and not paused
       if (document.visibilityState !== 'visible') return;
-      if (inFlightAvail) return; inFlightAvail = true;
-      fetch('user_request.php?action=avail&model=' + encodeURIComponent(selModel))
-        .then(r=>r.json())
+      if (typeof __UR_POLLING_PAUSED__ !== 'undefined' && __UR_POLLING_PAUSED__) return;
+      if (inFlightAvail && availAbort) { try { availAbort.abort(); } catch(_){ } }
+      inFlightAvail = true; availAbort = new AbortController();
+      fetch('user_request.php?action=avail&model=' + encodeURIComponent(selModel), { signal: availAbort.signal, cache: 'no-store' })
+        .then(r=>r.ok?r.json():Promise.reject())
         .then(d=>{ const n = (d && typeof d.available==='number') ? d.available : 0; if (qtyAvailHint) qtyAvailHint.textContent = 'Available: ' + String(n); if (qtyInput){ const clamp = Math.max(1, n); qtyInput.max = String(clamp); if (parseInt(qtyInput.value||'1',10) > n){ qtyInput.value = String(clamp); } } })
         .catch(()=>{ /* silent */ })
         .finally(()=>{ inFlightAvail = false; });
@@ -2552,6 +2598,7 @@ if (!empty($my_requests)) {
       syncSubmitCardHeight();
       // Adjust scroll box to exactly 15 visible rows
       adjustRecentRequestsScroll();
+      try { if (window.__UR_SECTION_LOADED__) window.__UR_SECTION_LOADED__['section-recent'] = true; } catch(_){ }
     }
     // Live renderer for My Borrowed
     function renderMyBorrowed(data){
@@ -2589,6 +2636,7 @@ if (!empty($my_requests)) {
         });
       }
       tb.innerHTML = rows.join('');
+      try { if (window.__UR_SECTION_LOADED__) window.__UR_SECTION_LOADED__['section-borrowed'] = true; } catch(_){ }
     }
     // Live renderer for My Overdue
     function renderMyOverdue(data){
@@ -2670,6 +2718,8 @@ if (!empty($my_requests)) {
           if (btn && label){ btn.textContent = 'View: ' + label; }
           // After switching, re-sync heights
           setTimeout(function(){ syncSubmitCardHeight(); }, 0);
+          // Track visible section for targeted polling and do an immediate refresh
+          try { window.__UR_VISIBLE_SECTION__ = id; immediateSectionFetch(id); } catch(_){ }
         }
         document.querySelectorAll('.table-switch').forEach(function(a){
           a.addEventListener('click', function(e){
@@ -2780,75 +2830,81 @@ if (!empty($my_requests)) {
         });
       }, 3000);
       
-      setInterval(()=>{ updateAvailHint(); }, 2000);
-      // Keep categories/models live
-      setInterval(()=>{ refreshCatalog(); }, 5000);
-      setInterval(()=>{
-        if (document.visibilityState !== 'visible') return;
-        if (inFlightReq) return; inFlightReq = true;
-        fetch('user_request.php?action=my_requests_status')
-          .then(r=>r.json())
-          .then(renderMyRequests)
-          .catch(()=>{})
-          .finally(()=>{ inFlightReq = false; });
-      }, 2000);
-      setInterval(()=>{
-        if (document.visibilityState !== 'visible') return;
-        if (inFlightBor) return; inFlightBor = true;
-        fetch('user_request.php?action=my_borrowed')
-          .then(r=>r.json())
-          .then(d=>{ 
-            renderMyBorrowed(d);
-            try {
-              const list = (d && Array.isArray(d.borrowed)) ? d.borrowed : [];
-              const navLink = document.querySelector('#sidebar-wrapper a[href="user_request.php"]');
-              if (navLink) {
-                // Always remove any legacy req-dot
-                navLink.querySelectorAll('.nav-req-dot').forEach(el=>{ try{ el.remove(); }catch(_){ el.style.display='none'; } });
-                let dot = navLink.querySelector('.nav-borrowed-dot');
-                if (list.length > 0) {
-                  if (!dot) {
-                    dot = document.createElement('span');
-                    dot.className = 'nav-borrowed-dot ms-2 d-inline-block rounded-circle';
-                    dot.style.width = '8px';
-                    dot.style.height = '8px';
-                    dot.style.backgroundColor = '#dc3545';
-                    dot.style.verticalAlign = 'middle';
-                    navLink.appendChild(dot);
-                  }
-                  dot.style.display = 'inline-block';
-                } else {
-                  // Remove from sidebar link
-                  if (dot) { try{ dot.remove(); }catch(_){ dot.style.display='none'; } }
-                  // Remove any other stray dots
-                  document.querySelectorAll('.nav-borrowed-dot').forEach(el=>{ try{ el.remove(); }catch(_){ el.style.display='none'; } });
-                }
-              }
-            } catch(_){ }
-          })
-          .catch(()=>{})
-          .finally(()=>{ inFlightBor = false; });
-      }, 2000);
-      // Overdue polling
-      let inFlightOver = false;
-      setInterval(()=>{
-        if (document.visibilityState !== 'visible') return;
-        if (inFlightOver) return; inFlightOver = true;
-        fetch('user_request.php?action=my_overdue')
-          .then(r=>r.json())
-          .then(renderMyOverdue)
-          .catch(()=>{})
-          .finally(()=>{ inFlightOver = false; });
+      // Throttle background UI refresh and respect visibility/pause flags
+      setInterval(()=>{ 
+        if (document.visibilityState !== 'visible') return; 
+        if (typeof __UR_POLLING_PAUSED__ !== 'undefined' && __UR_POLLING_PAUSED__) return;
+        try { updateAvailHint(); } catch(_){ }
       }, 5000);
-      setInterval(()=>{
-        if (document.visibilityState !== 'visible') return;
-        if (inFlightHist) return; inFlightHist = true;
-        fetch('user_request.php?action=my_history')
-          .then(r=>r.json())
-          .then(renderMyHistory)
-          .catch(()=>{})
-          .finally(()=>{ inFlightHist = false; });
-      }, 3000);
+      // Keep categories/models live (less frequent)
+      setInterval(()=>{ 
+        if (document.visibilityState !== 'visible') return; 
+        if (typeof __UR_POLLING_PAUSED__ !== 'undefined' && __UR_POLLING_PAUSED__) return;
+        try { refreshCatalog(); } catch(_){ }
+      }, 15000);
+      // Global polling pause control (e.g., when modals are open)
+      var __UR_POLLING_PAUSED__ = false;
+      // Track whether a section has completed its first successful load
+      window.__UR_SECTION_LOADED__ = window.__UR_SECTION_LOADED__ || { 'section-recent': false, 'section-borrowed': false, 'section-overdue': false, 'section-history': false };
+      // Track whether we've already shown the one-time Loading... state per section
+      window.__UR_SECTION_LOADING_SHOWN__ = window.__UR_SECTION_LOADING_SHOWN__ || { 'section-recent': false, 'section-borrowed': false, 'section-overdue': false, 'section-history': false };
+      function pausePolling(v){ __UR_POLLING_PAUSED__ = !!v; }
+      try {
+        var srModal = document.getElementById('submitRequestModal');
+        if (srModal){
+          srModal.addEventListener('shown.bs.modal', function(){ pausePolling(true); });
+          srModal.addEventListener('hidden.bs.modal', function(){ pausePolling(false); });
+        }
+        var qrModal2 = document.getElementById('urQrScanModal');
+        if (qrModal2){
+          qrModal2.addEventListener('shown.bs.modal', function(){ pausePolling(true); });
+          qrModal2.addEventListener('hidden.bs.modal', function(){ pausePolling(false); });
+        }
+      } catch(_){}
+
+      // Targeted polling: only fetch the currently visible section
+      let inFlightOver = false;
+      function immediateSectionFetch(sec){
+        if (!sec) return;
+        if (sec === 'section-recent') {
+          if (inFlightReq) return; inFlightReq = true;
+          fetch('user_request.php?action=my_requests_status', { cache:'no-store' })
+            .then(r=>r.json()).then(renderMyRequests).catch(()=>{})
+            .finally(()=>{ inFlightReq = false; });
+        } else if (sec === 'section-borrowed') {
+          if (inFlightBor) return; inFlightBor = true;
+          fetch('user_request.php?action=my_borrowed', { cache:'no-store' })
+            .then(r=>r.json()).then(d=>{ renderMyBorrowed(d); try { const list=(d&&Array.isArray(d.borrowed))?d.borrowed:[]; const navLink=document.querySelector('#sidebar-wrapper a[href="user_request.php"]'); if(navLink){ navLink.querySelectorAll('.nav-req-dot').forEach(el=>{ try{ el.remove(); }catch(_){ el.style.display='none'; } }); let dot=navLink.querySelector('.nav-borrowed-dot'); if(list.length>0){ if(!dot){ dot=document.createElement('span'); dot.className='nav-borrowed-dot ms-2 d-inline-block rounded-circle'; dot.style.width='8px'; dot.style.height='8px'; dot.style.backgroundColor='#dc3545'; dot.style.verticalAlign='middle'; navLink.appendChild(dot);} dot.style.display='inline-block'; } else { if(dot){ try{ dot.remove(); }catch(_){ dot.style.display='none'; } } document.querySelectorAll('.nav-borrowed-dot').forEach(el=>{ try{ el.remove(); }catch(_){ el.style.display='none'; } }); } } } catch(_){ } }).catch(()=>{})
+            .finally(()=>{ inFlightBor = false; });
+        } else if (sec === 'section-overdue') {
+          if (inFlightOver) return; inFlightOver = true;
+          try {
+            var tb=document.getElementById('myOverdueTbody');
+            if(tb){
+              var showOnce = !window.__UR_SECTION_LOADING_SHOWN__['section-overdue'];
+              var emptyNow = (tb.children.length === 0);
+              if (showOnce && (emptyNow || !window.__UR_SECTION_LOADED__['section-overdue'])) {
+                tb.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>';
+                window.__UR_SECTION_LOADING_SHOWN__['section-overdue'] = true;
+              }
+            }
+          } catch(_){ }
+          fetch('user_request.php?action=my_overdue', { cache:'no-store' })
+            .then(r=>r.json()).then(renderMyOverdue).catch(()=>{})
+            .finally(()=>{ inFlightOver = false; });
+        } else if (sec === 'section-history') {
+          if (inFlightHist) return; inFlightHist = true;
+          fetch('user_request.php?action=my_history', { cache:'no-store' })
+            .then(r=>r.json()).then(renderMyHistory).catch(()=>{})
+            .finally(()=>{ inFlightHist = false; });
+        }
+      }
+      function pollVisibleSection(){
+        if (document.visibilityState !== 'visible' || __UR_POLLING_PAUSED__) return;
+        const sec = window.__UR_VISIBLE_SECTION__ || 'section-recent';
+        immediateSectionFetch(sec);
+      }
+      setInterval(pollVisibleSection, 6000);
 
       let toastWrap = document.getElementById('userToastWrap');
       if (!toastWrap) { toastWrap = document.createElement('div'); toastWrap.id='userToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080'; document.body.appendChild(toastWrap); }
@@ -2896,7 +2952,7 @@ if (!empty($my_requests)) {
           .catch(()=>{});
       }
       notifPoll();
-      setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 2000);
+      setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 10000);
     })();
   </script>
   <script>
