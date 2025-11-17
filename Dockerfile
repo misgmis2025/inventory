@@ -52,8 +52,15 @@ RUN echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
 
 # Runtime entrypoint to bind Apache to $PORT (Railway)
-RUN bash -lc 'cat > /usr/local/bin/start-apache.sh <<EOF\n#!/bin/sh\nset -e\nPORT_VALUE="${PORT:-80}"\nsed -i "s/^Listen .*/Listen ${PORT_VALUE}/" /etc/apache2/ports.conf || true\nsed -i "s/<VirtualHost \*:.*>/<VirtualHost *:${PORT_VALUE}>/" /etc/apache2/sites-available/000-default.conf || true\nexec apache2-foreground\nEOF' \
- && chmod +x /usr/local/bin/start-apache.sh
+RUN printf '%s\n' \
+  '#!/bin/sh' \
+  'set -e' \
+  'PORT_VALUE="${PORT:-80}"' \
+  'sed -i "s/^Listen .*/Listen ${PORT_VALUE}/" /etc/apache2/ports.conf || true' \
+  'sed -i "s/<VirtualHost \*:.*>/<VirtualHost *:${PORT_VALUE}>/" /etc/apache2/sites-available/000-default.conf || true' \
+  'exec apache2-foreground' \
+  > /usr/local/bin/start-apache.sh \
+  && chmod +x /usr/local/bin/start-apache.sh
 
 EXPOSE 80
 CMD ["/usr/local/bin/start-apache.sh"]
