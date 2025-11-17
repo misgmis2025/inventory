@@ -20,8 +20,8 @@ RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/
 # Health: print PHP and verify extension during build
 RUN php -v && php -m | grep -i mongodb || (echo "mongodb extension missing" && exit 1)
 
-# Expose and run on fixed port 8 serving the actual app dir
-EXPOSE 8
-CMD ["sh","-lc","php -S 0.0.0.0:8 -t /var/www/html/inventory/inventory/inventory"]
+# Expose and run on platform PORT (fallback 8080) serving web root
+EXPOSE 8080
+CMD ["sh","-lc","php -S 0.0.0.0:${PORT:-8080} -t /var/www/html"]
 
-HEALTHCHECK --interval=20s --timeout=5s --retries=6 CMD curl -fsS http://127.0.0.1:8/ok.txt || exit 1
+HEALTHCHECK --interval=20s --timeout=5s --retries=6 CMD curl -fsS http://127.0.0.1:${PORT:-8080}/ok.txt || exit 1
