@@ -15,6 +15,7 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 session_start();
 // Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
 $__autoload_candidates = [
+  __DIR__ . '/vendor/autoload.php',      // web root vendor (after Docker promotion)
   __DIR__ . '/../vendor/autoload.php',   // inventory/inventory/vendor
   __DIR__ . '/../../vendor/autoload.php' // inventory/vendor
 ];
