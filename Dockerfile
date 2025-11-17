@@ -56,7 +56,7 @@ RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -e' \
   'PORT_VALUE="${PORT:-8080}"' \
-  'printf "Listen %s\n" "$PORT_VALUE" > /etc/apache2/ports.conf' \
+  'printf "Listen 0.0.0.0:%s\n" "$PORT_VALUE" > /etc/apache2/ports.conf' \
   'printf "%s\n" \
 "<VirtualHost *:$PORT_VALUE>" \
 "  ServerName localhost" \
