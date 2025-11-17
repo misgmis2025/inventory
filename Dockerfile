@@ -25,8 +25,9 @@ RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/
 # Health: print PHP and verify extension during build
 RUN php -v && php -m | grep -i mongodb || (echo "mongodb extension missing" && exit 1)
 
-# Expose and run on platform PORT (fallback 8080) serving web root
+# Expose and run on platform PORT (fallback 8080)
+# Use router.php so static files work whether the app is nested or promoted to web root
 EXPOSE 8080
-CMD ["sh","-lc","php -S 0.0.0.0:${PORT:-8080} -t /var/www/html"]
+CMD ["sh","-lc","php -S 0.0.0.0:${PORT:-8080} router.php"]
 
 HEALTHCHECK --interval=20s --timeout=5s --retries=6 CMD curl -fsS http://127.0.0.1:${PORT:-8080}/ok.txt || exit 1
