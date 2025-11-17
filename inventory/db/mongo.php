@@ -2,7 +2,14 @@
 // MongoDB connection helper
 // Usage: $db = get_mongo_db();
 
-require_once __DIR__ . '/../../vendor/autoload.php';
+// Try local vendor first, then project-root vendor to be resilient to layout differences
+$__autoloads = [
+    __DIR__ . '/../../vendor/autoload.php',       // inventory/inventory/vendor (original expectation)
+    __DIR__ . '/../../../vendor/autoload.php',    // inventory/vendor (project root)
+];
+foreach ($__autoloads as $__a) {
+    if (file_exists($__a)) { require_once $__a; break; }
+}
 
 use MongoDB\Client;
 

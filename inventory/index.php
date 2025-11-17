@@ -13,8 +13,26 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('session.cookie_path', '/');
 @ini_set('session.use_strict_mode', '1');
 session_start();
-require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/db/mongo.php';
+// Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
+$__autoload_candidates = [
+  __DIR__ . '/../vendor/autoload.php',   // inventory/inventory/vendor
+  __DIR__ . '/../../vendor/autoload.php' // inventory/vendor
+];
+$__autoload_loaded = false;
+foreach ($__autoload_candidates as $__autoload) {
+  if (file_exists($__autoload)) { require_once $__autoload; $__autoload_loaded = true; break; }
+}
+if (! $__autoload_loaded) {
+  @error_log('[bootstrap] Missing vendor/autoload.php in expected locations. Did you run composer install?');
+}
+
+// Load Mongo helper if present
+$__mongo_helper = __DIR__ . '/db/mongo.php';
+if (file_exists($__mongo_helper)) {
+    require_once $__mongo_helper;
+} else {
+    @error_log('[bootstrap] Missing db/mongo.php helper.');
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim((string)($_POST['username'] ?? ''));
