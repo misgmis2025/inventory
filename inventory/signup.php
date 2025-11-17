@@ -76,50 +76,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"> 
     <link rel="stylesheet" href="css/style.css" />
 </head>
-<body>
-    <div class="auth-container">
-        <div class="auth-left"></div>
-        <div class="auth-right">
-            <div class="auth-card">
-                <h1 class="auth-title">Create Account</h1>
-                <p class="auth-subtitle">Enter your information to get started</p>
-                <div class="auth-logo-wrap">
-                    <img src="images/logo-removebg.png" alt="Logo" class="auth-logo" />
+<body class="bg-light">
+    <div class="container min-vh-100 d-flex align-items-center justify-content-center py-5">
+        <div class="row w-100 justify-content-center">
+            <div class="col-lg-5 col-md-7">
+                <div class="auth-card">
+                    <h1 class="auth-title">Create Account</h1>
+                    <p class="auth-subtitle">Enter your information to get started</p>
+
+                    <?php if (!empty($error)): ?>
+                    <p class="text-center" style="color:#dc3545; margin-bottom: 1rem;">&lt;?php echo $error; ?&gt;</p>
+                    <?php endif; ?>
+
+                    <form method="POST" action="" class="auth-form mt-3">
+                        <label class="form-label" for="school_id">ID</label>
+                        <input id="school_id" class="form-control" type="text" name="school_id" placeholder="Enter your school ID" inputmode="numeric" pattern="[0-9-]+" required />
+                        <label class="form-label mt-2" for="user_type">User Type</label>
+                        <select id="user_type" name="user_type" class="form-select" required>
+                            <option value="">Select type</option>
+                            <option value="Student">Student</option>
+                            <option value="Staff">Staff</option>
+                            <option value="Faculty">Faculty</option>
+                        </select>
+                        <label class="form-label" for="full_name">Full Name</label>
+                        <input id="full_name" class="form-control" type="text" name="full_name" placeholder="Enter your full name" required />
+                        <label class="form-label" for="username">Username</label>
+                        <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" required />
+                        <label class="form-label mt-2" for="password">Password</label>
+                        <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
+                        <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
+                        <label class="form-label mt-2" for="confirm_password">Confirm Password</label>
+                        <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
+                        <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
+                        <div class="mt-2">
+                          <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
+                            <input type="checkbox" id="toggle_password" />
+                            <span>Show password</span>
+                          </label>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Sign up</button>
+                    </form>
+                    <p class="auth-switch mt-3">Already have an account? <a href="index.php" class="auth-link">Login</a></p>
                 </div>
-
-                <?php if (!empty($error)): ?>
-                <p class="text-center" style="color:#dc3545; margin-bottom: 1rem;"><?php echo $error; ?></p>
-                <?php endif; ?>
-
-                <form method="POST" action="" class="auth-form">
-                    <label class="form-label" for="school_id">ID</label>
-                    <input id="school_id" class="form-control" type="text" name="school_id" placeholder="Enter your school ID" inputmode="numeric" pattern="[0-9-]+" required />
-                    <label class="form-label mt-2" for="user_type">User Type</label>
-                    <select id="user_type" name="user_type" class="form-select" required>
-                        <option value="">Select type</option>
-                        <option value="Student">Student</option>
-                        <option value="Staff">Staff</option>
-                        <option value="Faculty">Faculty</option>
-                    </select>
-                    <label class="form-label" for="full_name">Full Name</label>
-                    <input id="full_name" class="form-control" type="text" name="full_name" placeholder="Enter your full name" required />
-                    <label class="form-label" for="username">Username</label>
-                    <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" required />
-                    <label class="form-label mt-2" for="password">Password</label>
-                    <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
-                    <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
-                    <label class="form-label mt-2" for="confirm_password">Confirm Password</label>
-                    <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
-                    <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
-                    <div class="mt-2">
-                      <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
-                        <input type="checkbox" id="toggle_password" />
-                        <span>Show password</span>
-                      </label>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Sign up</button>
-                </form>
-                <p class="auth-switch mt-3">Already have an account? <a href="index.php" class="auth-link">Login</a></p>
             </div>
         </div>
     </div>
