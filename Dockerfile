@@ -14,9 +14,15 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
     -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# Ensure DirectoryIndex and AllowOverride
-RUN bash -lc 'cat > /etc/apache2/conf-available/dirindex.conf <<EOF\n<Directory ${APACHE_DOCUMENT_ROOT}>\n  DirectoryIndex index.php index.html\n  AllowOverride All\n  Require all granted\n</Directory>\nEOF' \
- && a2enconf dirindex
+# Ensure DirectoryIndex and AllowOverride (expand APACHE_DOCUMENT_ROOT at build time)
+RUN printf '%s\n' \
+  "<Directory ${APACHE_DOCUMENT_ROOT}>" \
+  "  DirectoryIndex index.php index.html" \
+  "  AllowOverride All" \
+  "  Require all granted" \
+  "</Directory>" \
+  > /etc/apache2/conf-available/dirindex.conf \
+  && a2enconf dirindex
 
 WORKDIR /var/www/html
 
