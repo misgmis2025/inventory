@@ -911,27 +911,37 @@ button[data-bs-target="#addItemModal"],
 /* ===== AUTH PAGES ===== */
 .auth-container {
     display: flex;
-    align-items: center;
+    flex-direction: row;
+    align-items: stretch;
     justify-content: center;
     min-height: 100vh;
     background: #f8fbff;
     padding: 2rem;
+    gap: 3rem;
 }
 
+/* Decorative left pane (desktop/tablet). Empty div in markup becomes a visual panel. */
 .auth-left {
-    display: none !important;
+    flex: 1 1 0;
+    border-radius: 1.5rem;
+    background: radial-gradient(circle at top left, #0d6efd 0, #0056b3 40%, #001633 100%);
+    position: relative;
+    overflow: hidden;
+    min-height: 340px;
 }
 
 .auth-right {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 2rem;
-    background: #ffffff;
+    background: transparent;
 }
 
-.auth-logo-wrap { display: none !important; }
-.auth-logo { display: none !important; }
+/* Hide logo in card for now; keep hooks if you want to show a logo later. */
+.auth-logo-wrap { display: none; }
+.auth-logo { display: none; }
 
 /* Sidebar brand styles (dashboard) */
 #sidebar-wrapper .sidebar-heading {
@@ -1008,12 +1018,34 @@ button[data-bs-target="#addItemModal"],
 
 @media (max-width: 992px) {
     .auth-container {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        padding: 2rem 1.5rem;
+        gap: 1.5rem;
     }
     .auth-left {
-        min-height: 30vh;
+        display: none;
     }
-    .auth-right { padding-top: 1.5rem; }
+    .auth-right {
+        padding: 0;
+    }
+}
+
+@media (max-width: 576px) {
+    .auth-container {
+        padding: 1.5rem 1rem;
+    }
+    .auth-card {
+        max-width: 100%;
+        padding: 1.5rem 1.25rem;
+        border-radius: 1rem;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.12);
+    }
+    .auth-title {
+        font-size: 1.5rem;
+    }
+    .auth-subtitle {
+        font-size: 0.95rem;
+    }
 }
 
 /* ===== Compact Actions in Inventory Category Tables ===== */
