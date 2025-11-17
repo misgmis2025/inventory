@@ -13,6 +13,11 @@ WORKDIR /var/www/html
 # Copy repo
 COPY . /var/www/html
 
+# Promote nested app into web root if present
+RUN if [ -d /var/www/html/inventory/inventory/inventory ]; then \
+      cp -R /var/www/html/inventory/inventory/inventory/* /var/www/html/ ; \
+    fi
+
 # Install Composer and PHP deps
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/www/html
@@ -20,8 +25,8 @@ RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/
 # Health: print PHP and verify extension during build
 RUN php -v && php -m | grep -i mongodb || (echo "mongodb extension missing" && exit 1)
 
-# Expose and run on platform PORT (fallback 8080) serving the app dir
+# Expose and run on platform PORT (fallback 8080) serving web root
 EXPOSE 8080
-CMD ["sh","-lc","php -S 0.0.0.0:${PORT:-8080} -t /var/www/html/inventory/inventory/inventory"]
+CMD ["sh","-lc","php -S 0.0.0.0:${PORT:-8080} -t /var/www/html"]
 
 HEALTHCHECK --interval=20s --timeout=5s --retries=6 CMD curl -fsS http://127.0.0.1:${PORT:-8080}/ok.txt || exit 1
