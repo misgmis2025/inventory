@@ -26,8 +26,8 @@ RUN mkdir -p /var/www/html/inventory/inventory/tmp_sessions \
 
 # Install Composer and PHP deps
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-# Run composer where composer.json lives: /var/www/html/inventory/composer.json
-RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/www/html/inventory
+# Run composer where composer.json lives: /var/www/html/composer.json (repo root)
+RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/www/html
 
 # Health: show PHP and extension
 RUN php -v && php -m | grep -i mongodb || true
