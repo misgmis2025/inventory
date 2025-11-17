@@ -2,10 +2,12 @@
 // MongoDB connection helper
 // Usage: $db = get_mongo_db();
 
-// Try local vendor first, then project-root vendor to be resilient to layout differences
+// Try multiple vendor locations to support both nested layout and promoted web root layout
 $__autoloads = [
-    __DIR__ . '/../../vendor/autoload.php',       // inventory/inventory/vendor (original expectation)
-    __DIR__ . '/../../../vendor/autoload.php',    // inventory/vendor (project root)
+    __DIR__ . '/vendor/autoload.php',            // when db/ lives at web root (after Docker promotion)
+    __DIR__ . '/../vendor/autoload.php',         // common one-level-up
+    __DIR__ . '/../../vendor/autoload.php',      // inventory/inventory/vendor (nested)
+    __DIR__ . '/../../../vendor/autoload.php',   // inventory/vendor (project root)
 ];
 foreach ($__autoloads as $__a) {
     if (file_exists($__a)) { require_once $__a; break; }

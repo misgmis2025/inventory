@@ -2,9 +2,18 @@
 // Ensure session.save_path is writable; fallback to a local folder if needed
 $__sess_path = ini_get('session.save_path');
 if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
-    $__alt = __DIR__ . '/../tmp_sessions';
-    if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
-    if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
+    // Try ../tmp_sessions (original nested layout)
+    $__alt1 = __DIR__ . '/../tmp_sessions';
+    if (!is_dir($__alt1)) { @mkdir($__alt1, 0777, true); }
+    if (is_dir($__alt1) && is_writable($__alt1)) { @ini_set('session.save_path', $__alt1); }
+
+    // If still not writable, try ./tmp_sessions (when app is at web root)
+    $__sess_path2 = ini_get('session.save_path');
+    if (!$__sess_path2 || !is_dir($__sess_path2) || !is_writable($__sess_path2)) {
+        $__alt2 = __DIR__ . '/tmp_sessions';
+        if (!is_dir($__alt2)) { @mkdir($__alt2, 0777, true); }
+        if (is_dir($__alt2) && is_writable($__alt2)) { @ini_set('session.save_path', $__alt2); }
+    }
 }
 // Ensure session cookies work over HTTP on localhost and persist across redirects
 @ini_set('session.cookie_secure', '0');
@@ -12,6 +21,8 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('session.cookie_samesite', 'Lax');
 @ini_set('session.cookie_path', '/');
 @ini_set('session.use_strict_mode', '1');
+@ini_set('log_errors', '1');
+@ini_set('error_log', '/proc/self/fd/2'); // log PHP errors to container stderr
 session_start();
 // Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
 $__autoload_candidates = [

@@ -14,6 +14,10 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
     -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
+# Ensure DirectoryIndex and AllowOverride
+RUN bash -lc 'cat > /etc/apache2/conf-available/dirindex.conf <<EOF\n<Directory ${APACHE_DOCUMENT_ROOT}>\n  DirectoryIndex index.php index.html\n  AllowOverride All\n  Require all granted\n</Directory>\nEOF' \
+ && a2enconf dirindex
+
 WORKDIR /var/www/html
 
 # Copy repo
@@ -41,5 +45,9 @@ RUN php -v && php -m | grep -i mongodb || true
 RUN echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
 
+# Runtime entrypoint to bind Apache to $PORT (Railway)
+RUN bash -lc 'cat > /usr/local/bin/start-apache.sh <<EOF\n#!/bin/sh\nset -e\nPORT_VALUE="${PORT:-80}"\nsed -i "s/^Listen .*/Listen ${PORT_VALUE}/" /etc/apache2/ports.conf || true\nsed -i "s/<VirtualHost \*:.*>/<VirtualHost *:${PORT_VALUE}>/" /etc/apache2/sites-available/000-default.conf || true\nexec apache2-foreground\nEOF' \
+ && chmod +x /usr/local/bin/start-apache.sh
+
 EXPOSE 80
-CMD ["apache2-foreground"]
+CMD ["/usr/local/bin/start-apache.sh"]
