@@ -51,13 +51,26 @@ RUN php -v && php -m | grep -i mongodb || true
 RUN echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername
 
-# Runtime entrypoint to bind Apache to $PORT (Railway)
+# Runtime entrypoint to bind Apache to $PORT (Railway) with explicit configs
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -e' \
-  'PORT_VALUE="${PORT:-80}"' \
-  'sed -i "s/^Listen .*/Listen ${PORT_VALUE}/" /etc/apache2/ports.conf || true' \
-  'sed -i "s/<VirtualHost \*:.*>/<VirtualHost *:${PORT_VALUE}>/" /etc/apache2/sites-available/000-default.conf || true' \
+  'PORT_VALUE="${PORT:-8080}"' \
+  'printf "Listen %s\n" "$PORT_VALUE" > /etc/apache2/ports.conf' \
+  'printf "%s\n" \
+"<VirtualHost *:$PORT_VALUE>" \
+"  ServerName localhost" \
+"  DocumentRoot /var/www/html" \
+"  <Directory /var/www/html>" \
+"    DirectoryIndex index.php index.html" \
+"    AllowOverride All" \
+"    Require all granted" \
+"  </Directory>" \
+"  ErrorLog ${APACHE_LOG_DIR}/error.log" \
+"  CustomLog ${APACHE_LOG_DIR}/access.log combined" \
+"</VirtualHost>" \
+> /etc/apache2/sites-available/000-default.conf' \
+  'a2ensite 000-default.conf >/dev/null 2>&1 || true' \
   'exec apache2-foreground' \
   > /usr/local/bin/start-apache.sh \
   && chmod +x /usr/local/bin/start-apache.sh
