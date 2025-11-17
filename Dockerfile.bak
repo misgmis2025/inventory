@@ -3,7 +3,7 @@ FROM php:8.2-apache
 
 # System deps and MongoDB extension
 RUN apt-get update && apt-get install -y \
-    libssl-dev pkg-config git unzip \
+    libssl-dev pkg-config git unzip curl \
  && pecl install mongodb \
  && docker-php-ext-enable mongodb \
  && a2enmod rewrite \
@@ -47,15 +47,17 @@ RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/
 # Health: show PHP and extension
 RUN php -v && php -m | grep -i mongodb || true
 
-# Simple runtime using PHP built-in server on platform PORT (fallback 8080)
+# Simple runtime using PHP built-in server on fixed port 8080
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -e' \
-  'PORT_VALUE="${PORT:-8080}"' \
-  'echo "Starting PHP built-in server on 0.0.0.0:${PORT_VALUE}"' \
-  'exec php -S 0.0.0.0:${PORT_VALUE} -t /var/www/html' \
+  'echo "Starting PHP built-in server on 0.0.0.0:8080"' \
+  'exec php -S 0.0.0.0:8080 -t /var/www/html' \
   > /usr/local/bin/start-php.sh \
   && chmod +x /usr/local/bin/start-php.sh
 
 EXPOSE 8080
 CMD ["/usr/local/bin/start-php.sh"]
+
+# Healthcheck to help the platform detect readiness
+HEALTHCHECK --interval=20s --timeout=5s --retries=6 CMD curl -fsS http://127.0.0.1:8080/ok.txt || exit 1

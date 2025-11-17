@@ -1,0 +1,1 @@
+web: php -S 0.0.0.0: -t inventory/inventory/inventory
