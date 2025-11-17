@@ -47,14 +47,15 @@ RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=/var/
 # Health: show PHP and extension
 RUN php -v && php -m | grep -i mongodb || true
 
-# Simple runtime using PHP built-in server on port 80 (no PORT var required)
+# Simple runtime using PHP built-in server on platform PORT (fallback 8080)
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -e' \
-  'echo "Starting PHP built-in server on 0.0.0.0:80"' \
-  'exec php -S 0.0.0.0:80 -t /var/www/html' \
+  'PORT_VALUE="${PORT:-8080}"' \
+  'echo "Starting PHP built-in server on 0.0.0.0:${PORT_VALUE}"' \
+  'exec php -S 0.0.0.0:${PORT_VALUE} -t /var/www/html' \
   > /usr/local/bin/start-php.sh \
   && chmod +x /usr/local/bin/start-php.sh
 
-EXPOSE 80
+EXPOSE 8080
 CMD ["/usr/local/bin/start-php.sh"]
