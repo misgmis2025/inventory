@@ -242,7 +242,7 @@ if (!$USED_MONGO) {
                             <i class="bi bi-bell" style="font-size:1.2rem;"></i>
                             <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="userBellDot"></span>
                         </button>
-                        <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdown" style="min-width: 320px; max-height: 360px; overflow:auto;">
+                        <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdown" style="min-width: 320px; max-height: 360px; overflow:auto; z-index: 1070;">
                             <div class="px-3 py-2 border-bottom fw-bold small">Request Updates</div>
                             <div id="userNotifList" class="list-group list-group-flush small"></div>
                             <div class="text-center small text-muted py-2" id="userNotifEmpty">No updates yet.</div>
@@ -493,23 +493,28 @@ if (!$USED_MONGO) {
             const listEl = document.getElementById('userNotifList');
             const emptyEl = document.getElementById('userNotifEmpty');
             const uname = <?php echo json_encode($_SESSION['username']); ?>;
-            // Mobile modal elements for scrollable notifications
-            const mBackdrop = document.getElementById('udBellBackdrop');
-            const mModal = document.getElementById('udBellModal');
-            const mList = document.getElementById('udNotifListM');
-            const mEmpty = document.getElementById('udNotifEmptyM');
-            const mClose = document.getElementById('udbmCloseBtn');
+            // Mobile modal elements for scrollable notifications (match user_request IDs)
+            const mBackdrop = document.getElementById('userBellBackdrop');
+            const mModal = document.getElementById('userBellModal');
+            const mList = document.getElementById('userNotifListM');
+            const mEmpty = document.getElementById('userNotifEmptyM');
+            const mClose = document.getElementById('ubmCloseBtn');
             function isMobile(){ try{ return window.matchMedia && window.matchMedia('(max-width: 768px)').matches; }catch(_){ return window.innerWidth<=768; } }
             function openMobileModal(){ if (!mModal || !mBackdrop) return; copyToMobile(); mModal.style.display='flex'; mBackdrop.style.display='block'; try{ document.body.style.overflow='hidden'; }catch(_){ } }
             function closeMobileModal(){ if (!mModal || !mBackdrop) return; mModal.style.display='none'; mBackdrop.style.display='none'; try{ document.body.style.overflow=''; }catch(_){ } }
-            function copyToMobile(){ try{ if (mList && listEl) mList.innerHTML = listEl.innerHTML; if (mEmpty && emptyEl) mEmpty.style.display = emptyEl.style.display; } catch(_){ }
-
+            function copyToMobile(){
+                try {
+                  if (mList && listEl) mList.innerHTML = listEl.innerHTML;
+                  if (mEmpty && emptyEl) mEmpty.style.display = emptyEl.style.display;
+                } catch(_){ }
+            }
             if (bellBtn && dropdown) {
                 bellBtn.addEventListener('click', function(e){
                     e.stopPropagation();
                     if (isMobile()) { openMobileModal(); }
                     else {
                       dropdown.classList.toggle('show');
+                      dropdown.style.display = dropdown.classList.contains('show') ? 'block' : '';
                       dropdown.style.position = 'absolute';
                       dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
                       dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
@@ -522,7 +527,7 @@ if (!$USED_MONGO) {
                         localStorage.setItem('ud_notif_sig_open', currentSig || '');
                     } catch(_){ }
                 });
-                document.addEventListener('click', function(){ dropdown.classList.remove('show'); closeMobileModal(); });
+                document.addEventListener('click', function(){ dropdown.classList.remove('show'); dropdown.style.display=''; closeMobileModal(); });
                 if (mBackdrop) mBackdrop.addEventListener('click', closeMobileModal);
                 if (mClose) mClose.addEventListener('click', closeMobileModal);
             }
