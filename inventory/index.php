@@ -203,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
           <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
         </form>
-        <p class="login-switch">Don't have an account? <a href="inventory/signup.php">Sign up here</a></p>
+        <p class="login-switch">Don't have an account? <a href="/inventory/signup.php">Sign up here</a></p>
       </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
