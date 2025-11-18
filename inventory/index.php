@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="css/style.css" />
 </head>
-<body class="bg-light">
+<body class="bg-light allow-mobile">
     <style>
       .login-wrapper {
         min-height: 100vh;
