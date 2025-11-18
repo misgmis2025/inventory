@@ -1681,7 +1681,7 @@ if (!empty($my_requests)) {
     </div>
     <div class="p-4" id="page-content-wrapper">
       <div class="page-header d-flex justify-content-between align-items-center">
-        <h2 class="page-title mb-0"><i class="bi bi-clipboard-plus me-2"></i>Request to Borrows</h2>
+        <h2 class="page-title mb-0"><i class="bi bi-clipboard-plus me-2"></i>Request to Borrow</h2>
         <div class="d-flex align-items-center gap-3">
           <div class="btn-group">
             <button id="tableSwitcherBtn" type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" aria-haspopup="true" role="button">
