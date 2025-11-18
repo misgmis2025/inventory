@@ -1871,7 +1871,7 @@ if (!empty($my_requests)) {
 
       <div class="row">
         <div class="col-12 col-lg-5 col-xl-4" style="max-width: 520px;">
-          <div id="submitReqCard" class="card border-0 shadow-sm compact-card">
+          <div id="submitReqCard" class="card border-0 shadow-sm compact-card d-none">
             <div class="card-body">
               <h5 class="mb-3"><i class="bi bi-pencil-square me-2"></i>Submit Request</h5>
               <div class="d-grid">
