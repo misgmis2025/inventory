@@ -77,18 +77,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="bg-light">
-    <div class="container min-vh-100 d-flex align-items-center justify-content-center py-5">
-        <div class="row w-100 justify-content-center">
-            <div class="col-lg-5 col-md-7">
-                <div class="auth-card">
-                    <h1 class="auth-title">Create Account</h1>
-                    <p class="auth-subtitle">Enter your information to get started</p>
+    <style>
+      .signup-wrapper {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        background-color: #f8f9fa;
+      }
+      .signup-card {
+        width: 100%;
+        max-width: 340px;
+        background: #ffffff;
+        border-radius: 1rem;
+        padding: 2rem 1.75rem;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+        border: 1px solid #e5e7eb;
+      }
+      .signup-title {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.25rem;
+        text-align: center;
+      }
+      .signup-subtitle {
+        text-align: center;
+        color: #6b7280;
+        margin-bottom: 1.75rem;
+      }
+      .signup-switch {
+        text-align: center;
+        color: #6b7280;
+        margin-top: 1.5rem;
+      }
+      .signup-switch a {
+        color: #2563eb;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .signup-switch a:hover { text-decoration: underline; }
+      @media (max-width: 576px) {
+        .signup-card { padding: 2rem 1.5rem; }
+        .signup-title { font-size: 1.6rem; }
+      }
+    </style>
 
-                    <?php if (!empty($error)): ?>
-                    <p class="text-center" style="color:#dc3545; margin-bottom: 1rem;">&lt;?php echo $error; ?&gt;</p>
-                    <?php endif; ?>
+    <div class="signup-wrapper">
+      <div class="signup-card">
+        <h1 class="signup-title">Create Account</h1>
+        <p class="signup-subtitle">Enter your information to get started</p>
 
-                    <form method="POST" action="" class="auth-form mt-3">
+        <?php if (!empty($error)): ?>
+        <p class="text-center" style="color:#dc3545; margin-bottom: 1rem;"><?php echo htmlspecialchars($error); ?></p>
+        <?php endif; ?>
+
+        <form method="POST" action="" class="mt-3">
                         <label class="form-label" for="school_id">ID</label>
                         <input id="school_id" class="form-control" type="text" name="school_id" placeholder="Enter your school ID" inputmode="numeric" pattern="[0-9-]+" required />
                         <label class="form-label mt-2" for="user_type">User Type</label>
@@ -116,10 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Sign up</button>
                     </form>
-                    <p class="auth-switch mt-3">Already have an account? <a href="index.php" class="auth-link">Login</a></p>
-                </div>
-            </div>
-        </div>
+                    <p class="signup-switch mt-3">Already have an account? <a href="index.php">Login</a></p>
+      </div>
     </div>
     <script>
       (function() {
