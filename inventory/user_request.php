@@ -68,6 +68,11 @@ if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $dispModel = '';
         if ($ii) { $dispModel = (string)($ii['model'] ?? ''); if ($dispModel==='') { $dispModel = (string)($ii['item_name'] ?? ''); } }
         $days = max(0, (int)floor((strtotime($now) - strtotime($due)) / 86400));
+        // Determine if this request was created via QR
+        $isQr = false;
+        if ($reqId > 0) {
+          try { $reqDoc = $erCol->findOne(['id'=>$reqId], ['projection'=>['qr_serial_no'=>1]]); $isQr = ($reqDoc && isset($reqDoc['qr_serial_no']) && trim((string)$reqDoc['qr_serial_no'])!==''); } catch (Throwable $_rq) { $isQr=false; }
+        }
         $rows[] = [
           'borrow_id' => (int)($ub['id'] ?? 0),
           'request_id' => $reqId,
@@ -77,6 +82,7 @@ if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
           'expected_return_at' => $due,
           'overdue_days' => $days,
+          'type' => ($isQr ? 'QR' : 'Manual'),
         ];
         if (count($rows) >= $limit) { break; }
       }
@@ -97,7 +103,16 @@ if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                      COALESCE(NULLIF(ii.model,''), ii.item_name) AS model,
                      COALESCE(NULLIF(ii.category,''),'Uncategorized') AS category,
                      ub.borrowed_at,
-                     ub.expected_return_at
+                     ub.expected_return_at,
+                     (SELECT CASE WHEN COALESCE(NULLIF(er3.qr_serial_no,''),'')<>'' THEN 'QR' ELSE 'Manual' END
+                        FROM equipment_requests er3
+                        WHERE er3.id = COALESCE(ra.request_id, (
+                          SELECT er4.id FROM equipment_requests er4
+                          WHERE er4.username = ub.username
+                            AND (er4.item_name = COALESCE(NULLIF(ii.model,''), ii.item_name) OR er4.item_name = ii.item_name)
+                          ORDER BY ABS(TIMESTAMPDIFF(SECOND, er4.created_at, ub.borrowed_at)) ASC, er4.id DESC
+                          LIMIT 1
+                        )) LIMIT 1) AS type
               FROM user_borrows ub
               JOIN inventory_items ii ON ii.id = ub.model_id
               LEFT JOIN request_allocations ra ON ra.borrow_id = ub.id
@@ -1575,6 +1590,24 @@ if (!empty($my_requests)) {
             <h5 class="modal-title"><i class="bi bi-qr-code-scan me-2"></i>Scan Item QR</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
+          <div class="modal fade" id="userOverdueModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-scrollable">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2 text-danger"></i>Overdue Items</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                  <div class="list-group list-group-flush" id="overdueList">
+                    <div class="text-center small text-muted py-3" id="overdueEmpty">No overdue items.</div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="modal-body">
             <div id="urQrReader" style="max-width:520px;margin:0 auto;min-height:300px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;color:#6c757d;font-size:0.9em;">
               <div class="text-center p-3">
@@ -1681,7 +1714,7 @@ if (!empty($my_requests)) {
     </div>
     <div class="p-4" id="page-content-wrapper">
       <div class="page-header d-flex justify-content-between align-items-center">
-        <h2 class="page-title mb-0"><i class="bi bi-clipboard-plus me-2"></i>Request to Borrow</h2>
+        <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i class="bi bi-clipboard-plus me-2"></i>Request to Borrow <button type="button" class="btn btn-outline-danger btn-sm d-none" id="overdueWarnBtn" title="You have overdue items"><i class="bi bi-exclamation-triangle-fill"></i></button></h2>
         <div class="d-flex align-items-center gap-3">
           <div class="btn-group">
             <button id="tableSwitcherBtn" type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" aria-haspopup="true" role="button">
@@ -1882,6 +1915,54 @@ if (!empty($my_requests)) {
                     }
                   } catch(_){ }
                 })();
+    (function(){
+      const warnBtn = document.getElementById('overdueWarnBtn');
+      const listWrap = document.getElementById('overdueList');
+      const emptyEl = document.getElementById('overdueEmpty');
+      const overdueModalEl = document.getElementById('userOverdueModal');
+      if (!warnBtn || !listWrap || !emptyEl) return;
+      function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+      function buildRows(items){
+        const rows=[];
+        (items||[]).forEach(function(r){
+          const rid = parseInt(r.request_id||0,10)||0;
+          const bid = parseInt(r.borrow_id||0,10)||0;
+          const model = esc(String(r.model||''));
+          const cat = esc(String(r.category||'Uncategorized'));
+          const due = esc(String(r.expected_return_at||''));
+          const days = parseInt(r.overdue_days||0,10)||0;
+          const type = String(r.type||'');
+          let actions = '';
+          if (type.toUpperCase()==='QR' && rid>0){
+            actions = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-borrow_id="'+bid+'" data-model_name="'+model+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
+          }
+          rows.push('<div class="list-group-item">'
+            + '<div class="d-flex w-100 justify-content-between"><strong>'+model+'</strong><span class="badge bg-danger">Overdue '+days+'d</span></div>'
+            + '<div class="small text-muted">Category: '+cat+'</div>'
+            + '<div class="small">Due: '+due+'</div>'
+            + (actions? ('<div class="mt-2 text-end">'+actions+'</div>') : '')
+            + '</div>');
+        });
+        listWrap.innerHTML = rows.join('');
+        emptyEl.style.display = rows.length? 'none':'block';
+      }
+      function refreshOverdue(){
+        fetch('user_request.php?action=my_overdue', { cache:'no-store' })
+          .then(r=>r.json())
+          .then(d=>{
+            const list = (d && Array.isArray(d.overdue)) ? d.overdue : [];
+            warnBtn.classList.toggle('d-none', list.length===0);
+            if (list.length){ buildRows(list); }
+          })
+          .catch(()=>{});
+      }
+      warnBtn.addEventListener('click', function(){ try{ bootstrap.Modal.getOrCreateInstance(overdueModalEl).show(); }catch(_){ } });
+      listWrap.addEventListener('click', function(ev){ const a = ev.target && ev.target.closest? ev.target.closest('.open-qr-return'): null; if (!a) return; ev.preventDefault(); const rid = a.getAttribute('data-reqid')||''; const bid = a.getAttribute('data-borrow_id')||''; const name = a.getAttribute('data-model_name')||''; try{ const mdl = bootstrap.Modal.getOrCreateInstance(overdueModalEl); mdl.hide(); }catch(_){ }
+        try { const qrModal = document.getElementById('userQrReturnModal'); if (qrModal){ const tmp = document.createElement('button'); tmp.type='button'; tmp.setAttribute('data-bs-toggle','modal'); tmp.setAttribute('data-bs-target','#userQrReturnModal'); tmp.setAttribute('data-reqid', String(rid)); tmp.setAttribute('data-borrow_id', String(bid)); tmp.setAttribute('data-model_name', String(name)); tmp.style.display='none'; document.body.appendChild(tmp); tmp.click(); setTimeout(()=>{ try{ tmp.remove(); }catch(_){ } }, 500); } } catch(_){ }
+      });
+      refreshOverdue();
+      setInterval(()=>{ if (document.visibilityState==='visible') refreshOverdue(); }, 15000);
+    })();
               </script>
             </div>
           </div>
