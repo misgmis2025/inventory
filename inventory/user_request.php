@@ -1870,7 +1870,7 @@ if (!empty($my_requests)) {
       <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><?php echo htmlspecialchars($error); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
 
       <div class="row">
-        <div class="col-12 col-lg-5 col-xl-4 d-none" style="max-width: 520px;">
+        <div class="col-12 col-lg-5 col-xl-4" style="max-width: 520px;">
           <div id="submitReqCard" class="card border-0 shadow-sm compact-card">
             <div class="card-body">
               <h5 class="mb-3"><i class="bi bi-pencil-square me-2"></i>Submit Request</h5>
