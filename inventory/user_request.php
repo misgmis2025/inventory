@@ -1870,52 +1870,7 @@ if (!empty($my_requests)) {
       <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><?php echo htmlspecialchars($error); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
 
       <div class="row">
-        <div class="col-12 col-lg-5 col-xl-4" style="max-width: 520px;">
-          <div id="submitReqCard" class="card border-0 shadow-sm compact-card d-none">
-            <div class="card-body">
-              <h5 class="mb-3"><i class="bi bi-pencil-square me-2"></i>Submit Request</h5>
-              <div class="d-grid">
-                <button type="button" class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#submitRequestModal">
-                  <i class="bi bi-send me-2"></i>Open Submit Request
-                </button>
-              </div>
-
-              <script>
-                (function(){
-                  var reqType = document.getElementById('req_type');
-                  var expRet = document.getElementById('expected_return_at');
-                  var rFrom = document.getElementById('reserved_from');
-                  var rTo = document.getElementById('reserved_to');
-                  function setImmediate(){
-                    if (reqType) reqType.value = 'immediate';
-                    if (expRet) { expRet.required = false; expRet.required = true; }
-                    if (rFrom) rFrom.required = false;
-                    if (rTo) rTo.required = false;
-                  }
-                  function setReservation(){
-                    if (reqType) reqType.value = 'reservation';
-                    if (expRet) expRet.required = false;
-                    if (rFrom) rFrom.required = true;
-                    if (rTo) rTo.required = true;
-                  }
-                  var tI = document.getElementById('tabImmediate');
-                  var tR = document.getElementById('tabReservation');
-                  if (tI) tI.addEventListener('shown.bs.tab', setImmediate);
-                  if (tR) tR.addEventListener('shown.bs.tab', setReservation);
-                  // Reset state when modal opens
-                  var modalEl = document.getElementById('submitRequestModal');
-                  if (modalEl) {
-                    modalEl.addEventListener('shown.bs.modal', function(){ setImmediate(); });
-                  }
-                })();
-              </script>
-  <script>
-    (function(){
-      const readerId = 'urQrReader';
-      const statusEl = document.getElementById('urQrStatus');
-      const startBtn = document.getElementById('urQrStartBtn');
-      const stopBtn = document.getElementById('urQrStopBtn');
-      const camSel = document.getElementById('urCameraSelect');
+        <div class="col-12">
       const reqLocWrap = document.getElementById('urReqLocWrap');
       const reqLocInput = document.getElementById('urReqLocation');
       const borrowBtn = document.getElementById('urBorrowSubmit');
