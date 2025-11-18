@@ -1909,41 +1909,6 @@ if (!empty($my_requests)) {
                   }
                 })();
               </script>
-
-  <!-- User QR Return Modal -->
-  <div class="modal fade" id="userQrReturnModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-qr-code-scan me-2"></i>Return via QR</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-2"><strong>Request ID:</strong> <span id="uqrReq"></span></div>
-          <div class="mb-2"><strong>Item:</strong> <span id="uqrModel"></span></div>
-          <div class="mb-2"><small id="uqrStatus" class="text-muted">Scan the item's QR.</small></div>
-          <div id="uqrReader" class="border rounded p-2 mb-2" style="max-width:360px;"></div>
-          <div class="mb-2 d-flex align-items-center gap-2">
-            <label for="uqrCamera" class="form-label small mb-0">Camera</label>
-            <select id="uqrCamera" class="form-select form-select-sm" style="max-width: 320px;"></select>
-            <button type="button" id="uqrRefreshCams" class="btn btn-sm btn-outline-secondary">Refresh</button>
-          </div>
-          <div class="d-flex gap-2 mb-2">
-            <button type="button" id="uqrStart" class="btn btn-success btn-sm"><i class="bi bi-camera-video"></i> Start</button>
-            <button type="button" id="uqrStop" class="btn btn-danger btn-sm" style="display:none;"><i class="bi bi-stop-circle"></i> Stop</button>
-          </div>
-          <div class="mb-3">
-            <label class="form-label small">Return Location</label>
-            <input type="text" class="form-control" id="uqrLoc" placeholder="e.g. Storage Room A" required />
-          </div>
-          <div class="text-end">
-            <button type="button" id="uqrSubmit" class="btn btn-secondary" disabled><i class="bi bi-check2"></i> Verify Return</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
     (function(){
       const readerId = 'urQrReader';
@@ -2400,6 +2365,40 @@ if (!empty($my_requests)) {
       </div>
       
       
+    </div>
+  </div>
+
+  <!-- User QR Return Modal (moved outside hidden column) -->
+  <div class="modal fade" id="userQrReturnModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-qr-code-scan me-2"></i>Return via QR</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Request ID:</strong> <span id="uqrReq"></span></div>
+          <div class="mb-2"><strong>Item:</strong> <span id="uqrModel"></span></div>
+          <div class="mb-2"><small id="uqrStatus" class="text-muted">Scan the item's QR.</small></div>
+          <div id="uqrReader" class="border rounded p-2 mb-2" style="max-width:360px;"></div>
+          <div class="mb-2 d-flex align-items-center gap-2">
+            <label for="uqrCamera" class="form-label small mb-0">Camera</label>
+            <select id="uqrCamera" class="form-select form-select-sm" style="max-width: 320px;"></select>
+            <button type="button" id="uqrRefreshCams" class="btn btn-sm btn-outline-secondary">Refresh</button>
+          </div>
+          <div class="d-flex gap-2 mb-2">
+            <button type="button" id="uqrStart" class="btn btn-success btn-sm"><i class="bi bi-camera-video"></i> Start</button>
+            <button type="button" id="uqrStop" class="btn btn-danger btn-sm" style="display:none;"><i class="bi bi-stop-circle"></i> Stop</button>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Return Location</label>
+            <input type="text" class="form-control" id="uqrLoc" placeholder="e.g. Storage Room A" required />
+          </div>
+          <div class="text-end">
+            <button type="button" id="uqrSubmit" class="btn btn-secondary" disabled><i class="bi bi-check2"></i> Verify Return</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
