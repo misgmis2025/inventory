@@ -1542,6 +1542,8 @@ if (!empty($my_requests)) {
       #sidebar-wrapper{ display:none !important; }
       .mobile-menu-toggle{ display:none !important; }
     }
+    /* Fallback: always show the default section on first paint */
+    #section-recent { display: block !important; }
   </style>
 </head>
 <body class="allow-mobile">
