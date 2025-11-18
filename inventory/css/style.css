@@ -5,33 +5,6 @@ w/* ===== GLOBAL STYLES ===== */
     box-sizing: border-box;
 }
 
-/* ===== User Request tables layout fix ===== */
-/* Make the tables section take full width under the header */
-#section-recent > .col-12,
-#section-overdue > .col-12,
-#section-borrowed > .col-12,
-#section-history > .col-12 {
-  flex: 0 0 100% !important;
-  max-width: 100% !important;
-}
-
-#recentRequestsCard,
-#overdueCard,
-#borrowedCard,
-#historyCard {
-  width: 100% !important;
-}
-
-/* Ensure their rows stack cleanly with small spacing */
-#section-recent,
-#section-overdue,
-#section-borrowed,
-#section-history {
-  display: block;
-  width: 100%;
-  margin-top: 0.75rem;
-}
-
 /* ===== Mobile: center the admin Inventory Filter dropdown ===== */
 @media (max-width: 768px) {
   .dropdown .filter-menu {
@@ -803,27 +776,10 @@ button[data-bs-target="#addItemModal"],
 }
 
 @media (max-width: 576px) {
-  /* Extra small devices */
-  #page-content-wrapper {
-      padding: 0.75rem;
-  }
-  
-  .table-responsive {
-    overflow-x: visible !important;
-  }
-  
-  .table-responsive > .table {
-    margin-bottom: 0 !important;
-  }
-  
-  .table-responsive > .table > tbody > tr > td, 
-  .table-responsive > .table > tbody > tr > th, 
-  .table-responsive > .table > tfoot > tr > td, 
-  .table-responsive > .table > tfoot > tr > th, 
-  .table-responsive > .table > thead > tr > td, 
-  .table-responsive > .table > thead > tr > th {
-    white-space: normal !important;
-  }
+    /* Extra small devices */
+    #page-content-wrapper {
+        padding: 0.75rem;
+    }
     
     .form-section,
     .manual-input,
