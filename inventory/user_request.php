@@ -1534,6 +1534,18 @@ if (!empty($my_requests)) {
       /* Bell and QR side-by-side centered below header */
       #userBellWrap { position: static; order: 3; display: inline-flex; align-items: center; justify-content: center; margin-top: 6px; z-index: auto; }
       #userQrBtn { position: static; order: 3; }
+      /* Fix: keep notifications panel within viewport on mobile */
+      #userBellDropdown {
+        position: fixed !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        top: 64px !important; /* below header */
+        width: 92vw !important;
+        max-width: 92vw !important;
+        max-height: 70vh !important;
+        overflow: auto !important;
+        inset: unset !important;
+      }
       /* View and Submit buttons below the bell */
       .page-header .btn-group { order: 4; width: 100%; display: flex; justify-content: center; margin-top: 6px; }
       #openSubmitTopBtn { order: 4; }
