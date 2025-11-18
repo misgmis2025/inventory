@@ -1534,18 +1534,6 @@ if (!empty($my_requests)) {
       /* Bell and QR side-by-side centered below header */
       #userBellWrap { position: static; order: 3; display: inline-flex; align-items: center; justify-content: center; margin-top: 6px; z-index: auto; }
       #userQrBtn { position: static; order: 3; }
-      /* Fix: keep notifications panel within viewport on mobile */
-      #userBellDropdown {
-        position: fixed !important;
-        left: 50% !important;
-        transform: translateX(-50%) !important;
-        top: 64px !important; /* below header */
-        width: 92vw !important;
-        max-width: 92vw !important;
-        max-height: 70vh !important;
-        overflow: auto !important;
-        inset: unset !important;
-      }
       /* View and Submit buttons below the bell */
       .page-header .btn-group { order: 4; width: 100%; display: flex; justify-content: center; margin-top: 6px; }
       #openSubmitTopBtn { order: 4; }
@@ -1554,6 +1542,12 @@ if (!empty($my_requests)) {
       #sidebar-wrapper{ display:none !important; }
       .mobile-menu-toggle{ display:none !important; }
     }
+    #userBellModal{ display:none; position:fixed; inset:0; z-index:1095; align-items:center; justify-content:center; padding:16px; }
+    #userBellBackdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1094; }
+    #userBellModal .ubm-box{ background:#fff; width:92vw; max-width:520px; max-height:80vh; border-radius:8px; overflow:hidden; box-shadow:0 10px 24px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+    #userBellModal .ubm-head{ padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
+    #userBellModal .ubm-close{ background:transparent; border:0; font-size:20px; line-height:1; }
+    #userBellModal .ubm-body{ padding:0; overflow:auto; }
   </style>
 </head>
 <body class="allow-mobile">
@@ -1714,6 +1708,23 @@ if (!empty($my_requests)) {
               <div class="text-center small text-muted py-2" id="userNotifEmpty">No updates yet.</div>
               <div class="border-top p-2 text-center">
                 <a href="user_request.php" class="btn btn-sm btn-outline-primary">Go to Requests</a>
+              </div>
+            </div>
+          </div>
+          <!-- Mobile Notifications Modal -->
+          <div id="userBellBackdrop" aria-hidden="true"></div>
+          <div id="userBellModal" role="dialog" aria-modal="true" aria-labelledby="ubmTitle">
+            <div class="ubm-box">
+              <div class="ubm-head">
+                <div id="ubmTitle" class="small">Request Updates</div>
+                <button type="button" class="ubm-close" id="ubmCloseBtn" aria-label="Close">&times;</button>
+              </div>
+              <div class="ubm-body">
+                <div id="userNotifListM" class="list-group list-group-flush small"></div>
+                <div class="text-center small text-muted py-2" id="userNotifEmptyM">No updates yet.</div>
+                <div class="border-top p-2 text-center">
+                  <a href="user_request.php" class="btn btn-sm btn-outline-primary">Go to Requests</a>
+                </div>
               </div>
             </div>
           </div>
@@ -2828,7 +2839,17 @@ if (!empty($my_requests)) {
       const dropdown = document.getElementById('userBellDropdown');
       const listEl = document.getElementById('userNotifList');
       const emptyEl = document.getElementById('userNotifEmpty');
+      // Mobile modal elements
+      const bellModal = document.getElementById('userBellModal');
+      const bellBackdrop = document.getElementById('userBellBackdrop');
+      const mobileListEl = document.getElementById('userNotifListM');
+      const mobileEmptyEl = document.getElementById('userNotifEmptyM');
+      const mobileCloseBtn = document.getElementById('ubmCloseBtn');
       if (!bellBtn || !dropdown || !listEl || !emptyEl) return;
+      function isMobile(){ try{ return window.matchMedia && window.matchMedia('(max-width: 768px)').matches; }catch(_){ return window.innerWidth<=768; } }
+      function copyNotifToMobile(){ try{ if (mobileListEl) mobileListEl.innerHTML = listEl ? listEl.innerHTML : ''; if (mobileEmptyEl) mobileEmptyEl.style.display = emptyEl ? emptyEl.style.display : ''; } catch(_){ } }
+      function openMobileModal(){ if (!bellModal || !bellBackdrop) return; copyNotifToMobile(); bellModal.style.display='flex'; bellBackdrop.style.display='block'; try{ document.body.style.overflow='hidden'; }catch(_){ } }
+      function closeMobileModal(){ if (!bellModal || !bellBackdrop) return; bellModal.style.display='none'; bellBackdrop.style.display='none'; try{ document.body.style.overflow=''; }catch(_){ } }
       let fetching = false;
       let latestTs = 0;
       let lastSig = '';
@@ -2878,10 +2899,16 @@ if (!empty($my_requests)) {
       }
       bellBtn.addEventListener('click', function(e){
         e.stopPropagation();
-        dropdown.classList.toggle('show');
-        dropdown.style.position = 'absolute';
-        dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
-        dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
+        // On mobile, open centered modal instead of dropdown
+        if (isMobile()){
+          e.preventDefault();
+          openMobileModal();
+        } else {
+          dropdown.classList.toggle('show');
+          dropdown.style.position = 'absolute';
+          dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
+          dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
+        }
         if (bellDot) bellDot.classList.add('d-none');
         try {
           const ts = (latestTs && !isNaN(latestTs)) ? latestTs : 0;
@@ -2889,7 +2916,11 @@ if (!empty($my_requests)) {
           localStorage.setItem('ud_notif_sig_open', currentSig || '');
         } catch(_){ }
       });
+      // Close behaviors
       document.addEventListener('click', function(){ dropdown.classList.remove('show'); });
+      if (bellBackdrop) bellBackdrop.addEventListener('click', closeMobileModal);
+      if (mobileCloseBtn) mobileCloseBtn.addEventListener('click', closeMobileModal);
+      document.addEventListener('keydown', function(ev){ if (ev.key==='Escape') closeMobileModal(); });
       poll();
       setInterval(()=>{ if (document.visibilityState==='visible') poll(); }, 2000);
     })();
