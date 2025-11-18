@@ -3023,9 +3023,39 @@ if (!empty($my_requests)) {
               + '</a>');
           }
         });
-        listEl.innerHTML = rows.join('');
-        const any = rows.length>0;
-        emptyEl.style.display = any ? 'none' : 'block';
+        // Append returnship requests (Pending/Requested) so users can act via QR directly
+        try {
+          // Fetch returnship notifications and extend the list
+          // We keep this synchronous-looking by using fetch with then and updating after base rows
+          fetch('user_request.php?action=user_notifications', { cache: 'no-store' })
+            .then(r=>r.json())
+            .then(d=>{
+              const returnships = Array.isArray(d.returnships) ? d.returnships : [];
+              returnships.forEach(function(rs){
+                const rid = parseInt(rs.request_id||0,10)||0;
+                const name = escapeHtml(String(rs.model_name||''));
+                const status = String(rs.status||'');
+                if (!rid) return;
+                // Action button opens the Return via QR modal
+                const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
+                rows.unshift('<div class="list-group-item">'
+                  + '<div class="d-flex w-100 justify-content-between"><strong>Return Requested: #'+rid+' '+name+'</strong>'
+                  + '<span class="badge bg-danger">'+escapeHtml(status)+'</span></div>'
+                  + '<div class="mt-1 text-end">'+action+'</div>'
+                  + '</div>');
+              });
+            })
+            .catch(()=>{})
+            .finally(()=>{
+              listEl.innerHTML = rows.join('');
+              const any = rows.length>0;
+              emptyEl.style.display = any ? 'none' : 'block';
+            });
+        } catch(_) {
+          listEl.innerHTML = rows.join('');
+          const any = rows.length>0;
+          emptyEl.style.display = any ? 'none' : 'block';
+        }
         try {
           const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
           const sig = sigParts.join(','); currentSig = sig; lastSig = localStorage.getItem('ud_notif_sig_open') || '';
@@ -3072,6 +3102,26 @@ if (!empty($my_requests)) {
       document.addEventListener('keydown', function(ev){ if (ev.key==='Escape') closeMobileModal(); });
       poll();
       setInterval(()=>{ if (document.visibilityState==='visible') poll(); }, 2000);
+      // Delegate click for Return via QR buttons inside notifications (desktop and mobile)
+      function triggerReturnModal(rid, bid, name){
+        try{
+          const qrModal = document.getElementById('userQrReturnModal');
+          if (qrModal && window.bootstrap && bootstrap.Modal){
+            const tmp = document.createElement('button');
+            tmp.type='button'; tmp.style.display='none';
+            tmp.setAttribute('data-bs-toggle','modal');
+            tmp.setAttribute('data-bs-target','#userQrReturnModal');
+            tmp.setAttribute('data-reqid', String(rid||''));
+            if (bid) tmp.setAttribute('data-borrow_id', String(bid));
+            if (name) tmp.setAttribute('data-model_name', String(name));
+            document.body.appendChild(tmp); tmp.click(); setTimeout(()=>{ try{ tmp.remove(); }catch(_){ } }, 500);
+            // Close bell UI if open
+            try{ dropdown.classList.remove('show'); closeMobileModal(); }catch(_){ }
+          }
+        }catch(_){ }
+      }
+      listEl && listEl.addEventListener('click', function(e){ const a=e.target && e.target.closest? e.target.closest('.open-qr-return'):null; if(!a) return; e.preventDefault(); const rid=a.getAttribute('data-reqid')||''; const bid=a.getAttribute('data-borrow_id')||''; const name=a.getAttribute('data-model_name')||''; triggerReturnModal(rid,bid,name); });
+      mobileListEl && mobileListEl.addEventListener('click', function(e){ const a=e.target && e.target.closest? e.target.closest('.open-qr-return'):null; if(!a) return; e.preventDefault(); const rid=a.getAttribute('data-reqid')||''; const bid=a.getAttribute('data-borrow_id')||''; const name=a.getAttribute('data-model_name')||''; triggerReturnModal(rid,bid,name); });
     })();
   </script>
   
