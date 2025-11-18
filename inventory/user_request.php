@@ -1870,7 +1870,7 @@ if (!empty($my_requests)) {
       <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><?php echo htmlspecialchars($error); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
 
       <div class="row">
-        <div class="d-none">
+        <div class="col-12">
           <script>
       const reqLocWrap = document.getElementById('urReqLocWrap');
       const reqLocInput = document.getElementById('urReqLocation');
@@ -2130,10 +2130,14 @@ if (!empty($my_requests)) {
               submitBtn.disabled = false; submitBtn.className='btn btn-secondary';
             }
           })
+          .catch(function(){ setStatus('Network error','text-danger'); submitBtn.disabled = false; submitBtn.className='btn btn-secondary'; });
+      });
+    })();
+  </script>
             </div>
           </div>
         </div>
-        <div class="col-12">
+        <div class="col-12 col-lg">
           <div class="row" id="section-recent" style="display:none;">
             <div class="col-12">
               <div id="recentRequestsCard" class="card border-0 shadow-sm">
