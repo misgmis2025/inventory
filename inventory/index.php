@@ -136,30 +136,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="bg-light">
-    <div class="auth-container">
-        <!-- Optional decorative left pane (hidden on smaller screens by CSS) -->
-        <div class="auth-left"></div>
+    <style>
+      .login-wrapper {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        background-color: #f8f9fa;
+      }
+      .login-card {
+        width: 100%;
+        max-width: 460px;
+        background: #ffffff;
+        border-radius: 1rem;
+        padding: 2.5rem 2.25rem;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+        border: 1px solid #e5e7eb;
+      }
+      .login-title {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.25rem;
+        text-align: center;
+      }
+      .login-subtitle {
+        text-align: center;
+        color: #6b7280;
+        margin-bottom: 1.75rem;
+      }
+      .login-switch {
+        text-align: center;
+        color: #6b7280;
+        margin-top: 1.5rem;
+      }
+      .login-switch a {
+        color: #2563eb;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .login-switch a:hover { text-decoration: underline; }
+      @media (max-width: 576px) {
+        .login-card { padding: 2rem 1.5rem; }
+        .login-title { font-size: 1.6rem; }
+      }
+    </style>
 
-        <div class="auth-right">
-            <div class="auth-card">
-                <h1 class="auth-title mb-1">Welcome to<br>ECA MIS-GMIS</h1>
-                <p class="auth-subtitle">Log in to continue to your account</p>
-                <form method="POST" action="" class="auth-form mt-3">
-                    <label class="form-label" for="username">Username</label>
-                    <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" required />
-                    <label class="form-label mt-2" for="password">Password</label>
-                    <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
-                    <div class="mt-2">
-                      <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
-                        <input type="checkbox" id="toggle_password_login" />
-                        <span>Show password</span>
-                      </label>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
-                </form>
-                <p class="auth-switch mt-3">Don't have an account? <a href="signup.php" class="auth-link">Sign up here</a></p>
-            </div>
-        </div>
+    <div class="login-wrapper">
+      <div class="login-card">
+        <h1 class="login-title">Welcome to<br>ECA MIS-GMIS</h1>
+        <p class="login-subtitle">Log in to continue to your account</p>
+        <form method="POST" action="" class="mt-3">
+          <label class="form-label" for="username">Username</label>
+          <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" required />
+
+          <label class="form-label mt-2" for="password">Password</label>
+          <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
+
+          <div class="mt-2">
+            <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="toggle_password_login" />
+              <span>Show password</span>
+            </label>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
+        </form>
+        <p class="login-switch">Don't have an account? <a href="signup.php">Sign up here</a></p>
+      </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
