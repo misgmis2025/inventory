@@ -1573,6 +1573,26 @@ if (!empty($my_requests)) {
         <img src="images/logo-removebg.png" alt="ECA Logo" class="brand-logo me-2" />
         <span>ECA MIS-GMIS</span>
       </div>
+  
+  <!-- User Overdue Items Modal (top-level) -->
+  <div class="modal fade" id="userOverdueModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2 text-danger"></i>Overdue Items</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="list-group list-group-flush" id="overdueList">
+            <div class="text-center small text-muted py-3" id="overdueEmpty">No overdue items.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
       <div class="list-group list-group-flush my-3">
         <a href="user_dashboard.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
         <a href="user_request.php" class="list-group-item list-group-item-action bg-transparent fw-bold"><i class="bi bi-clipboard-plus me-2"></i>Request to Borrow</a>
@@ -2610,6 +2630,7 @@ if (!empty($my_requests)) {
         });
       }
       tb.innerHTML = rows.join('');
+      try { const warnBtn = document.getElementById('overdueWarnBtn'); if (warnBtn) warnBtn.classList.toggle('d-none', !(list && list.length)); } catch(_){ }
     }
     // Live renderer for Borrow History
     function renderMyHistory(data){
