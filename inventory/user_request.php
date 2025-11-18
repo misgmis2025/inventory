@@ -1590,24 +1590,6 @@ if (!empty($my_requests)) {
             <h5 class="modal-title"><i class="bi bi-qr-code-scan me-2"></i>Scan Item QR</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <div class="modal fade" id="userOverdueModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-scrollable">
-              <div class="modal-content">
-                <div class="modal-header">
-                  <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2 text-danger"></i>Overdue Items</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-0">
-                  <div class="list-group list-group-flush" id="overdueList">
-                    <div class="text-center small text-muted py-3" id="overdueEmpty">No overdue items.</div>
-                  </div>
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-              </div>
-            </div>
-          </div>
           <div class="modal-body">
             <div id="urQrReader" style="max-width:520px;margin:0 auto;min-height:300px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;color:#6c757d;font-size:0.9em;">
               <div class="text-center p-3">
