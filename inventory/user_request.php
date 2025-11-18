@@ -1866,11 +1866,12 @@ if (!empty($my_requests)) {
       </div>
 
       <?php if (isset($_GET['submitted'])): ?><div class="alert alert-success alert-dismissible fade show">Request submitted successfully!<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
-  <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show"><?php echo htmlspecialchars($message); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
+      <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show"><?php echo htmlspecialchars($message); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
       <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><?php echo htmlspecialchars($error); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
 
       <div class="row">
-        <div class="col-12">
+        <div class="d-none">
+          <script>
       const reqLocWrap = document.getElementById('urReqLocWrap');
       const reqLocInput = document.getElementById('urReqLocation');
       const borrowBtn = document.getElementById('urBorrowSubmit');
@@ -2129,14 +2130,10 @@ if (!empty($my_requests)) {
               submitBtn.disabled = false; submitBtn.className='btn btn-secondary';
             }
           })
-          .catch(function(){ setStatus('Network error','text-danger'); submitBtn.disabled = false; submitBtn.className='btn btn-secondary'; });
-      });
-    })();
-  </script>
             </div>
           </div>
         </div>
-        <div class="col-12 col-lg">
+        <div class="col-12">
           <div class="row" id="section-recent" style="display:none;">
             <div class="col-12">
               <div id="recentRequestsCard" class="card border-0 shadow-sm">
