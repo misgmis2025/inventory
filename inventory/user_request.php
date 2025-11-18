@@ -1958,10 +1958,26 @@ if (!empty($my_requests)) {
           })
           .catch(()=>{});
       }
-      warnBtn.addEventListener('click', function(){ try{ bootstrap.Modal.getOrCreateInstance(overdueModalEl).show(); }catch(_){ } });
+      warnBtn.addEventListener('click', function(){
+        // Ensure custom bell overlay is closed before opening overdue modal
+        try { const bb=document.getElementById('userBellBackdrop'); const bm=document.getElementById('userBellModal'); if (bb) bb.style.display='none'; if (bm) bm.style.display='none'; document.body.style.overflow=''; } catch(_){ }
+        try{ bootstrap.Modal.getOrCreateInstance(overdueModalEl).show(); }catch(_){ }
+      });
       listWrap.addEventListener('click', function(ev){ const a = ev.target && ev.target.closest? ev.target.closest('.open-qr-return'): null; if (!a) return; ev.preventDefault(); const rid = a.getAttribute('data-reqid')||''; const bid = a.getAttribute('data-borrow_id')||''; const name = a.getAttribute('data-model_name')||''; try{ const mdl = bootstrap.Modal.getOrCreateInstance(overdueModalEl); mdl.hide(); }catch(_){ }
         try { const qrModal = document.getElementById('userQrReturnModal'); if (qrModal){ const tmp = document.createElement('button'); tmp.type='button'; tmp.setAttribute('data-bs-toggle','modal'); tmp.setAttribute('data-bs-target','#userQrReturnModal'); tmp.setAttribute('data-reqid', String(rid)); tmp.setAttribute('data-borrow_id', String(bid)); tmp.setAttribute('data-model_name', String(name)); tmp.style.display='none'; document.body.appendChild(tmp); tmp.click(); setTimeout(()=>{ try{ tmp.remove(); }catch(_){ } }, 500); } } catch(_){ }
       });
+      // Robust backdrop cleanup to avoid stuck dark overlay
+      if (overdueModalEl){
+        overdueModalEl.addEventListener('shown.bs.modal', function(){
+          try { document.body.classList.add('modal-open'); } catch(_){ }
+        });
+        overdueModalEl.addEventListener('hidden.bs.modal', function(){
+          try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.remove(); }); } catch(_){ }
+          try { document.body.classList.remove('modal-open'); document.body.style.removeProperty('padding-right'); document.body.style.overflow=''; } catch(_){ }
+          // Also ensure custom bell overlay is closed
+          try { const bb=document.getElementById('userBellBackdrop'); const bm=document.getElementById('userBellModal'); if (bb) bb.style.display='none'; if (bm) bm.style.display='none'; } catch(_){ }
+        });
+      }
       refreshOverdue();
       setInterval(()=>{ if (document.visibilityState==='visible') refreshOverdue(); }, 15000);
     })();
