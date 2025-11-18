@@ -1575,7 +1575,7 @@ if (!empty($my_requests)) {
       </div>
   
   <!-- User Overdue Items Modal (top-level) -->
-  <div class="modal fade" id="userOverdueModal" tabindex="-1" aria-hidden="true">
+  <div class="modal fade" id="userOverdueModal" tabindex="-1" aria-hidden="true" style="z-index:2002;">
     <div class="modal-dialog modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
@@ -1960,16 +1960,57 @@ if (!empty($my_requests)) {
       }
       warnBtn.addEventListener('click', function(){
         // Ensure custom bell overlay is closed before opening overdue modal
-        try { const bb=document.getElementById('userBellBackdrop'); const bm=document.getElementById('userBellModal'); if (bb) bb.style.display='none'; if (bm) bm.style.display='none'; document.body.style.overflow=''; } catch(_){ }
+        try { const bb=document.getElementById('userBellBackdrop'); const bm=document.getElementById('userBellModal'); if (bb) bb.style.display='none'; if (bm) bm.style.display='none'; } catch(_){ }
+        // Aggressive cleanup: close any other shown Bootstrap modals and backdrops
+        try { document.querySelectorAll('.modal.show').forEach(function(m){ try{ bootstrap.Modal.getOrCreateInstance(m).hide(); }catch(__){} }); } catch(_){ }
+        try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.remove(); }); } catch(_){ }
+        try { document.body.classList.remove('modal-open'); document.body.style.removeProperty('padding-right'); document.body.style.overflow=''; } catch(_){ }
+        // Now show Overdue modal fresh
         try{ bootstrap.Modal.getOrCreateInstance(overdueModalEl).show(); }catch(_){ }
       });
-      listWrap.addEventListener('click', function(ev){ const a = ev.target && ev.target.closest? ev.target.closest('.open-qr-return'): null; if (!a) return; ev.preventDefault(); const rid = a.getAttribute('data-reqid')||''; const bid = a.getAttribute('data-borrow_id')||''; const name = a.getAttribute('data-model_name')||''; try{ const mdl = bootstrap.Modal.getOrCreateInstance(overdueModalEl); mdl.hide(); }catch(_){ }
-        try { const qrModal = document.getElementById('userQrReturnModal'); if (qrModal){ const tmp = document.createElement('button'); tmp.type='button'; tmp.setAttribute('data-bs-toggle','modal'); tmp.setAttribute('data-bs-target','#userQrReturnModal'); tmp.setAttribute('data-reqid', String(rid)); tmp.setAttribute('data-borrow_id', String(bid)); tmp.setAttribute('data-model_name', String(name)); tmp.style.display='none'; document.body.appendChild(tmp); tmp.click(); setTimeout(()=>{ try{ tmp.remove(); }catch(_){ } }, 500); } } catch(_){ }
+      listWrap.addEventListener('click', function(ev){
+        const a = ev.target && ev.target.closest? ev.target.closest('.open-qr-return'): null; if (!a) return;
+        ev.preventDefault();
+        const rid = a.getAttribute('data-reqid')||'';
+        const bid = a.getAttribute('data-borrow_id')||'';
+        const name = a.getAttribute('data-model_name')||'';
+        // Wait for Overdue modal to fully hide before opening QR modal to avoid stacked backdrops
+        try{
+          const mdl = bootstrap.Modal.getOrCreateInstance(overdueModalEl);
+          const onceHidden = function(){
+            overdueModalEl.removeEventListener('hidden.bs.modal', onceHidden);
+            try {
+              const qrModal = document.getElementById('userQrReturnModal');
+              if (qrModal){
+                const tmp = document.createElement('button');
+                tmp.type='button';
+                tmp.setAttribute('data-bs-toggle','modal');
+                tmp.setAttribute('data-bs-target','#userQrReturnModal');
+                tmp.setAttribute('data-reqid', String(rid));
+                tmp.setAttribute('data-borrow_id', String(bid));
+                tmp.setAttribute('data-model_name', String(name));
+                tmp.style.display='none';
+                document.body.appendChild(tmp);
+                tmp.click();
+                setTimeout(()=>{ try{ tmp.remove(); }catch(_){ } }, 500);
+              }
+            } catch(_){ }
+          };
+          overdueModalEl.addEventListener('hidden.bs.modal', onceHidden);
+          mdl.hide();
+        }catch(_){ }
       });
       // Robust backdrop cleanup to avoid stuck dark overlay
       if (overdueModalEl){
+        // On show, ensure no stray backdrops are covering the modal
+        overdueModalEl.addEventListener('show.bs.modal', function(){
+          try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.remove(); }); } catch(_){ }
+          try { document.body.classList.remove('modal-open'); document.body.style.removeProperty('padding-right'); document.body.style.overflow=''; } catch(_){ }
+        });
         overdueModalEl.addEventListener('shown.bs.modal', function(){
           try { document.body.classList.add('modal-open'); } catch(_){ }
+          // Keep Bootstrap backdrop behind this modal
+          try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.style.zIndex = '2000'; }); } catch(_){ }
         });
         overdueModalEl.addEventListener('hidden.bs.modal', function(){
           try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.remove(); }); } catch(_){ }
@@ -1978,6 +2019,14 @@ if (!empty($my_requests)) {
           try { const bb=document.getElementById('userBellBackdrop'); const bm=document.getElementById('userBellModal'); if (bb) bb.style.display='none'; if (bm) bm.style.display='none'; } catch(_){ }
         });
       }
+
+      // Global safety: when any Bootstrap modal hides, cleanup stale backdrops/body classes
+      try{
+        document.addEventListener('hidden.bs.modal', function(){
+          try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.remove(); }); } catch(_){ }
+          try { if (!document.querySelector('.modal.show')){ document.body.classList.remove('modal-open'); document.body.style.removeProperty('padding-right'); document.body.style.overflow=''; } } catch(_){ }
+        });
+      }catch(_){ }
       refreshOverdue();
       setInterval(()=>{ if (document.visibilityState==='visible') refreshOverdue(); }, 15000);
     })();
