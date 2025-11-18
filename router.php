@@ -15,8 +15,15 @@ $try = [
 
 foreach ($try as $candidate) {
     if (is_file($candidate)) {
-        // Set basic content-type headers for common static assets
         $ext = strtolower(pathinfo($candidate, PATHINFO_EXTENSION));
+
+        // Let PHP engine handle .php files (execute them)
+        if ($ext === 'php') {
+            // Returning false tells the built-in server to process the script normally
+            return false;
+        }
+
+        // Set basic content-type headers for common static assets
         $types = [
             'css' => 'text/css',
             'js'  => 'application/javascript',
