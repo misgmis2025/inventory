@@ -2042,7 +2042,7 @@ if (!empty($my_requests)) {
             </div>
           </div>
         </div>
-        <div class="col-12 col-lg">
+        <div class="col-12">
           <div class="row" id="section-recent" style="display:none;">
             <div class="col-12">
               <div id="recentRequestsCard" class="card border-0 shadow-sm">
