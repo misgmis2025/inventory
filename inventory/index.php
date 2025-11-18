@@ -147,10 +147,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
       .login-card {
         width: 100%;
-        max-width: 460px;
+        max-width: 340px;
         background: #ffffff;
         border-radius: 1rem;
-        padding: 2.5rem 2.25rem;
+        padding: 2rem 1.75rem;
         box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
         border: 1px solid #e5e7eb;
       }
