@@ -186,13 +186,13 @@ if (!$USED_MONGO) {
         #sidebar-wrapper{ display:none !important; }
         .mobile-menu-toggle{ display:none !important; }
       }
-      /* Mobile bell modal (dashboard) */
-      #udBellModal{ display:none; position:fixed; inset:0; z-index:1095; align-items:center; justify-content:center; padding:16px; }
-      #udBellBackdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1094; }
-      #udBellModal .ubm-box{ background:#fff; width:92vw; max-width:520px; max-height:80vh; border-radius:8px; overflow:hidden; box-shadow:0 10px 24px rgba(0,0,0,.25); display:flex; flex-direction:column; }
-      #udBellModal .ubm-head{ padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
-      #udBellModal .ubm-close{ background:transparent; border:0; font-size:20px; line-height:1; }
-      #udBellModal .ubm-body{ padding:0; overflow:auto; }
+      /* Mobile bell modal (same as request page) */
+      #userBellModal{ display:none; position:fixed; inset:0; z-index:1095; align-items:center; justify-content:center; padding:16px; }
+      #userBellBackdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1094; }
+      #userBellModal .ubm-box{ background:#fff; width:92vw; max-width:520px; max-height:80vh; border-radius:8px; overflow:hidden; box-shadow:0 10px 24px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+      #userBellModal .ubm-head{ padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
+      #userBellModal .ubm-close{ background:transparent; border:0; font-size:20px; line-height:1; }
+      #userBellModal .ubm-body{ padding:0; overflow:auto; }
     </style>
 </head>
 <body class="allow-mobile">
@@ -251,17 +251,17 @@ if (!$USED_MONGO) {
                             </div>
                         </div>
                     </div>
-                    <!-- Mobile Notifications Modal (dashboard) -->
-                    <div id="udBellBackdrop" aria-hidden="true"></div>
-                    <div id="udBellModal" role="dialog" aria-modal="true" aria-labelledby="udbmTitle">
+                    <!-- Mobile Notifications Modal (same IDs as request page) -->
+                    <div id="userBellBackdrop" aria-hidden="true"></div>
+                    <div id="userBellModal" role="dialog" aria-modal="true" aria-labelledby="ubmTitle">
                       <div class="ubm-box">
                         <div class="ubm-head">
-                          <div id="udbmTitle" class="small">Request Updates</div>
-                          <button type="button" id="udbmCloseBtn" class="ubm-close" aria-label="Close">&times;</button>
+                          <div id="ubmTitle" class="small">Request Updates</div>
+                          <button type="button" id="ubmCloseBtn" class="ubm-close" aria-label="Close">&times;</button>
                         </div>
                         <div class="ubm-body">
-                          <div id="udNotifListM" class="list-group list-group-flush small"></div>
-                          <div class="text-center small text-muted py-2" id="udNotifEmptyM">No updates yet.</div>
+                          <div id="userNotifListM" class="list-group list-group-flush small"></div>
+                          <div class="text-center small text-muted py-2" id="userNotifEmptyM">No updates yet.</div>
                           <div class="border-top p-2 text-center">
                             <a href="user_request.php" class="btn btn-sm btn-outline-primary">Go to Requests</a>
                           </div>
@@ -482,38 +482,7 @@ if (!$USED_MONGO) {
       </div>
     </div>
 
-    <!-- Notification Bell Modal -->
-    <div class="modal fade" id="udBellModal" tabindex="-1" aria-labelledby="udBellModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="udBellModalLabel"><i class="bi bi-bell me-2"></i>Notifications</h5>
-            <button type="button" class="btn-close" id="udbmCloseBtn" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body p-0" style="overflow:auto;">
-            <div class="table-responsive">
-              <table class="table table-sm table-striped align-middle mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th>Request ID</th>
-                    <th>Borrowed At</th>
-                    <th>Model ID</th>
-                    <th>Model</th>
-                    <th>Category</th>
-                    <th>Condition</th>
-                  </tr>
-                </thead>
-                <tbody id="udNotifListM">
-                </tbody>
-              </table>
-              <div id="udNotifEmptyM" class="text-center text-muted">No notifications.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="udBellBackdrop" class="modal-backdrop fade"></div>
+    <!-- Remove redundant modal/backdrop (using unified IDs above) -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
