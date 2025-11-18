@@ -1869,7 +1869,7 @@ if (!empty($my_requests)) {
       <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show"><?php echo htmlspecialchars($message); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
       <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><?php echo htmlspecialchars($error); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
 
-      <div class="row flex-column">
+      <div class="row">
         <div class="d-none">
           
   <script>
@@ -2039,6 +2039,7 @@ if (!empty($my_requests)) {
       });
     })();
   </script>
+            </div>
         <div class="col-12">
           <div class="row" id="section-recent" style="display:none;">
             <div class="col-12">
@@ -2577,6 +2578,8 @@ if (!empty($my_requests)) {
           setTimeout(function(){ syncSubmitCardHeight(); }, 0);
           // Track visible section for targeted polling and do an immediate refresh
           try { window.__UR_VISIBLE_SECTION__ = id; immediateSectionFetch(id); } catch(_){ }
+          // Persist last selected section
+          try { localStorage.setItem('ur_last_section', String(id||'')); } catch(_){ }
         }
         document.querySelectorAll('.table-switch').forEach(function(a){
           a.addEventListener('click', function(e){
@@ -2627,20 +2630,9 @@ if (!empty($my_requests)) {
               var floating = document.getElementById('floatingTableMenu');
               if (floating) { try{ floating.remove(); }catch(_){ floating.style.display='none'; } }
               if (!isShown) {
-                // Build a floating clone attached to body to avoid clipping/overflow issues
-                var clone = menu.cloneNode(true);
-                clone.id = 'floatingTableMenu';
-                clone.classList.add('show');
-                clone.style.position = 'fixed';
-                clone.style.display = 'block';
-                clone.style.zIndex = '2000';
-                // Position near the button
+                // Create a simple positioned fallback menu under the button
                 var r = btn.getBoundingClientRect();
-                // Default to align end (right)
-                clone.style.top = Math.floor(r.bottom) + 'px';
-                clone.style.left = Math.floor(Math.max(8, r.right - 240)) + 'px';
-                document.body.appendChild(clone);
-                btn.setAttribute('aria-expanded','true');
+                var f = document.createElement('div'); f.id='floatingTableMenu'; f.className='dropdown-menu show'; f.style.position='fixed'; f.style.left=(r.left)+'px'; f.style.top=(r.bottom)+'px'; f.style.zIndex='1070'; f.innerHTML = menu.innerHTML; document.body.appendChild(f);
               }
             }, 30);
           }
