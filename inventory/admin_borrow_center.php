@@ -12,12 +12,6 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('session.cookie_path', '/');
 @ini_set('session.use_strict_mode', '1');
 session_start();
-
-// Compute base path for building asset URLs relative to current script
-$basePath = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
-if ($basePath === '') {
-    $basePath = '/';
-}
 date_default_timezone_set('Asia/Manila');
 // If not authorized, avoid redirecting for print endpoints so we don't print the login page
 $__act = $_GET['action'] ?? '';
@@ -524,10 +518,9 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     // Keep original full list order (already sorted by id desc)
   } catch (Throwable $e) { $rows = []; }
   ?><!DOCTYPE html>
-<html lang="en"><head>
+  <html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lost/Damaged History Print</title>
-    <base href="<?php echo htmlspecialchars($basePath . '/', ENT_QUOTES, 'UTF-8'); ?>">
     <link href="css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
@@ -2547,9 +2540,8 @@ try {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Overdue Items Print</title>
-    <base href="<?php echo htmlspecialchars($basePath . '/', ENT_QUOTES, 'UTF-8'); ?>">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Borrow Requests</title>
   <link href="css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">

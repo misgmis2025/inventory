@@ -12,12 +12,6 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('session.cookie_path', '/');
 @ini_set('session.use_strict_mode', '1');
 session_start();
-
-// Compute base path for building asset URLs relative to current script
-$basePath = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
-if ($basePath === '') {
-    $basePath = '/';
-}
 if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
     header("Location: index.php");
     exit();
@@ -118,7 +112,6 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Management</title>
-    <base href="<?php echo htmlspecialchars($basePath . '/', ENT_QUOTES, 'UTF-8'); ?>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <link rel="stylesheet" href="css/style.css">

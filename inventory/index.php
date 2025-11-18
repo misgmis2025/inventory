@@ -24,13 +24,6 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('log_errors', '1');
 @ini_set('error_log', '/proc/self/fd/2'); // log PHP errors to container stderr
 session_start();
-
-// Compute base path for building asset URLs relative to current script
-$basePath = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
-if ($basePath === '') {
-    $basePath = '/';
-}
-
 // Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
 $__autoload_candidates = [
   __DIR__ . '/vendor/autoload.php',      // web root vendor (after Docker promotion)
@@ -136,7 +129,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="utf-8" />
     <title>Login</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <base href="<?php echo htmlspecialchars($basePath . '/', ENT_QUOTES, 'UTF-8'); ?>">
     <!-- Prefer local Bootstrap; CDN is kept as a secondary source -->
     <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -144,27 +136,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="bg-light">
-    <div class="container min-vh-100 d-flex align-items-center justify-content-center py-5">
-        <div class="row w-100 justify-content-center">
-            <div class="col-lg-5 col-md-7">
-                <div class="auth-card">
-                    <h1 class="auth-title mb-1">Welcome to<br>ECA MIS-GMIS</h1>
-                    <p class="auth-subtitle">Log in to continue to your account</p>
-                    <form method="POST" action="" class="auth-form mt-3">
-                        <label class="form-label" for="username">Username</label>
-                        <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" required />
-                        <label class="form-label mt-2" for="password">Password</label>
-                        <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
-                        <div class="mt-2">
-                          <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
-                            <input type="checkbox" id="toggle_password_login" />
-                            <span>Show password</span>
-                          </label>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
-                    </form>
-                    <p class="auth-switch mt-3">Don't have an account? <a href="signup.php" class="auth-link">Sign up here</a></p>
-                </div>
+    <div class="auth-container">
+        <!-- Optional decorative left pane (hidden on smaller screens by CSS) -->
+        <div class="auth-left"></div>
+
+        <div class="auth-right">
+            <div class="auth-card">
+                <h1 class="auth-title mb-1">Welcome to<br>ECA MIS-GMIS</h1>
+                <p class="auth-subtitle">Log in to continue to your account</p>
+                <form method="POST" action="" class="auth-form mt-3">
+                    <label class="form-label" for="username">Username</label>
+                    <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" required />
+                    <label class="form-label mt-2" for="password">Password</label>
+                    <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
+                    <div class="mt-2">
+                      <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
+                        <input type="checkbox" id="toggle_password_login" />
+                        <span>Show password</span>
+                      </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
+                </form>
+                <p class="auth-switch mt-3">Don't have an account? <a href="signup.php" class="auth-link">Sign up here</a></p>
             </div>
         </div>
     </div>
