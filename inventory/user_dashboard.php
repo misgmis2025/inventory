@@ -186,6 +186,13 @@ if (!$USED_MONGO) {
         #sidebar-wrapper{ display:none !important; }
         .mobile-menu-toggle{ display:none !important; }
       }
+      /* Mobile bell modal (dashboard) */
+      #udBellModal{ display:none; position:fixed; inset:0; z-index:1095; align-items:center; justify-content:center; padding:16px; }
+      #udBellBackdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1094; }
+      #udBellModal .ubm-box{ background:#fff; width:92vw; max-width:520px; max-height:80vh; border-radius:8px; overflow:hidden; box-shadow:0 10px 24px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+      #udBellModal .ubm-head{ padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
+      #udBellModal .ubm-close{ background:transparent; border:0; font-size:20px; line-height:1; }
+      #udBellModal .ubm-body{ padding:0; overflow:auto; }
     </style>
 </head>
 <body class="allow-mobile">
@@ -243,6 +250,23 @@ if (!$USED_MONGO) {
                                 <a href="user_request.php" class="btn btn-sm btn-outline-primary">Go to Requests</a>
                             </div>
                         </div>
+                    </div>
+                    <!-- Mobile Notifications Modal (dashboard) -->
+                    <div id="udBellBackdrop" aria-hidden="true"></div>
+                    <div id="udBellModal" role="dialog" aria-modal="true" aria-labelledby="udbmTitle">
+                      <div class="ubm-box">
+                        <div class="ubm-head">
+                          <div id="udbmTitle" class="small">Request Updates</div>
+                          <button type="button" id="udbmCloseBtn" class="ubm-close" aria-label="Close">&times;</button>
+                        </div>
+                        <div class="ubm-body">
+                          <div id="udNotifListM" class="list-group list-group-flush small"></div>
+                          <div class="text-center small text-muted py-2" id="udNotifEmptyM">No updates yet.</div>
+                          <div class="border-top p-2 text-center">
+                            <a href="user_request.php" class="btn btn-sm btn-outline-primary">Go to Requests</a>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                 </div>
             </div>
@@ -458,6 +482,39 @@ if (!$USED_MONGO) {
       </div>
     </div>
 
+    <!-- Notification Bell Modal -->
+    <div class="modal fade" id="udBellModal" tabindex="-1" aria-labelledby="udBellModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="udBellModalLabel"><i class="bi bi-bell me-2"></i>Notifications</h5>
+            <button type="button" class="btn-close" id="udbmCloseBtn" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-0" style="overflow:auto;">
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Request ID</th>
+                    <th>Borrowed At</th>
+                    <th>Model ID</th>
+                    <th>Model</th>
+                    <th>Category</th>
+                    <th>Condition</th>
+                  </tr>
+                </thead>
+                <tbody id="udNotifListM">
+                </tbody>
+              </table>
+              <div id="udNotifEmptyM" class="text-center text-muted">No notifications.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="udBellBackdrop" class="modal-backdrop fade"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         (function(){
@@ -467,29 +524,26 @@ if (!$USED_MONGO) {
             const listEl = document.getElementById('userNotifList');
             const emptyEl = document.getElementById('userNotifEmpty');
             const uname = <?php echo json_encode($_SESSION['username']); ?>;
+            // Mobile modal elements for scrollable notifications
+            const mBackdrop = document.getElementById('udBellBackdrop');
+            const mModal = document.getElementById('udBellModal');
+            const mList = document.getElementById('udNotifListM');
+            const mEmpty = document.getElementById('udNotifEmptyM');
+            const mClose = document.getElementById('udbmCloseBtn');
+            function isMobile(){ try{ return window.matchMedia && window.matchMedia('(max-width: 768px)').matches; }catch(_){ return window.innerWidth<=768; } }
+            function openMobileModal(){ if (!mModal || !mBackdrop) return; copyToMobile(); mModal.style.display='flex'; mBackdrop.style.display='block'; try{ document.body.style.overflow='hidden'; }catch(_){ } }
+            function closeMobileModal(){ if (!mModal || !mBackdrop) return; mModal.style.display='none'; mBackdrop.style.display='none'; try{ document.body.style.overflow=''; }catch(_){ } }
+            function copyToMobile(){ try{ if (mList && listEl) mList.innerHTML = listEl.innerHTML; if (mEmpty && emptyEl) mEmpty.style.display = emptyEl.style.display; } catch(_){ }
 
             if (bellBtn && dropdown) {
                 bellBtn.addEventListener('click', function(e){
                     e.stopPropagation();
-                    dropdown.classList.toggle('show');
-                    if (window.innerWidth <= 768) {
-                        const rect = bellBtn.getBoundingClientRect();
-                        dropdown.style.position = 'fixed';
-                        dropdown.style.top = (rect.bottom + 6) + 'px';
-                        dropdown.style.left = 'auto';
-                        dropdown.style.right = '12px';
-                        dropdown.style.width = '95vw';
-                        dropdown.style.maxWidth = '95vw';
-                        dropdown.style.maxHeight = '70vh';
-                        dropdown.style.overflow = 'auto';
-                    } else {
-                        dropdown.style.position = 'absolute';
-                        dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
-                        dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
-                        dropdown.style.width = '';
-                        dropdown.style.maxWidth = '';
-                        dropdown.style.maxHeight = '';
-                        dropdown.style.overflow = '';
+                    if (isMobile()) { openMobileModal(); }
+                    else {
+                      dropdown.classList.toggle('show');
+                      dropdown.style.position = 'absolute';
+                      dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
+                      dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
                     }
                     if (bellDot) { bellDot.classList.add('d-none'); }
                     // Persist last open timestamp and signature to sync with other pages
@@ -499,7 +553,9 @@ if (!$USED_MONGO) {
                         localStorage.setItem('ud_notif_sig_open', currentSig || '');
                     } catch(_){ }
                 });
-                document.addEventListener('click', function(){ dropdown.classList.remove('show'); });
+                document.addEventListener('click', function(){ dropdown.classList.remove('show'); closeMobileModal(); });
+                if (mBackdrop) mBackdrop.addEventListener('click', closeMobileModal);
+                if (mClose) mClose.addEventListener('click', closeMobileModal);
             }
 
             let toastWrap = document.getElementById('userToastWrap');
@@ -546,9 +602,33 @@ if (!$USED_MONGO) {
                           + '</a>');
                     }
                 });
-                listEl.innerHTML = rows.join('');
-                const any = rows.length>0;
-                emptyEl.style.display = any ? 'none' : 'block';
+                // Fetch admin-initiated returnship requests and add to the top with action
+                fetch('user_request.php?action=user_notifications', { cache:'no-store' })
+                  .then(r=>r.json())
+                  .then(d=>{
+                      const returnships = Array.isArray(d.returnships) ? d.returnships : [];
+                      returnships.forEach(function(rs){
+                          const rid = parseInt(rs.request_id||0,10)||0;
+                          if (!rid) return;
+                          const name = (rs.model_name||'').toString();
+                          const status = (rs.status||'').toString();
+                          const url = 'user_request.php?open_return_qr='+encodeURIComponent(rid)+'&model_name='+encodeURIComponent(name);
+                          const action = '<a href="'+url+'" class="btn btn-sm btn-outline-primary"><i class="bi bi-qr-code-scan"></i> Return via QR</a>';
+                          rows.unshift('<div class="list-group-item">'
+                            + '<div class="d-flex w-100 justify-content-between"><strong>Return Requested: #'+rid+' '+escapeHtml(name)+'</strong>'
+                            + '<span class="badge bg-danger">'+escapeHtml(status)+'</span></div>'
+                            + '<div class="mt-1 text-end">'+action+'</div>'
+                            + '</div>');
+                      });
+                  })
+                  .catch(()=>{})
+                  .finally(()=>{
+                      listEl.innerHTML = rows.join('');
+                      const any = rows.length>0;
+                      emptyEl.style.display = any ? 'none' : 'block';
+                      // Keep mobile modal content in sync for scrolling
+                      copyToMobile();
+                  });
                 // Cross-page sync: show dot only if there are updates newer than last open
                 try {
                     const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
