@@ -1869,8 +1869,8 @@ if (!empty($my_requests)) {
       <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show"><?php echo htmlspecialchars($message); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
       <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><?php echo htmlspecialchars($error); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
 
-      <div class="row">
-        <div class="col-12 d-none">
+      <div class="row flex-column">
+        <div class="d-none">
           
   <script>
     (function(){
@@ -2039,9 +2039,6 @@ if (!empty($my_requests)) {
       });
     })();
   </script>
-            </div>
-          </div>
-        </div>
         <div class="col-12">
           <div class="row" id="section-recent" style="display:none;">
             <div class="col-12">
