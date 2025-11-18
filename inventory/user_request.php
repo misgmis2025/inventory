@@ -1753,7 +1753,7 @@ if (!empty($my_requests)) {
                   <div class="row g-3 mb-2">
                     <div class="col-12">
                       <div class="mb-3">
-                        <label class="form-label fw-bold" for="req_location">Location *</nlabel>
+                        <label class="form-label fw-bold" for="req_location">Location *</label>
                         <input type="text" id="req_location" name="req_location" class="form-control" placeholder="Room/Area" required />
                       </div>
                     </div>
@@ -2041,7 +2041,7 @@ if (!empty($my_requests)) {
   </script>
             </div>
         <div class="col-12">
-          <div class="row" id="section-recent" style="display:none;">
+          <div class="row" id="section-recent">
             <div class="col-12">
               <div id="recentRequestsCard" class="card border-0 shadow-sm">
                 <div class="card-header bg-white"><strong>My Recent Requests</strong></div>
