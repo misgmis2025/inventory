@@ -801,7 +801,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               <input type="hidden" name="cat_id" value="<?php echo htmlspecialchars($_GET['cat_id'] ?? ''); ?>" />
               <input type="hidden" name="sid" value="<?php echo htmlspecialchars($_GET['sid'] ?? ($_GET['mid'] ?? '')); ?>" />
               <input type="hidden" name="loc" value="<?php echo htmlspecialchars($_GET['loc'] ?? ''); ?>" />
-              <button type="button" id="openQrPreviewBtn" class="btn btn-info btn-sm" onclick="window.open('qr_print_preview.php?<?php echo htmlspecialchars($_SERVER['QUERY_STRING']); ?>', '_blank')"><i class="bi bi-qr-code me-1"></i>Print QR</button>
+              <button type="button" id="openQrPreviewBtn" class="btn btn-info btn-sm" onclick="window.open('qr_print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>', '_blank')"><i class="bi bi-qr-code me-1"></i>Print QR</button>
             </form>
             <button type="button" id="printBorrowHistoryBtn" class="btn btn-outline-secondary btn-sm ms-2"
               data-date-from="<?php echo htmlspecialchars($date_from ?? ''); ?>"
