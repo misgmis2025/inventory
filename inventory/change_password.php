@@ -741,8 +741,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             var isAdmin = <?php echo json_encode($usertype === 'admin'); ?>;
             if (isAdmin) return;
             let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=660; g.gain.setValueAtTime(0.0001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.15,audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.24);}catch(_){} }
-            function ensureWrap(){ let w=document.getElementById('userPersistentWrap'); if(!w){ w=document.createElement('div'); w.id='userPersistentWrap'; w.style.position='fixed'; w.style.right='16px'; w.style.bottom='16px'; w.style.zIndex='1090'; w.style.display='flex'; w.style.flexDirection='column'; w.style.gap='8px'; document.body.appendChild(w);} return w; }
-            function addOrUpdateReturnshipNotice(rs){ const wrap=ensureWrap(); const id=parseInt(rs.id||0,10); if(!id) return; const elId='rs-alert-'+id; let el=document.getElementById(elId); const name=String(rs.model_name||''); const sn=String(rs.qr_serial_no||''); const html='<i class="bi bi-exclamation-octagon me-2"></i>'+'Admin requested you to return '+(name?name+' ':'')+(sn?('['+sn+']'):'')+'. Click to open.'; if(!el){ el=document.createElement('div'); el.id=elId; el.className='alert alert-danger shadow-sm border-0'; el.style.minWidth='300px'; el.style.maxWidth='380px'; el.style.cursor='pointer'; el.innerHTML=html; el.addEventListener('click', function(){ window.location.href='user_request.php'; }); wrap.appendChild(el); try{ playBeep(); }catch(_){ } } else { el.innerHTML=html; } }
+            function ensureWrap(){
+              let w=document.getElementById('userPersistentWrap');
+              if(!w){
+                w=document.createElement('div');
+                w.id='userPersistentWrap';
+                w.style.position='fixed';
+                w.style.right='16px';
+                w.style.bottom='16px';
+                w.style.zIndex='1090';
+                w.style.display='flex';
+                w.style.flexDirection='column';
+                w.style.gap='8px';
+                w.style.pointerEvents='none';
+                document.body.appendChild(w);
+              }
+              try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ w.style.right='8px'; w.style.bottom='96px'; } }catch(_){ }
+              return w;
+            }
+            function addOrUpdateReturnshipNotice(rs){
+              const wrap=ensureWrap(); const id=parseInt(rs.id||0,10); if(!id) return;
+              const elId='rs-alert-'+id; let el=document.getElementById(elId);
+              const name=String(rs.model_name||''); const sn=String(rs.qr_serial_no||'');
+              const html='<i class="bi bi-exclamation-octagon me-2"></i>'+'Admin requested you to return '+(name?name+' ':'')+(sn?('['+sn+']'):'')+'. Click to open.';
+              if(!el){
+                el=document.createElement('div'); el.id=elId;
+                el.className='alert alert-danger shadow-sm border-0';
+                el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.cursor='pointer';
+                el.style.margin='0'; el.style.lineHeight='1.25'; el.style.borderRadius='8px';
+                el.style.pointerEvents='auto';
+                el.innerHTML=html;
+                try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='150px'; el.style.maxWidth='180px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } }catch(_){ }
+                el.addEventListener('click', function(){ window.location.href='user_request.php'; });
+                wrap.appendChild(el);
+                try{ playBeep(); }catch(_){ }
+              } else {
+                el.innerHTML=html;
+                try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='150px'; el.style.maxWidth='180px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } }catch(_){ }
+              }
+            }
             function removeReturnshipNotice(id){ const el=document.getElementById('rs-alert-'+id); if(el){ try{ el.remove(); }catch(_){ el.style.display='none'; } } }
             let baseReturnships = new Set(); let init=false; let fetching=false;
             function poll(){ if(fetching) return; fetching=true; fetch('user_request.php?action=user_notifications').then(r=>r.json()).then(d=>{ const returnships=Array.isArray(d.returnships)?d.returnships:[]; const ids=new Set(returnships.map(r=>parseInt(r.id||0,10)).filter(n=>n>0)); if(!init){ baseReturnships=ids; init=true; return; } const pendingSet=new Set(); returnships.forEach(rs=>{ const id=parseInt(rs.id||0,10); if(!id) return; const st=String(rs.status||''); if(st==='Pending'){ pendingSet.add(id); addOrUpdateReturnshipNotice(rs); } }); baseReturnships.forEach(oldId=>{ if(!pendingSet.has(oldId)) removeReturnshipNotice(oldId); }); }).catch(()=>{}).finally(()=>{ fetching=false; }); }
