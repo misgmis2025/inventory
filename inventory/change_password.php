@@ -771,7 +771,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               try{
                 if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
                   w.style.right='8px';
-                  if (!w.getAttribute('data-bottom')) { w.style.bottom='96px'; }
+                  if (!w.getAttribute('data-bottom')) {
+                    try {
+                      var nav = document.getElementById('cpBottomNavU');
+                      var isOpen = nav ? !nav.classList.contains('hidden') : false;
+                      var val = isOpen ? '140px' : '96px';
+                      w.style.bottom = val;
+                      w.setAttribute('data-bottom', val);
+                    } catch(_){ w.style.bottom='96px'; }
+                  }
                 }
               }catch(_){ }
               return w;
