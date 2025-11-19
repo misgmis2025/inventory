@@ -25,10 +25,8 @@ if (($_GET['action'] ?? '') === 'check_availability') {
                 'collation' => ['locale' => 'en', 'strength' => 2]
             ]);
         } elseif ($type === 'school_id') {
-            // ID uniqueness scoped by selected user_type if provided
-            $q = ['school_id' => $val];
-            if (in_array($user_type, ['Student','Staff','Faculty'], true)) { $q['user_type'] = $user_type; }
-            $taken = (bool)$users->findOne($q, ['projection' => ['_id' => 1]]);
+            // Global school_id uniqueness across all user types
+            $taken = (bool)$users->findOne(['school_id' => $val], ['projection' => ['_id' => 1]]);
         }
     } catch (Throwable $e) { $taken = false; }
     echo json_encode(['taken' => $taken]);
@@ -65,8 +63,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             if ($exists) {
                 $error = "Username already taken!";
-            } elseif ($users->findOne(['school_id' => $school_id_raw, 'user_type' => $user_type], ['projection'=>['_id'=>1]])) {
-                $error = "ID already registered for this user type.";
+            } elseif ($users->findOne(['full_name' => $full_name], [ 'projection'=>['_id'=>1], 'collation'=>['locale'=>'en','strength'=>2] ])) {
+                $error = "Full name already taken!";
+            } elseif ($users->findOne(['school_id' => $school_id_raw], ['projection'=>['_id'=>1]])) {
+                $error = "ID already registered.";
             } else {
                 $hasAdmin = $users->countDocuments(['usertype' => 'admin']) > 0;
                 $usertype = (!$hasAdmin && $user_type === 'Staff') ? 'admin' : 'user';
