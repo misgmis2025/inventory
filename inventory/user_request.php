@@ -3562,6 +3562,14 @@ if (!empty($my_requests)) {
     (function(){
       var btn = document.getElementById('bnToggleUR');
       var nav = document.getElementById('urBottomNav');
+      function setPersistentWrapOffset(open){
+        try{
+          if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return;
+          var wrap = document.getElementById('userPersistentWrap');
+          if (!wrap) return;
+          wrap.style.bottom = open ? '140px' : '96px';
+        }catch(_){ }
+      }
       if (btn && nav) {
         btn.addEventListener('click', function(){
           var hid = nav.classList.toggle('hidden');
@@ -3570,12 +3578,16 @@ if (!empty($my_requests)) {
             btn.classList.add('raised');
             btn.title = 'Close menu';
             var i = btn.querySelector('i'); if (i) { i.className = 'bi bi-x'; }
+            setPersistentWrapOffset(true);
           } else {
             btn.classList.remove('raised');
             btn.title = 'Open menu';
             var i2 = btn.querySelector('i'); if (i2) { i2.className = 'bi bi-list'; }
+            setPersistentWrapOffset(false);
           }
         });
+        // Initialize position
+        try { var isOpen = !nav.classList.contains('hidden'); setPersistentWrapOffset(isOpen); } catch(_){ }
       }
     })();
   </script>
