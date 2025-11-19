@@ -20,10 +20,20 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('session.cookie_httponly', '1');
 @ini_set('session.cookie_samesite', 'Lax');
 @ini_set('session.cookie_path', '/');
+// Persist session across browser restarts (e.g., 14 days)
+@ini_set('session.cookie_lifetime', '1209600');
+@ini_set('session.gc_maxlifetime', '1209600');
 @ini_set('session.use_strict_mode', '1');
 @ini_set('log_errors', '1');
 @ini_set('error_log', '/proc/self/fd/2'); // log PHP errors to container stderr
 session_start();
+// If already logged in, redirect away from the login page (handles new-tab scenario)
+if (isset($_SESSION['username'])) {
+    $role = strtolower((string)($_SESSION['usertype'] ?? 'user'));
+    if ($role === 'admin') { header('Location: admin_dashboard.php'); }
+    else { header('Location: user_dashboard.php'); }
+    exit();
+}
 // Track login error to render inside the form
 $login_error = '';
 $prev_username = '';
