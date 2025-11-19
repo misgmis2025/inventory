@@ -2942,8 +2942,45 @@ if (!empty($my_requests)) {
         const elId = 'rs-alert-'+id; let el = document.getElementById(elId);
         const name = String(rs.model_name||''); const sn = String(rs.qr_serial_no||'');
         const html = '<i class="bi bi-exclamation-octagon me-2"></i>'+'Admin requested you to return '+(name?name+' ':'')+(sn?('['+sn+']'):'')+'. Click to open.';
-        if (!el){ el = document.createElement('div'); el.id=elId; el.className='alert alert-danger shadow-sm border-0'; el.style.minWidth='300px'; el.style.maxWidth='380px'; el.style.cursor='pointer'; el.innerHTML=html; el.addEventListener('click', function(){ window.location.href='user_request.php'; }); wrap.appendChild(el); try{ playBeep(); }catch(_){ } }
-        else { el.innerHTML = html; }
+        if (!el){
+          el = document.createElement('div');
+          el.id=elId;
+          el.className='alert alert-danger shadow-sm border-0';
+          el.style.minWidth='300px';
+          el.style.maxWidth='380px';
+          el.style.cursor='pointer';
+          el.innerHTML=html;
+          // Make smaller on mobile
+          try {
+            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+              el.style.minWidth='220px';
+              el.style.maxWidth='280px';
+              el.style.padding='6px 8px';
+              el.style.fontSize='12px';
+              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '14px';
+            }
+          } catch(_){ }
+          el.addEventListener('click', function(){ window.location.href='user_request.php'; });
+          wrap.appendChild(el);
+          try{ playBeep(); }catch(_){ }
+        } else {
+          el.innerHTML = html;
+          // Re-apply mobile sizing on update as well
+          try {
+            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+              el.style.minWidth='220px';
+              el.style.maxWidth='280px';
+              el.style.padding='6px 8px';
+              el.style.fontSize='12px';
+              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '14px';
+            } else {
+              el.style.minWidth='300px';
+              el.style.maxWidth='380px';
+              el.style.padding='';
+              el.style.fontSize='';
+            }
+          } catch(_){ }
+        }
       }
       function removeReturnshipNotice(id){ const el=document.getElementById('rs-alert-'+id); if (el){ try{ el.remove(); }catch(_){ el.style.display='none'; } } }
       function notifPoll(){
