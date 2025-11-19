@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="signup-wrapper">
       <div class="signup-card">
         <div class="auth-logos d-flex align-items-center justify-content-between" style="margin-bottom:.5rem;">
-          <img src="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" alt="Logo" style="height:40px; object-fit:contain;" />
+          <img src="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" alt="Logo" style="height:46px; object-fit:contain;" />
           <img src="images/ECA.png?v=<?php echo filemtime(__DIR__.'/images/ECA.png'); ?>" alt="ECA" style="height:40px; object-fit:contain;" />
         </div>
         <h1 class="signup-title">Create Account</h1>
