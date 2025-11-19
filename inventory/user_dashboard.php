@@ -675,7 +675,13 @@ if (!$USED_MONGO) {
                     wrap.style.pointerEvents = 'none'; // allow clicks to pass through except on alerts
                     document.body.appendChild(wrap);
                 }
-                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='8px'; wrap.style.bottom='64px'; } } catch(_){ }
+                try {
+                  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+                    wrap.style.right='8px';
+                    // Only set default if no override has been set
+                    if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='64px'; }
+                  }
+                } catch(_){ }
                 return wrap;
             }
             function addOrUpdateReturnshipNotice(rs){
@@ -844,7 +850,9 @@ if (!$USED_MONGO) {
             if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return;
             var wrap = document.getElementById('userPersistentWrap');
             if (!wrap) return;
-            wrap.style.bottom = open ? '140px' : '64px';
+            var val = open ? '140px' : '64px';
+            wrap.style.bottom = val;
+            wrap.setAttribute('data-bottom', val);
           }catch(_){ }
         }
         if (btn && nav) {

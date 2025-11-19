@@ -2947,7 +2947,12 @@ if (!empty($my_requests)) {
           wrap.style.pointerEvents='none';
           document.body.appendChild(wrap);
         }
-        try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='8px'; wrap.style.bottom='96px'; } } catch(_){ }
+        try {
+          if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+            wrap.style.right='8px';
+            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='96px'; }
+          }
+        } catch(_){ }
         return wrap;
       }
       function addOrUpdateReturnshipNotice(rs){
@@ -3567,7 +3572,9 @@ if (!empty($my_requests)) {
           if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return;
           var wrap = document.getElementById('userPersistentWrap');
           if (!wrap) return;
-          wrap.style.bottom = open ? '140px' : '96px';
+          var val = open ? '140px' : '96px';
+          wrap.style.bottom = val;
+          wrap.setAttribute('data-bottom', val);
         }catch(_){ }
       }
       if (btn && nav) {

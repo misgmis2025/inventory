@@ -768,7 +768,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 w.style.pointerEvents='none';
                 document.body.appendChild(w);
               }
-              try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ w.style.right='8px'; w.style.bottom='96px'; } }catch(_){ }
+              try{
+                if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+                  w.style.right='8px';
+                  if (!w.getAttribute('data-bottom')) { w.style.bottom='96px'; }
+                }
+              }catch(_){ }
               return w;
             }
             function addOrUpdateReturnshipNotice(rs){
