@@ -946,7 +946,7 @@ button[data-bs-target="#addItemModal"],
 /* Sidebar brand styles (dashboard) */
 #sidebar-wrapper .sidebar-heading {
     /* Match Generate QR button gradient */
-    background: linear-gradient(135deg, #0b5ed7 0%, #052c65 100%);
+    background: #031b4e !important;
     color: #fff;
 }
 
