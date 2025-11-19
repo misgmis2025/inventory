@@ -1570,7 +1570,7 @@ if (!empty($my_requests)) {
   <div class="d-flex">
     <div class="bg-light border-end" id="sidebar-wrapper">
       <div class="sidebar-heading py-4 fs-4 fw-bold border-bottom d-flex align-items-center justify-content-center">
-        <img src="images/logo-removebg.png" alt="ECA Logo" class="brand-logo me-2" />
+        <img src="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png'); ?>" alt="ECA Logo" class="brand-logo me-2" />
         <span>ECA MIS-GMIS</span>
       </div>
   
