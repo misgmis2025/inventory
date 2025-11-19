@@ -190,6 +190,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="login-wrapper">
       <div class="login-card">
+        <div class="auth-logos d-flex align-items-center justify-content-between" style="margin-bottom:.5rem;">
+          <img src="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" alt="Logo" style="height:40px; object-fit:contain;" />
+          <img src="images/ECA.png?v=<?php echo filemtime(__DIR__.'/images/ECA.png'); ?>" alt="ECA" style="height:40px; object-fit:contain;" />
+        </div>
         <h1 class="login-title">Welcome to<br>ECA MIS-GMIS</h1>
         <p class="login-subtitle">Log in to continue to your account</p>
         <form method="POST" action="" class="mt-3">
