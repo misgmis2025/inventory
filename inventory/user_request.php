@@ -3249,6 +3249,14 @@ if (!empty($my_requests)) {
         })
         .catch(()=>setStatus('Error accessing camera devices','text-danger'));
     }
+    // Persist selection and switch camera live if scanning
+    if (camSel) {
+      camSel.addEventListener('change', function(){
+        try { localStorage.setItem('ur_camera', camSel.value || ''); } catch(_) { }
+        // If already scanning, restart with new camera
+        if (scanning) { try { stopScan(); } catch(_){} setTimeout(startScan, 150); }
+      });
+    }
     function stopScan(){ if (qr && scanning){ try{ qr.stop().then(()=>{ try{qr.clear();}catch(_){ } scanning=false; qr=null; }); }catch(_){ scanning=false; qr=null; } } if (stopBtn) stopBtn.classList.add('d-none'); if (startBtn) startBtn.classList.remove('d-none'); if (camSel) camSel.disabled=false; }
     function startScan(){
       if (starting || scanning) return;
@@ -3290,7 +3298,7 @@ if (!empty($my_requests)) {
         }catch(_){ }
         qr = new Html5Qrcode(readerId);
         qr.start(camId,{fps:10,qrbox:{width:300,height:300},aspectRatio:1.0,disableFlip:false}, onScanSuccess, onScanFailure)
-          .then(()=>{ scanning=true; starting=false; lastCamId = camId; setStatus('Camera active. Point to a QR code.','text-success'); if(startBtn) startBtn.classList.add('d-none'); if(stopBtn) stopBtn.classList.remove('d-none'); if (camSel) camSel.disabled=true; })
+          .then(()=>{ scanning=true; starting=false; lastCamId = camId; try{ localStorage.setItem('ur_camera', camId || ''); }catch(_){ } setStatus('Camera active. Point to a QR code.','text-success'); if(startBtn) startBtn.classList.add('d-none'); if(stopBtn) stopBtn.classList.remove('d-none'); if (camSel) camSel.disabled=true; })
           .catch(err=>{ starting=false; setStatus('Unable to start camera: '+(err && (err.message||err)),'text-danger'); if(qr){ try{qr.clear();}catch(_){ } qr=null; } if (readerEl && readerPlaceholder!==''){ readerEl.innerHTML = readerPlaceholder; } });
       };
       // kick off camera selection/use
