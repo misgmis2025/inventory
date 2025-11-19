@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'inv-pwa-v4';
+const CACHE_NAME = 'inv-pwa-v5';
 const STATIC_ASSETS = [
   'manifest.json',
   'css/style.css',
@@ -40,13 +40,9 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(req.url);
     if (url.pathname.endsWith('/images/logo-removebg.png')) {
       event.respondWith(
-        fetch(req, { cache: 'no-cache' })
-          .then((resp) => {
-            const clone = resp.clone();
-            caches.open(CACHE_NAME).then((c) => c.put('images/logo-removebg.png', clone));
-            return resp;
-          })
-          .catch(() => caches.match('images/logo-removebg.png'))
+        fetch(req, { cache: 'reload' })
+          .then((resp) => resp)
+          .catch(() => caches.match('images/logo-removebg.png', { ignoreSearch: true }))
       );
       return;
     }
@@ -57,7 +53,7 @@ self.addEventListener('fetch', (event) => {
         const clone = resp.clone();
         caches.open(CACHE_NAME).then((c) => c.put(req, clone));
         return resp;
-      }).catch(() => caches.match('images/logo-removebg.png')))
+      }).catch(() => caches.match('images/logo-removebg.png', { ignoreSearch: true })))
     );
     return;
   }
