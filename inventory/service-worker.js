@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'inv-pwa-v3';
+const CACHE_NAME = 'inv-pwa-v4';
 const STATIC_ASSETS = [
   'manifest.json',
   'css/style.css',
@@ -35,6 +35,22 @@ function isStatic(req) {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+  // Always fetch latest for the logo to avoid stale cache
+  try {
+    const url = new URL(req.url);
+    if (url.pathname.endsWith('/images/logo-removebg.png')) {
+      event.respondWith(
+        fetch(req, { cache: 'no-cache' })
+          .then((resp) => {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then((c) => c.put('images/logo-removebg.png', clone));
+            return resp;
+          })
+          .catch(() => caches.match('images/logo-removebg.png'))
+      );
+      return;
+    }
+  } catch (_) {}
   if (isStatic(req)) {
     event.respondWith(
       caches.match(req).then((res) => res || fetch(req).then((resp) => {
