@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'inv-pwa-v5';
+const CACHE_NAME = 'inv-pwa-v6';
 const STATIC_ASSETS = [
   'manifest.json',
   'css/style.css',
