@@ -2934,7 +2934,20 @@ if (!empty($my_requests)) {
       let baseAlloc = new Set(); let baseLogs = new Set(); let baseDec = new Set(); let initNotifs = false;
       function ensurePersistentWrap(){
         let wrap = document.getElementById('userPersistentWrap');
-        if (!wrap){ wrap = document.createElement('div'); wrap.id='userPersistentWrap'; wrap.style.position='fixed'; wrap.style.right='16px'; wrap.style.bottom='16px'; wrap.style.zIndex='1090'; wrap.style.display='flex'; wrap.style.flexDirection='column'; wrap.style.gap='8px'; document.body.appendChild(wrap); }
+        if (!wrap){
+          wrap = document.createElement('div');
+          wrap.id='userPersistentWrap';
+          wrap.style.position='fixed';
+          wrap.style.right='16px';
+          wrap.style.bottom='16px';
+          wrap.style.zIndex='1090';
+          wrap.style.display='flex';
+          wrap.style.flexDirection='column';
+          wrap.style.gap='8px';
+          wrap.style.pointerEvents='none';
+          document.body.appendChild(wrap);
+        }
+        try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='8px'; wrap.style.bottom='96px'; } } catch(_){ }
         return wrap;
       }
       function addOrUpdateReturnshipNotice(rs){
@@ -2947,17 +2960,21 @@ if (!empty($my_requests)) {
           el.id=elId;
           el.className='alert alert-danger shadow-sm border-0';
           el.style.minWidth='300px';
-          el.style.maxWidth='380px';
+          el.style.maxWidth='340px';
           el.style.cursor='pointer';
+          el.style.margin='0';
+          el.style.lineHeight='1.25';
+          el.style.borderRadius='8px';
+          el.style.pointerEvents='auto';
           el.innerHTML=html;
           // Make smaller on mobile
           try {
             if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-              el.style.minWidth='220px';
-              el.style.maxWidth='280px';
-              el.style.padding='6px 8px';
-              el.style.fontSize='12px';
-              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '14px';
+              el.style.minWidth='150px';
+              el.style.maxWidth='180px';
+              el.style.padding='4px 6px';
+              el.style.fontSize='10px';
+              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '12px';
             }
           } catch(_){ }
           el.addEventListener('click', function(){ window.location.href='user_request.php'; });
@@ -2968,14 +2985,14 @@ if (!empty($my_requests)) {
           // Re-apply mobile sizing on update as well
           try {
             if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-              el.style.minWidth='220px';
-              el.style.maxWidth='280px';
-              el.style.padding='6px 8px';
-              el.style.fontSize='12px';
-              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '14px';
+              el.style.minWidth='150px';
+              el.style.maxWidth='180px';
+              el.style.padding='4px 6px';
+              el.style.fontSize='10px';
+              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '12px';
             } else {
               el.style.minWidth='300px';
-              el.style.maxWidth='380px';
+              el.style.maxWidth='340px';
               el.style.padding='';
               el.style.fontSize='';
             }

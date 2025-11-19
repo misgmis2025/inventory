@@ -667,12 +667,15 @@ if (!$USED_MONGO) {
                     wrap.style.position = 'fixed';
                     wrap.style.right = '16px';
                     wrap.style.bottom = '16px';
+                    wrap.style.left = '';
                     wrap.style.zIndex = '1090';
                     wrap.style.display = 'flex';
                     wrap.style.flexDirection = 'column';
                     wrap.style.gap = '8px';
+                    wrap.style.pointerEvents = 'none'; // allow clicks to pass through except on alerts
                     document.body.appendChild(wrap);
                 }
+                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='8px'; wrap.style.bottom='64px'; } } catch(_){ }
                 return wrap;
             }
             function addOrUpdateReturnshipNotice(rs){
@@ -687,13 +690,17 @@ if (!$USED_MONGO) {
                 if (!el){
                     el = document.createElement('div'); el.id = elId;
                     el.className = 'alert alert-danger shadow-sm border-0';
-                    el.style.minWidth='300px'; el.style.maxWidth='380px'; el.style.cursor='pointer';
+                    el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.cursor='pointer';
+                    el.style.margin='0'; el.style.lineHeight='1.25'; el.style.borderRadius='8px';
+                    el.style.pointerEvents='auto';
                     el.innerHTML = html;
+                    try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } } catch(_){ }
                     el.addEventListener('click', function(){ window.location.href = 'user_request.php'; });
                     wrap.appendChild(el);
                     try { playBeep(); } catch(_){ }
                 } else {
                     el.innerHTML = html;
+                    try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
                 }
             }
             function removeReturnshipNotice(id){
