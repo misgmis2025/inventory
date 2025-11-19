@@ -1308,28 +1308,33 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 		height: 100vh;
 		overflow: hidden; /* navigation not scrollable */
 	}
-	#page-content-wrapper {
-		flex: 1 1 auto;
-		height: 100vh;
-		overflow: auto; /* tables/content scroll here */
-	}
-	/* On small screens, keep existing toggle behavior and move sidebar off-canvas */
-    @media (max-width: 768px) {
-        body { overflow: auto; }
-        /* Make content use full width */
-        #page-content-wrapper { height: auto; overflow: visible; width: 100%; margin-left: 0; }
-        /* Off-canvas sidebar to avoid squeezing content */
-        #sidebar-wrapper { position: fixed; left: -250px; top: 0; height: 100vh; width: 250px; z-index: 1000; transition: left 0.3s ease; }
-        #sidebar-wrapper.active { left: 0; }
-        /* Ensure the toggle is accessible */
-        .mobile-menu-toggle { display: block; position: fixed; top: 1rem; left: 1rem; z-index: 1001; }
-        /* Model Table: avoid stacked text by using horizontal scroll */
-        #bulkDeleteForm .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        #bulkDeleteForm table { table-layout: auto; min-width: 720px; }
-        #bulkDeleteForm table thead th,
-        #bulkDeleteForm table tbody td { white-space: nowrap; word-break: normal; }
-        #bulkDeleteForm table th, #bulkDeleteForm table td { padding: 0.4rem 0.4rem; }
+  	#page-content-wrapper {
+  		flex: 1 1 auto;
+  		height: 100vh;
+  		overflow: auto; /* tables/content scroll here */
+  	}
+    /* Desktop: show sidebar and hide hamburger */
+    @media (min-width: 769px){
+      #sidebar-wrapper{ display:block !important; }
+      .mobile-menu-toggle{ display:none !important; }
     }
+  	/* On small screens, keep existing toggle behavior and move sidebar off-canvas */
+  	@media (max-width: 768px) {
+  		body { overflow: auto; }
+  		/* Make content use full width */
+  		#page-content-wrapper { height: auto; overflow: visible; width: 100%; margin-left: 0; }
+  		/* Off-canvas sidebar to avoid squeezing content */
+  		#sidebar-wrapper { position: fixed; left: -250px; top: 0; height: 100vh; width: 250px; z-index: 1000; transition: left 0.3s ease; }
+  		#sidebar-wrapper.active { left: 0; }
+  		/* Ensure the toggle is accessible */
+  		.mobile-menu-toggle { display: block; position: fixed; top: 1rem; left: 1rem; z-index: 1001; }
+  		/* Model Table: avoid stacked text by using horizontal scroll */
+  		#bulkDeleteForm .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  		#bulkDeleteForm table { table-layout: auto; min-width: 720px; }
+  		#bulkDeleteForm table thead th,
+  		#bulkDeleteForm table tbody td { white-space: nowrap; word-break: normal; }
+  		#bulkDeleteForm table th, #bulkDeleteForm table td { padding: 0.4rem 0.4rem; }
+  	}
 
     @media (max-width: 576px) {
         /* Extra small screens: tighten spacing a bit more */
@@ -1344,6 +1349,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 	<button class="mobile-menu-toggle d-md-none" onclick="toggleSidebar()">
 		<i class="bi bi-list"></i>
 	</button>
+    <div class="d-flex">
         <div class="bg-light border-end no-print" id="sidebar-wrapper">
            <div class="sidebar-heading py-4 fs-4 fw-bold border-bottom d-flex align-items-center justify-content-center">
 	               <img src="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" alt="ECA Logo" class="brand-logo me-2" />
@@ -2664,6 +2670,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
       // Edit modal: do not sync item_name from model input; keep original item_name intact
     });
     </script>
+    </div>
     
     <!-- Scan View Modal (Admin) -->
     <div class="modal fade" id="scanViewModal" tabindex="-1" aria-labelledby="scanViewModalLabel" aria-hidden="true">
