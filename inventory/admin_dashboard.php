@@ -226,6 +226,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d6efd" />
     <script src="pwa-register.js"></script>
+    <link rel="icon" type="image/png" href="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" />
     <style>
       /* Fixed sidebar, scrollable content */
       html, body { height: 100%; }

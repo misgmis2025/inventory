@@ -426,7 +426,6 @@ if ($isAdmin && $usedMongo) {
 // Add scroll class for Borrow History if entries are 13 or more
 $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
 ?>
-<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -435,6 +434,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
   <link href="css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link rel="icon" type="image/png" href="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" />
   <link rel="stylesheet" href="css/style.css">
   <style>
     @page { size: A4 portrait; margin: 1in; }
