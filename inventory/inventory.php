@@ -1628,7 +1628,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 																	<td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
 																	<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
 																	<td>
-																		<?php if (strcasecmp((string)($it['status'] ?? ''), 'In Use') !== 0): ?>
+																		<?php if (!preg_match('/^in\s*use$/i', (string)($it['status'] ?? ''))): ?>
 																		<button type="button" class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editItemModal"
 																			data-id="<?php echo htmlspecialchars($it['id']); ?>"
 																			data-item_name="<?php echo htmlspecialchars($it['item_name']); ?>"
@@ -2775,13 +2775,13 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
       };
       var title = document.getElementById('actionsModalLabel');
       if (title) title.innerHTML = '<i class="bi bi-three-dots-vertical me-2"></i>Actions - ' + (currentData.item_name || ('ID ' + currentData.id));
-      // Hide Delete for items In Use
+      // Hide Edit and Delete for items In Use
+      var norm = String(currentData.status || '').trim().toLowerCase().replace(/\s+/g,' ');
+      var inUse = (norm === 'in use');
       var delEl = document.getElementById('am_delete_btn');
-      if (delEl) {
-        var inUse = String(currentData.status || '').toLowerCase() === 'in use';
-        delEl.classList.toggle('d-none', inUse);
-        delEl.disabled = inUse;
-      }
+      if (delEl) { delEl.classList.toggle('d-none', inUse); delEl.disabled = inUse; }
+      var editEl = document.getElementById('am_edit_btn');
+      if (editEl) { editEl.classList.toggle('d-none', inUse); editEl.disabled = inUse; }
     });
 
     function openModalWithData(targetId){
