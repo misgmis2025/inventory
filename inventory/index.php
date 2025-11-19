@@ -24,6 +24,9 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('log_errors', '1');
 @ini_set('error_log', '/proc/self/fd/2'); // log PHP errors to container stderr
 session_start();
+// Track login error to render inside the form
+$login_error = '';
+$prev_username = '';
 // Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
 $__autoload_candidates = [
   __DIR__ . '/vendor/autoload.php',      // web root vendor (after Docker promotion)
@@ -49,6 +52,7 @@ if (file_exists($__mongo_helper)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim((string)($_POST['username'] ?? ''));
     $password = (string)($_POST['password'] ?? '');
+    $prev_username = $username;
 
     try {
         $db = get_mongo_db();
@@ -119,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $e) {
         // fall through to error message
     }
-    echo "Invalid username or password.";
+    $login_error = 'Invalid username or password.';
 }
 ?>
 
@@ -189,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="login-subtitle">Log in to continue to your account</p>
         <form method="POST" action="" class="mt-3">
           <label class="form-label" for="username">Username</label>
-          <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" required />
+          <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" value="<?php echo htmlspecialchars($prev_username, ENT_QUOTES); ?>" required />
 
           <label class="form-label mt-2" for="password">Password</label>
           <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
@@ -200,6 +204,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <span>Show password</span>
             </label>
           </div>
+          <?php if ($login_error !== ''): ?>
+            <div class="text-danger small mt-2"><?php echo htmlspecialchars($login_error); ?></div>
+          <?php endif; ?>
 
           <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
         </form>
