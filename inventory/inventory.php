@@ -1628,6 +1628,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 																	<td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
 																	<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
 																	<td>
+																		<?php if (strcasecmp((string)($it['status'] ?? ''), 'In Use') !== 0): ?>
 																		<button type="button" class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editItemModal"
 																			data-id="<?php echo htmlspecialchars($it['id']); ?>"
 																			data-item_name="<?php echo htmlspecialchars($it['item_name']); ?>"
@@ -1639,6 +1640,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 																			data-remarks="<?php echo htmlspecialchars($it['remarks']); ?>"
 																			data-status="<?php echo htmlspecialchars($it['status']); ?>"
 																			data-date_acquired="<?php echo htmlspecialchars($it['date_acquired']); ?>">Edit</button>
+																		<?php endif; ?>
 																		<a class="btn btn-sm btn-outline-danger" href="#" onclick="return (function(){
                                                                             // Open Admin Password modal directly and mark pending single-delete id
                                                                             window.__pendingDeleteSingle = '<?php echo htmlspecialchars($it['id']); ?>';
