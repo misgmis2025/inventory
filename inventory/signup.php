@@ -1,6 +1,39 @@
 <?php
 // Early Mongo signup handler
 $mongoFailed = false;
+// Lightweight availability API for client-side checks
+if (($_GET['action'] ?? '') === 'check_availability') {
+    header('Content-Type: application/json');
+    $type = trim((string)($_GET['type'] ?? ''));
+    $val = trim((string)($_GET['value'] ?? ''));
+    $user_type = trim((string)($_GET['user_type'] ?? ''));
+    $taken = false;
+    try {
+        require_once __DIR__ . '/../vendor/autoload.php';
+        require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $users = $db->selectCollection('users');
+        if ($type === 'username') {
+            $taken = (bool)$users->findOne(['username' => $val], [
+                'projection' => ['_id' => 1],
+                'collation' => ['locale' => 'en', 'strength' => 2]
+            ]);
+        } elseif ($type === 'full_name') {
+            // Case-insensitive match on full_name
+            $taken = (bool)$users->findOne(['full_name' => $val], [
+                'projection' => ['_id' => 1],
+                'collation' => ['locale' => 'en', 'strength' => 2]
+            ]);
+        } elseif ($type === 'school_id') {
+            // ID uniqueness scoped by selected user_type if provided
+            $q = ['school_id' => $val];
+            if (in_array($user_type, ['Student','Staff','Faculty'], true)) { $q['user_type'] = $user_type; }
+            $taken = (bool)$users->findOne($q, ['projection' => ['_id' => 1]]);
+        }
+    } catch (Throwable $e) { $taken = false; }
+    echo json_encode(['taken' => $taken]);
+    exit();
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_once __DIR__ . '/../vendor/autoload.php';
     require_once __DIR__ . '/db/mongo.php';
@@ -133,9 +166,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="text-center" style="color:#dc3545; margin-bottom: 1rem;"><?php echo htmlspecialchars($error); ?></p>
         <?php endif; ?>
 
-        <form method="POST" action="" class="mt-3">
+        <form method="POST" action="" class="mt-3 auth-form">
                         <label class="form-label" for="school_id">ID</label>
                         <input id="school_id" class="form-control" type="text" name="school_id" placeholder="Enter your school ID" inputmode="numeric" pattern="[0-9-]+" required />
+                        <small id="idTakenMsg" class="text-danger" style="display:none;">ID already taken for this user type</small>
                         <label class="form-label mt-2" for="user_type">User Type</label>
                         <select id="user_type" name="user_type" class="form-select" required>
                             <option value="">Select type</option>
@@ -145,8 +179,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </select>
                         <label class="form-label" for="full_name">Full Name</label>
                         <input id="full_name" class="form-control" type="text" name="full_name" placeholder="Enter your full name" required />
+                        <small id="fullTakenMsg" class="text-danger" style="display:none;">Full name already taken</small>
                         <label class="form-label" for="username">Username</label>
                         <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" required />
+                        <small id="userTakenMsg" class="text-danger" style="display:none;">Username already taken</small>
                         <label class="form-label mt-2" for="password">Password</label>
                         <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
                         <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
@@ -172,9 +208,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const reqMsg = document.getElementById('pwReqMsg');
         const toggle = document.getElementById('toggle_password');
         const form = document.querySelector('.auth-form');
-        const submitBtn = form.querySelector('button[type="submit"]');
+        const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
         const schoolId = document.getElementById('school_id');
         const userType = document.getElementById('user_type');
+        const fullName = document.getElementById('full_name');
+        const username = document.getElementById('username');
+        const idTakenMsg = document.getElementById('idTakenMsg');
+        const fullTakenMsg = document.getElementById('fullTakenMsg');
+        const userTakenMsg = document.getElementById('userTakenMsg');
 
         function passwordValid() {
           const val = pwd.value || '';
@@ -236,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           }
 
           // Disable submit until password is valid and passwords match (when confirm typed)
-          submitBtn.disabled = !passOk || (confirmTyped && !matched) || !idOk || !typeOk;
+          if (submitBtn) submitBtn.disabled = !passOk || (confirmTyped && !matched) || !idOk || !typeOk;
         }
 
         pwd.addEventListener('focus', function(){ reqMsg.style.display = 'block'; validateMatch(); });
@@ -254,6 +295,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           schoolId.addEventListener('input', function(){ this.value = this.value.replace(/[^\d-]/g,''); validateMatch(); });
         }
         if (userType) { userType.addEventListener('change', validateMatch); }
+
+        // Simple debounce helper
+        function debounce(fn, ms){ let t; return function(){ const ctx=this, args=arguments; clearTimeout(t); t=setTimeout(()=>fn.apply(ctx,args), ms||250); }; }
+        async function checkAvailability(type, value){
+          try{
+            const params = new URLSearchParams({ action:'check_availability', type, value });
+            if (type === 'school_id' && userType) params.set('user_type', userType.value||'');
+            const r = await fetch('signup.php?'+params.toString(), { cache:'no-store' });
+            const d = await r.json();
+            return !!(d && d.taken);
+          }catch(_){ return false; }
+        }
+        const onIdInput = debounce(async function(){ if (!schoolId) return; const taken = await checkAvailability('school_id', schoolId.value.trim()); if (idTakenMsg){ idTakenMsg.style.display = taken ? 'block' : 'none'; } }, 300);
+        const onFullInput = debounce(async function(){ if (!fullName) return; const v = fullName.value.trim(); if (!v){ if (fullTakenMsg) fullTakenMsg.style.display='none'; return; } const taken = await checkAvailability('full_name', v); if (fullTakenMsg){ fullTakenMsg.style.display = taken ? 'block' : 'none'; } }, 300);
+        const onUserInput = debounce(async function(){ if (!username) return; const v = username.value.trim(); if (!v){ if (userTakenMsg) userTakenMsg.style.display='none'; return; } const taken = await checkAvailability('username', v); if (userTakenMsg){ userTakenMsg.style.display = taken ? 'block' : 'none'; } }, 300);
+        if (schoolId) schoolId.addEventListener('input', onIdInput);
+        if (userType) userType.addEventListener('change', onIdInput);
+        if (fullName) fullName.addEventListener('input', onFullInput);
+        if (username) username.addEventListener('input', onUserInput);
       })();
     </script>
 </body>
