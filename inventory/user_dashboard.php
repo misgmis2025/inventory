@@ -169,6 +169,7 @@ if (!$USED_MONGO) {
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d6efd" />
     <script src="pwa-register.js"></script>
+    <link rel="icon" type="image/png" href="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" />
     <style>
       @media (min-width: 769px){
         #sidebar-wrapper{ display:block !important; }
