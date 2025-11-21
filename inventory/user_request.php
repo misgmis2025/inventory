@@ -164,20 +164,30 @@ if ($__act === 'returnship_check' && $_SERVER['REQUEST_METHOD'] === 'POST') {
       $req = $erCol->findOne(['id'=>$reqId, 'username'=>(string)$_SESSION['username']]);
       if (!$req) { echo json_encode(['ok'=>false,'reason'=>'Request not found']); exit; }
       $qrSerial = trim((string)($req['qr_serial_no'] ?? ''));
-      if ($qrSerial === '' || strcasecmp($qrSerial, $serial) !== 0) { echo json_encode(['ok'=>false,'reason'=>'QR mismatch']); exit; }
-      $unit = $iiCol->findOne(['serial_no'=>$serial]);
-      if (!$unit) { echo json_encode(['ok'=>false,'reason'=>'Serial not found']); exit; }
-      $mid = (int)($unit['id'] ?? 0);
+      // Resolve any allocation borrow IDs for this request
       $allocs = iterator_to_array($raCol->find(['request_id'=>$reqId], ['projection'=>['borrow_id'=>1]]));
       $borrowIds = array_values(array_filter(array_map(function($d){ return isset($d['borrow_id']) ? (int)$d['borrow_id'] : 0; }, $allocs)));
       if ($borrowId > 0) { $borrowIds = array_values(array_filter($borrowIds, function($v) use ($borrowId){ return (int)$v === $borrowId; })); }
-      if (empty($borrowIds)) { echo json_encode(['ok'=>false,'reason'=>'No active borrow for request']); exit; }
-      $borrow = $ubCol->findOne(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$mid, 'username'=>(string)$_SESSION['username']]);
-      if (!$borrow) { echo json_encode(['ok'=>false,'reason'=>'Item not currently borrowed']); exit; }
-      $borrowUnit = $iiCol->findOne(['id'=>(int)($borrow['model_id'] ?? 0)]);
-      $borrowSerial = trim((string)($borrowUnit['serial_no'] ?? ''));
-      if ($borrowSerial === '' || strcasecmp($borrowSerial, $serial) !== 0) { echo json_encode(['ok'=>false,'reason'=>'QR mismatch']); exit; }
-      echo json_encode(['ok'=>true]); exit;
+
+      // Prefer exact borrow match by id + serial
+      $criteriaBase = ['status'=>'Borrowed', 'username'=>(string)$_SESSION['username'], 'serial_no'=>$serial];
+      $borrow = null;
+      if ($borrowId > 0) {
+        $tmp = $criteriaBase; $tmp['id'] = $borrowId; $borrow = $ubCol->findOne($tmp);
+      }
+      // Next, restrict to request allocations if available
+      if (!$borrow && !empty($borrowIds)) {
+        $borrow = $ubCol->findOne(['id'=>['$in'=>$borrowIds]] + $criteriaBase);
+      }
+      // Fallback: any current borrow by this user with this serial
+      if (!$borrow) {
+        $borrow = $ubCol->findOne($criteriaBase);
+      }
+      // Accept if either: there is a matching current borrow with this serial, OR the request QR serial matches
+      if ($borrow || ($qrSerial !== '' && strcasecmp($qrSerial, $serial) === 0)) { echo json_encode(['ok'=>true]); exit; }
+      // Provide a more specific reason if we can
+      if ($qrSerial !== '' && strcasecmp($qrSerial, $serial) !== 0) { echo json_encode(['ok'=>false,'reason'=>'QR mismatch']); exit; }
+      echo json_encode(['ok'=>false,'reason'=>'Item not currently borrowed']); exit;
     }
     echo json_encode(['ok'=>false,'reason'=>'DB unavailable']);
   } catch (Throwable $e) { echo json_encode(['ok'=>false,'reason'=>'Server error']); }
@@ -3246,6 +3256,7 @@ if (!empty($my_requests)) {
       const cameraSelect = document.getElementById('uqrCamera');
       const refreshBtn = document.getElementById('uqrRefreshCams');
       const submitBtn = document.getElementById('uqrSubmit');
+      const submitBtnGray = document.getElementById('uqrSubmitGray');
       const readerEl = document.getElementById('uqrReader');
       const locInput = document.getElementById('uqrLoc');
       
@@ -3431,16 +3442,50 @@ if (!empty($my_requests)) {
                 }catch(_){ }
                 if (!serial && /^\s*[\w\-]+\s*$/.test(s)) serial = s;
               }
-              if (!serial){ setStatus('Invalid QR content','text-danger'); setTimeout(()=>startScan(), 1000); return; }
+              if (!serial){ 
+                setStatus('Invalid QR content','text-danger'); 
+                setTimeout(()=>startScan(), 1000); 
+                return; 
+              }
               setStatus('Verifying serial...','text-muted');
               const body='request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId||0)+'&serial_no='+encodeURIComponent(serial);
               const r=await fetch('user_request.php?action=returnship_check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
               const jr=await r.json().catch(()=>({ok:false}));
-              if (!jr || !jr.ok){ setStatus('Wrong Serial ID','text-danger'); setTimeout(()=>startScan(), 1000); return; }
+              if (!jr || !jr.ok){
+                setStatus(jr && jr.reason ? String(jr.reason) : 'Wrong Serial ID','text-danger');
+                try{
+                  const sb=document.getElementById('uqrSubmit');
+                  const gb=document.getElementById('uqrSubmitGray');
+                  if (sb && gb){ 
+                    try{ 
+                      delete sb.dataset.serial; 
+                    }catch(_){ } 
+                    sb.style.display='none'; 
+                    gb.style.display=''; 
+                    gb.disabled=true; 
+                  }
+                }catch(_){ }
+                setTimeout(()=>startScan(), 1000);
+                return;
+              }
               setStatus('Item verified: '+serial,'text-success');
-              const submitBtn = document.getElementById('uqrSubmit');
-              if (submitBtn){ submitBtn.disabled=false; submitBtn.dataset.serial=serial; try{ submitBtn.focus(); }catch(_){ } }
-            }catch(e){ setStatus('Scan error','text-danger'); setTimeout(()=>startScan(), 1000); }
+              try{
+                const sb=document.getElementById('uqrSubmit');
+                const gb=document.getElementById('uqrSubmitGray');
+                if (sb && gb){ 
+                  sb.dataset.serial=serial; 
+                  sb.style.display=''; 
+                  sb.disabled=false; 
+                  gb.style.display='none'; 
+                  try{ 
+                    sb.focus(); 
+                  }catch(_){ } 
+                }
+              }catch(_){ }
+            }catch(e){ 
+              setStatus('Scan error','text-danger'); 
+              setTimeout(()=>startScan(), 1000); 
+            }
           }
           // Start scanning with the strict return validator
           await scanner.start(
@@ -3800,9 +3845,16 @@ if (!empty($my_requests)) {
         }
         
         // Reset form
-        if (submitBtn) {
+        if (submitBtn && submitBtnGray) {
+          try{ delete submitBtn.dataset.serial; }catch(_){ }
+          submitBtn.style.display = 'none';
           submitBtn.disabled = true;
-          delete submitBtn.dataset.serial;
+          submitBtnGray.style.display = '';
+          submitBtnGray.disabled = true;
+        } else if (submitBtn) {
+          try{ delete submitBtn.dataset.serial; }catch(_){ }
+          submitBtn.style.display = 'none';
+          submitBtn.disabled = true;
         }
         
         // Restore last used location
