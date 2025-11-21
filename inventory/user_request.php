@@ -2441,7 +2441,13 @@ if (!empty($my_requests)) {
           if (!jr || !jr.ok) {
             setStatus('Wrong Serial ID', 'text-danger');
             const submitBtn = document.getElementById('uqrSubmit');
-            if (submitBtn) { submitBtn.disabled = true; submitBtn.className = 'btn btn-secondary'; }
+            if (submitBtn) {
+              // Remove any outline styles and set solid gray
+              submitBtn.classList.remove('btn-outline-primary','btn-outline-success','btn-outline-secondary');
+              submitBtn.className = 'btn btn-secondary';
+              submitBtn.disabled = true;
+              try { delete submitBtn.dataset.serial; } catch(_) {}
+            }
             setTimeout(() => startScan(), 1200);
             return;
           }
@@ -2450,6 +2456,8 @@ if (!empty($my_requests)) {
           const submitBtn = document.getElementById('uqrSubmit');
           const locInputEl = document.getElementById('uqrLoc');
           if (submitBtn) {
+            // Ensure solid blue: strip any outline variants first
+            submitBtn.classList.remove('btn-outline-primary','btn-outline-success','btn-outline-secondary');
             submitBtn.className = 'btn btn-primary';
             const locOk = !!(locInputEl && locInputEl.value && locInputEl.value.trim());
             submitBtn.disabled = !locOk;
