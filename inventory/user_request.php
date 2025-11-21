@@ -2445,10 +2445,16 @@ if (!empty($my_requests)) {
             setTimeout(() => startScan(), 1200);
             return;
           }
-          // Success: enable submit and store serial
+          // Success: enable submit (blue) but require location to enable click
           setStatus('Item verified: '+serial, 'text-success');
           const submitBtn = q('uqrSubmit');
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.className = 'btn btn-primary'; submitBtn.dataset.serial = serial; }
+          const locInputEl = q('uqrLoc');
+          if (submitBtn) {
+            submitBtn.className = 'btn btn-primary';
+            const locOk = !!(locInputEl && locInputEl.value && locInputEl.value.trim());
+            submitBtn.disabled = !locOk;
+            submitBtn.dataset.serial = serial;
+          }
         } catch (err) {
           console.error('Scan processing error:', err);
           setStatus('Error processing QR code', 'text-danger', 2000);
@@ -2727,8 +2733,14 @@ if (!empty($my_requests)) {
         }
         function updateSubmitState(){
           const locOk = (locInput?.value||'').trim().length>0;
-          if (serialValid && locOk){ submitBtn.disabled=false; submitBtn.className='btn btn-primary'; }
-          else { submitBtn.disabled=true; submitBtn.className='btn btn-secondary'; }
+          if (serialValid){
+            // Show blue style when serial is verified, but keep disabled until location is provided
+            submitBtn.className = 'btn btn-primary';
+            submitBtn.disabled = !locOk;
+          } else {
+            submitBtn.className = 'btn btn-secondary';
+            submitBtn.disabled = true;
+          }
         }
         function onScan(txt){
           try{
