@@ -473,36 +473,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     fd.append('add', '1');
                     fd.append('name', name);
                     fetch('categories.php', { method: 'POST', body: fd })
-                      .then(function(r){ if(!r.ok) throw new Error(); return r.text(); })
-                      .then(function(){
+                      .then(function(r) {
+                          if (!r.ok) return r.text().then(err => { throw new Error(err || 'Failed to add category'); });
+                          return r.text();
+                      })
+                      .then(function(html) {
+                          // Check if the response contains an error message
+                          const tempDiv = document.createElement('div');
+                          tempDiv.innerHTML = html;
+                          const errorDiv = tempDiv.querySelector('.alert-danger');
+                          
+                          if (errorDiv) {
+                              throw new Error(errorDiv.textContent.trim() || 'Failed to add category');
+                          }
+                          
                           setMsg('Category added', true);
-                          input.value='';
+                          input.value = '';
+                          
+                          // Reload the iframe
                           try {
                               var iframe = document.querySelector('iframe[src^="categories.php"]');
-                              if (iframe && iframe.contentWindow) { iframe.contentWindow.location.reload(); }
-                          } catch(_){ }
-                          fetch('generate_qr.php?action=categories_json')
-                            .then(function(r){ if(!r.ok) throw new Error(); return r.json(); })
-                            .then(function(d){
-                                var cats = Array.isArray(d.categories) ? d.categories : [];
-                                function applyOptions(selectEl){
-                                    if (!selectEl) return;
-                                    var placeholder = 'Select Category';
-                                    var curr0 = selectEl.options && selectEl.options[0] ? selectEl.options[0].textContent : placeholder;
-                                    selectEl.innerHTML = '';
-                                    var opt0 = document.createElement('option');
-                                    opt0.value = '';
-                                    opt0.textContent = curr0 || placeholder;
-                                    selectEl.appendChild(opt0);
-                                    cats.forEach(function(c){ var opt = document.createElement('option'); opt.value=c; opt.textContent=c; selectEl.appendChild(opt); });
-                                }
-                                applyOptions(document.getElementById('add_category_inline'));
-                                applyOptions(document.getElementById('add_category'));
-                            })
-                            .catch(function(){ /* ignore */ });
+                              if (iframe && iframe.contentWindow) { 
+                                  iframe.contentWindow.location.reload(); 
+                              }
+                          } catch(_) {}
+                          
+                          // Refresh the category dropdowns
+                          return fetch('generate_qr.php?action=categories_json')
+                              .then(function(r) { 
+                                  if (!r.ok) throw new Error('Failed to refresh categories'); 
+                                  return r.json(); 
+                              });
                       })
-                      .catch(function(){ setMsg('Add failed (duplicate?)', false); })
-                      .finally(function(){ btn.disabled = false; });
+                      .then(function(d) {
+                          if (!d) return;
+                          var cats = Array.isArray(d.categories) ? d.categories : [];
+                          
+                          function applyOptions(selectEl) {
+                              if (!selectEl) return;
+                              var placeholder = 'Select Category';
+                              var curr0 = selectEl.options && selectEl.options[0] ? selectEl.options[0].textContent : placeholder;
+                              var currentValue = selectEl.value;
+                              
+                              selectEl.innerHTML = '';
+                              var opt0 = document.createElement('option');
+                              opt0.value = '';
+                              opt0.textContent = curr0 || placeholder;
+                              selectEl.appendChild(opt0);
+                              
+                              cats.forEach(function(c) { 
+                                  var opt = document.createElement('option'); 
+                                  opt.value = c; 
+                                  opt.textContent = c;
+                                  if (c === currentValue) {
+                                      opt.selected = true;
+                                  }
+                                  selectEl.appendChild(opt); 
+                              });
+                          }
+                          
+                          applyOptions(document.getElementById('add_category_inline'));
+                          applyOptions(document.getElementById('add_category'));
+                      })
+                      .catch(function(err) { 
+                          setMsg(err.message || 'Failed to add category (may already exist)', false); 
+                      })
+                      .finally(function() { 
+                          btn.disabled = false; 
+                      });
                 });
                 input.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); btn.click(); } });
             });
