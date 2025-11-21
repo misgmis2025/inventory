@@ -2440,13 +2440,15 @@ if (!empty($my_requests)) {
           const jr = await resp.json().catch(()=>({ok:false,reason:'Validation failed'}));
           if (!jr || !jr.ok) {
             setStatus('Wrong Serial ID', 'text-danger');
+            const submitBtn = q('uqrSubmit');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.className = 'btn btn-secondary'; }
             setTimeout(() => startScan(), 1200);
             return;
           }
           // Success: enable submit and store serial
           setStatus('Item verified: '+serial, 'text-success');
           const submitBtn = q('uqrSubmit');
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.dataset.serial = serial; }
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.className = 'btn btn-primary'; submitBtn.dataset.serial = serial; }
         } catch (err) {
           console.error('Scan processing error:', err);
           setStatus('Error processing QR code', 'text-danger', 2000);
