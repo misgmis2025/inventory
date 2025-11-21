@@ -2439,12 +2439,12 @@ if (!empty($my_requests)) {
           const resp = await fetch('user_request.php?action=returnship_check', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
           const jr = await resp.json().catch(()=>({ok:false,reason:'Validation failed'}));
           if (!jr || !jr.ok) {
-            setStatus(jr && jr.reason ? jr.reason : 'QR mismatch', 'text-danger');
+            setStatus('Wrong Serial ID', 'text-danger');
             setTimeout(() => startScan(), 1200);
             return;
           }
           // Success: enable submit and store serial
-          setStatus('✓ Scanned Serial: '+serial, 'text-success');
+          setStatus('Item verified: '+serial, 'text-success');
           const submitBtn = q('uqrSubmit');
           if (submitBtn) { submitBtn.disabled = false; submitBtn.dataset.serial = serial; }
         } catch (err) {
