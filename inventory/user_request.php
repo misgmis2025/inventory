@@ -2440,15 +2440,15 @@ if (!empty($my_requests)) {
           const jr = await resp.json().catch(()=>({ok:false,reason:'Validation failed'}));
           if (!jr || !jr.ok) {
             setStatus('Wrong Serial ID', 'text-danger');
-            const submitBtn = q('uqrSubmit');
+            const submitBtn = document.getElementById('uqrSubmit');
             if (submitBtn) { submitBtn.disabled = true; submitBtn.className = 'btn btn-secondary'; }
             setTimeout(() => startScan(), 1200);
             return;
           }
           // Success: enable submit (blue) but require location to enable click
           setStatus('Item verified: '+serial, 'text-success');
-          const submitBtn = q('uqrSubmit');
-          const locInputEl = q('uqrLoc');
+          const submitBtn = document.getElementById('uqrSubmit');
+          const locInputEl = document.getElementById('uqrLoc');
           if (submitBtn) {
             submitBtn.className = 'btn btn-primary';
             const locOk = !!(locInputEl && locInputEl.value && locInputEl.value.trim());
