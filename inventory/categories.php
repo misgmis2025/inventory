@@ -39,9 +39,9 @@ try {
         else {
             $last = $catsCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
             $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
-            // Enforce unique name at app layer
-            $exists = $catsCol->findOne(['name'=>$name], ['projection'=>['_id'=>1]]);
-            if ($exists) { $err = 'Add failed (duplicate?)'; }
+            // Enforce unique name at app layer (case-insensitive check)
+            $exists = $catsCol->findOne(['name' => ['$regex' => '^' . preg_quote($name, '/') . '$', '$options' => 'i']], ['projection'=>['_id'=>1]]);
+            if ($exists) { $err = 'Category name already exists'; }
             else {
                 $catsCol->insertOne(['id'=>$nextId,'name'=>$name,'created_at'=>date('Y-m-d H:i:s')]);
                 $ok = 'Category added';
@@ -53,14 +53,25 @@ try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename'])) {
         $id = (int)($_POST['id'] ?? 0);
         $name = trim($_POST['name'] ?? '');
-        if ($id <= 0 || $name === '') { $err = 'Invalid rename request'; }
-        else {
-            $doc = $catsCol->findOne(['id'=>$id], ['projection'=>['name'=>1]]);
-            $oldName = trim((string)($doc['name'] ?? ''));
-            $catsCol->updateOne(['id'=>$id], ['$set'=>['name'=>$name]]);
-            $ok = 'Category renamed';
-            if ($oldName !== '' && strcasecmp($oldName, $name) !== 0) {
-                $itemsCol->updateMany(['category'=>$oldName], ['$set'=>['category'=>$name]]);
+        if ($id <= 0 || $name === '') { 
+            $err = 'Invalid rename request'; 
+        } else {
+            // Check if the new name already exists (case-insensitive)
+            $existing = $catsCol->findOne([
+                'name' => ['$regex' => '^' . preg_quote($name, '/') . '$', '$options' => 'i'],
+                'id' => ['$ne' => $id] // Exclude current category from the check
+            ], ['projection' => ['_id' => 1]]);
+            
+            if ($existing) {
+                $err = 'A category with this name already exists';
+            } else {
+                $doc = $catsCol->findOne(['id'=>$id], ['projection'=>['name'=>1]]);
+                $oldName = trim((string)($doc['name'] ?? ''));
+                $catsCol->updateOne(['id'=>$id], ['$set'=>['name'=>$name]]);
+                $ok = 'Category renamed';
+                if ($oldName !== '' && strcasecmp($oldName, $name) !== 0) {
+                    $itemsCol->updateMany(['category'=>$oldName], ['$set'=>['category'=>$name]]);
+                }
             }
         }
     }

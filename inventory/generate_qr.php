@@ -374,6 +374,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const INLINE_SELECT_ID = 'add_category_inline';
             const MODAL_SELECT_ID = 'add_category';
             let lastSet = new Set();
+            
+            // Function to load categories from server
+            function loadCategories(callback) {
+                fetch('generate_qr.php?action=categories_json')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && data.ok) {
+                            const selects = [
+                                document.getElementById(INLINE_SELECT_ID),
+                                document.getElementById(MODAL_SELECT_ID)
+                            ];
+                            selects.forEach(select => {
+                                if (select) applyOptions(select, data.categories);
+                            });
+                            if (typeof callback === 'function') callback();
+                        }
+                    });
+            }
+            
             function applyOptions(selectEl, cats){
                 if (!selectEl) return;
                 const current = Array.from(selectEl.options).map(o=>o.value);
