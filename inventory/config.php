@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+// Set default timezone to Asia/Manila (UTC+8)
+date_default_timezone_set('Asia/Manila');
+
 // Toggle to use MongoDB instead of MySQL for reads where supported
 const USE_MONGO = true;
 
