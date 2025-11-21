@@ -1136,10 +1136,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Validate reservation/immediate timing
         $isReservation = (strtolower($req_type) === 'reservation');
         if ($isReservation) {
-          if ($reserved_from === '' || $reserved_to === '' || !strtotime($reserved_from) || !strtotime($reserved_to) || strtotime($reserved_to) <= strtotime($reserved_from) || strtotime($reserved_from) <= time()) {
-            $error = 'Please provide a valid reservation Start and End (future, Start before End).';
+          if ($reserved_from === '' || $reserved_to === '' || !strtotime($reserved_from) || !strtotime($reserved_to)) {
+            $error = 'Please provide valid reservation Start and End dates/times.';
+          } elseif (strtotime($reserved_to) <= strtotime($reserved_from)) {
+            $error = 'Reservation End must be after Start time.';
+          } elseif (strtotime($reserved_from) <= time()) {
+            $error = 'Reservation Start must be in the future.';
           }
         } else {
+          // Only validate expected return for immediate borrows
           if ($expected_return_at === '' || !strtotime($expected_return_at) || strtotime($expected_return_at) <= time()) {
             $error = 'Please provide a valid Expected Return (future date/time).';
           } else {
