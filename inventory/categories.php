@@ -12,6 +12,10 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('session.cookie_path', '/');
 @ini_set('session.use_strict_mode', '1');
 session_start();
+
+// Include date utilities
+require_once __DIR__ . '/lib/date_utils.php';
+
 if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? '') !== 'admin') {
     if (isset($_GET['embed']) && $_GET['embed'] == '1') { http_response_code(401); echo 'Not authorized'; exit(); }
     header('Location: index.php');
@@ -43,7 +47,11 @@ try {
             $exists = $catsCol->findOne(['name' => ['$regex' => '^' . preg_quote($name, '/') . '$', '$options' => 'i']], ['projection'=>['_id'=>1]]);
             if ($exists) { $err = 'Category name already exists'; }
             else {
-                $catsCol->insertOne(['id'=>$nextId,'name'=>$name,'created_at'=>date('Y-m-d H:i:s')]);
+                $catsCol->insertOne([
+                    'id' => $nextId,
+                    'name' => $name,
+                    'created_at' => now_utc()
+                ]);
                 $ok = 'Category added';
             }
         }
@@ -160,7 +168,7 @@ if ($C_MONGO_FAILED) {
                 <tr>
                   <td><?php echo htmlspecialchars($c['id']); ?></td>
                   <td><?php echo htmlspecialchars($c['name']); ?></td>
-                  <td><?php echo htmlspecialchars(date('Y-m-d h:i A', strtotime($c['created_at']))); ?></td>
+                  <td><?php echo format_date($c['created_at'] ?? ''); ?></td>
                   <td>
                     <div class="btn-group btn-group-sm">
                       <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#renameModal<?php echo (int)$c['id']; ?>"><i class="bi bi-pencil-square"></i> Edit</button>

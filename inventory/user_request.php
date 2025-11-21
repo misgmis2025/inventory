@@ -1109,10 +1109,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $quantity = max(1, intval($_POST['quantity'] ?? 1));
   $details = trim($_POST['details'] ?? '');
   $req_location = trim($_POST['req_location'] ?? '');
-  $req_type = trim($_POST['req_type'] ?? 'immediate');
+  $req_type = strtolower(trim($_POST['req_type'] ?? 'immediate'));
   $expected_return_at = trim($_POST['expected_return_at'] ?? '');
   $reserved_from = trim($_POST['reserved_from'] ?? '');
   $reserved_to = trim($_POST['reserved_to'] ?? '');
+  
+  // Ensure timezone is set for date validations
+  date_default_timezone_set('Asia/Manila');
 
   // Require a specific model; do not fallback to category to avoid creating requests with non-existent model names
   $item_name = $sel_model;
@@ -1133,50 +1136,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       } elseif ($quantity > $maxReq) {
         $error = 'Requested quantity exceeds the available maximum of ' . $maxReq . '.';
       } else {
-        // Validate reservation/immediate timing
-        $isReservation = (strtolower($req_type) === 'reservation');
+        // Validate request timing based on type
+        $isReservation = ($req_type === 'reservation');
+        $current_time = time();
+        
         if ($isReservation) {
-          if ($reserved_from === '' || $reserved_to === '' || !strtotime($reserved_from) || !strtotime($reserved_to)) {
-            $error = 'Please provide valid reservation Start and End dates/times.';
-          } elseif (strtotime($reserved_to) <= strtotime($reserved_from)) {
-            $error = 'Reservation End must be after Start time.';
-          } elseif (strtotime($reserved_from) <= time()) {
-            $error = 'Reservation Start must be in the future.';
-          }
-        } else {
-          // Only validate expected return for immediate borrows
-          if ($expected_return_at === '' || !strtotime($expected_return_at) || strtotime($expected_return_at) <= time()) {
-            $error = 'Please provide a valid Expected Return (future date/time).';
+          // Validate reservation times
+          $start_time = strtotime($reserved_from);
+          $end_time = strtotime($reserved_to);
+          
+          if (empty($reserved_from) || empty($reserved_to)) {
+            $error = 'Please provide both reservation start and end times.';
+          } elseif (!$start_time || !$end_time) {
+            $error = 'Please enter valid date/time values for reservation period.';
+          } elseif ($start_time <= $current_time) {
+            $error = 'Reservation start time must be in the future.';
+          } elseif ($end_time <= $start_time) {
+            $error = 'Reservation end time must be after start time.';
+          } elseif (($end_time - $start_time) > (7 * 24 * 60 * 60)) {
+            $error = 'Reservation cannot exceed 7 days.';
           } else {
-            // Enforce 5-minute cutoff only if there's effectively a single unit of this item
+            // Check for overlapping reservations (only if we have MongoDB)
             if ($USED_MONGO && $mongo_db) {
               try {
-                $iiCol = $mongo_db->selectCollection('inventory_items');
-                $totalUnits = 0;
-                $curI = $iiCol->find(['$or' => [['model'=>$item_name], ['item_name'=>$item_name]]], ['projection'=>['quantity'=>1]]);
-                foreach ($curI as $itDoc) { $totalUnits += (int)($itDoc['quantity'] ?? 1); }
-                if ($totalUnits <= 1) {
-                  $erCheck = $mongo_db->selectCollection('equipment_requests');
-                  $nowStr = date('Y-m-d H:i:s');
-                  $cur = $erCheck->find([
-                    'item_name' => $item_name,
-                    'type' => 'reservation',
-                    'status' => 'Approved',
-                    'reserved_from' => ['$gt' => $nowStr],
-                  ], ['projection' => ['reserved_from' => 1]]);
-                  $earliest = null;
-                  foreach ($cur as $rr) {
-                    $t = isset($rr['reserved_from']) ? strtotime((string)$rr['reserved_from']) : null;
-                    if ($t && ($earliest === null || $t < $earliest)) { $earliest = $t; }
-                  }
-                  if ($earliest) {
-                    $cutoff = $earliest - (5 * 60);
-                    if (strtotime($expected_return_at) > $cutoff) {
-                      $error = 'Expected Return exceeds the 5-minute cutoff before an upcoming reservation. Please return earlier.';
-                    }
+                $overlap = $mongo_db->equipment_requests->findOne([
+                  'item_name' => $item_name,
+                  'status' => 'Approved',
+                  'type' => 'reservation',
+                  '$or' => [
+                    // Existing reservation starts during new reservation
+                    [
+                      'reserved_from' => ['$lt' => date('Y-m-d H:i:s', $end_time)],
+                      'reserved_to' => ['$gt' => date('Y-m-d H:i:s', $start_time)]
+                    ]
+                  ]
+                ]);
+                
+                if ($overlap) {
+                  $error = 'This item is already reserved for the selected time period.';
+                }
+              } catch (Throwable $e) {
+                // Log error but don't block the request
+                error_log('Error checking reservation overlap: ' . $e->getMessage());
+              }
+            }
+          }
+        } else {
+          // Validate immediate borrow
+          $return_time = strtotime($expected_return_at);
+          
+          if (empty($expected_return_at)) {
+            $error = 'Please provide an expected return date and time.';
+          } elseif (!$return_time) {
+            $error = 'Please enter a valid return date and time.';
+          } elseif ($return_time <= $current_time) {
+            $error = 'Return time must be in the future.';
+          } elseif (($return_time - $current_time) > (24 * 60 * 60)) {
+            $error = 'Immediate borrow cannot exceed 24 hours.';
+          } else {
+            // Check for upcoming reservations
+            if ($USED_MONGO && $mongo_db) {
+              try {
+                $upcoming_reservation = $mongo_db->equipment_requests->findOne([
+                  'item_name' => $item_name,
+                  'type' => 'reservation',
+                  'status' => 'Approved',
+                  'reserved_from' => [
+                    '$gt' => date('Y-m-d H:i:s'),
+                    '$lt' => date('Y-m-d H:i:s', $return_time + (5 * 60)) // 5 min buffer
+                  ]
+                ]);
+                
+                if ($upcoming_reservation) {
+                  $reserve_time = strtotime($upcoming_reservation['reserved_from']);
+                  $cutoff_time = $reserve_time - (5 * 60); // 5 min before reservation
+                  
+                  if ($return_time > $cutoff_time) {
+                    $error = 'This item has an upcoming reservation. Please return by ' . 
+                             date('M j, Y g:i A', $cutoff_time) . ' (5 minutes before the next reservation).';
                   }
                 }
-              } catch (Throwable $eChk) { /* ignore and allow */ }
+              } catch (Throwable $e) {
+                // Log error but don't block the request
+                error_log('Error checking upcoming reservations: ' . $e->getMessage());
+              }
             }
           }
         }
@@ -1186,6 +1229,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $er = $mongo_db->selectCollection('equipment_requests');
               $last = $er->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
               $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
+              // Prepare common document fields
               $doc = [
                 'id' => $nextId,
                 'username' => (string)$_SESSION['username'],
@@ -1195,8 +1239,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'details' => $details,
                 'status' => 'Pending',
                 'created_at' => date('Y-m-d H:i:s'),
-                'type' => $isReservation ? 'reservation' : 'immediate',
+                'type' => $req_type,
+                'created_by' => (string)$_SESSION['username'],
+                'created_at_utc' => new MongoDB\BSON\UTCDateTime(time() * 1000)
               ];
+              
+              // Add type-specific fields
+              if ($isReservation) {
+                $doc['reserved_from'] = date('Y-m-d H:i:s', $start_time);
+                $doc['reserved_to'] = date('Y-m-d H:i:s', $end_time);
+                $doc['reserved_from_utc'] = new MongoDB\BSON\UTCDateTime($start_time * 1000);
+                $doc['reserved_to_utc'] = new MongoDB\BSON\UTCDateTime($end_time * 1000);
+              } else {
+                $doc['expected_return_at'] = date('Y-m-d H:i:s', $return_time);
+                $doc['expected_return_at_utc'] = new MongoDB\BSON\UTCDateTime($return_time * 1000);
+              }
               // If QR submission included a specific serial, keep it for admin approval UI
               $qr_serial = isset($_POST['qr_serial_no']) ? trim((string)$_POST['qr_serial_no']) : '';
               if ($qr_serial !== '') { $doc['qr_serial_no'] = $qr_serial; }
@@ -1800,16 +1857,16 @@ if (!empty($my_requests)) {
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-              <form method="POST" class="compact-form">
+              <form method="POST" id="borrowForm" class="compact-form" onsubmit="return validateForm()">
                 <div class="mb-3">
                   <label class="form-label fw-bold d-block">Request Type</label>
                   <input type="hidden" name="req_type" id="req_type" value="immediate" />
-                  <ul class="nav nav-tabs" role="tablist">
+                  <ul class="nav nav-tabs" role="tablist" id="requestTypeTabs">
                     <li class="nav-item" role="presentation">
-                      <button class="nav-link active" id="tabImmediate" data-bs-toggle="tab" data-bs-target="#paneImmediate" type="button" role="tab" aria-controls="paneImmediate" aria-selected="true">Immediate Borrow</button>
+                      <button class="nav-link active" id="tabImmediate" data-bs-toggle="tab" data-bs-target="#paneImmediate" type="button" role="tab" aria-controls="paneImmediate" aria-selected="true" data-req-type="immediate">Immediate Borrow</button>
                     </li>
                     <li class="nav-item" role="presentation">
-                      <button class="nav-link" id="tabReservation" data-bs-toggle="tab" data-bs-target="#paneReservation" type="button" role="tab" aria-controls="paneReservation" aria-selected="false">Reservation</button>
+                      <button class="nav-link" id="tabReservation" data-bs-toggle="tab" data-bs-target="#paneReservation" type="button" role="tab" aria-controls="paneReservation" aria-selected="false" data-req-type="reservation">Reservation</button>
                     </li>
                   </ul>
                 </div>
@@ -1848,32 +1905,188 @@ if (!empty($my_requests)) {
                       </div>
                     </div>
                   </div>
-                  <div class="tab-pane fade show active" id="paneImmediate" role="tabpanel" aria-labelledby="tabImmediate" tabindex="0">
-                    <div class="row g-3">
-                      <div class="col-12">
-                        <label class="form-label fw-bold" for="expected_return_at">Expected Return (Immediate)</label>
-                        <input type="datetime-local" id="expected_return_at" name="expected_return_at" class="form-control" />
+                  <div class="tab-content border-0 p-0">
+                    <div class="tab-pane fade show active" id="paneImmediate" role="tabpanel" aria-labelledby="tabImmediate" tabindex="0">
+                      <div class="alert alert-info small mb-3">
+                        <i class="bi bi-info-circle me-2"></i> For immediate borrowing, please specify when you will return the item.
+                      </div>
+                      <div class="row g-3">
+                        <div class="col-12">
+                          <label class="form-label fw-bold" for="expected_return_at">Expected Return Time <span class="text-danger">*</span></label>
+                          <input type="datetime-local" id="expected_return_at" name="expected_return_at" class="form-control" required 
+                                 min="<?php echo date('Y-m-d\TH:i'); ?>" />
+                          <div class="form-text">Please select when you will return the item (max 24 hours from now)</div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div class="tab-pane fade" id="paneReservation" role="tabpanel" aria-labelledby="tabReservation" tabindex="0">
-                    <div class="row g-3">
-                      <div class="col-12">
-                        <label class="form-label fw-bold" for="reserved_from">Reserve Start</label>
-                        <input type="datetime-local" id="reserved_from" name="reserved_from" class="form-control" />
+                    <div class="tab-pane fade" id="paneReservation" role="tabpanel" aria-labelledby="tabReservation" tabindex="0">
+                      <div class="alert alert-info small mb-3">
+                        <i class="bi bi-info-circle me-2"></i> For reservations, please specify the start and end time of your reservation.
                       </div>
-                      <div class="col-12">
-                        <label class="form-label fw-bold" for="reserved_to">Reserve End</label>
-                        <input type="datetime-local" id="reserved_to" name="reserved_to" class="form-control" />
+                      <div class="row g-3">
+                        <div class="col-12">
+                          <label class="form-label fw-bold" for="reserved_from">Start Time <span class="text-danger">*</span></label>
+                          <input type="datetime-local" id="reserved_from" name="reserved_from" class="form-control" 
+                                 min="<?php echo date('Y-m-d\TH:i'); ?>" />
+                        </div>
+                        <div class="col-12">
+                          <label class="form-label fw-bold" for="reserved_to">End Time <span class="text-danger">*</span></label>
+                          <input type="datetime-local" id="reserved_to" name="reserved_to" class="form-control" 
+                                 min="<?php echo date('Y-m-d\TH:i', strtotime('+1 hour')); ?>" />
+                          <div class="form-text">Reservations can be made up to 7 days in advance</div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div class="d-grid">
-                  <button type="submit" class="btn btn-primary btn-lg"><i class="bi bi-send me-2"></i>Submit Request</button>
+                <div class="d-grid mt-4">
+                  <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="bi bi-send me-2"></i>Submit Request
+                  </button>
                 </div>
+                <div id="formError" class="alert alert-danger mt-3 d-none" role="alert"></div>
               </form>
               <script>
+                // Initialize form with current date/time values
+                document.addEventListener('DOMContentLoaded', function() {
+                  // Set default times
+                  const now = new Date();
+                  const defaultReturn = new Date(now);
+                  defaultReturn.setHours(now.getHours() + 2); // Default to 2 hours from now
+                  
+                  // Format for datetime-local input
+                  const formatDateTimeLocal = (date) => {
+                    const pad = (n) => n < 10 ? '0' + n : n;
+                    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+                  };
+                  
+                  // Set default values
+                  document.getElementById('expected_return_at').value = formatDateTimeLocal(defaultReturn);
+                  
+                  // Set reservation start to next hour, end to 2 hours after that
+                  const nextHour = new Date(now);
+                  nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+                  const twoHoursLater = new Date(nextHour);
+                  twoHoursLater.setHours(twoHoursLater.getHours() + 2);
+                  
+                  document.getElementById('reserved_from').value = formatDateTimeLocal(nextHour);
+                  document.getElementById('reserved_to').value = formatDateTimeLocal(twoHoursLater);
+                  
+                  // Handle tab changes to update the hidden req_type field
+                  const tabs = document.querySelectorAll('#requestTypeTabs button[data-bs-toggle="tab"]');
+                  tabs.forEach(tab => {
+                    tab.addEventListener('click', function() {
+                      const type = this.getAttribute('data-req-type');
+                      document.getElementById('req_type').value = type;
+                      // Reset validation
+                      document.getElementById('formError').classList.add('d-none');
+                    });
+                  });
+                });
+                
+                // Form validation
+                function validateForm() {
+                  const form = document.getElementById('borrowForm');
+                  const reqType = document.getElementById('req_type').value;
+                  const errorEl = document.getElementById('formError');
+                  errorEl.classList.add('d-none');
+                  
+                  // Common validations
+                  const location = form.elements['req_location']?.value.trim();
+                  const category = form.elements['category']?.value;
+                  const model = form.elements['model']?.value;
+                  const quantity = parseInt(form.elements['quantity']?.value) || 0;
+                  
+                  if (!location) {
+                    showError('Please enter a location');
+                    return false;
+                  }
+                  
+                  if (!category) {
+                    showError('Please select a category');
+                    return false;
+                  }
+                  
+                  if (!model) {
+                    showError('Please select a model');
+                    return false;
+                  }
+                  
+                  if (quantity < 1) {
+                    showError('Please enter a valid quantity');
+                    return false;
+                  }
+                  
+                  // Type-specific validations
+                  if (reqType === 'immediate') {
+                    const returnTime = new Date(form.elements['expected_return_at'].value);
+                    const now = new Date();
+                    const maxReturnTime = new Date(now);
+                    maxReturnTime.setDate(maxReturnTime.getDate() + 1); // 24 hours max
+                    
+                    if (!returnTime || isNaN(returnTime.getTime())) {
+                      showError('Please enter a valid return time');
+                      return false;
+                    }
+                    
+                    if (returnTime <= now) {
+                      showError('Return time must be in the future');
+                      return false;
+                    }
+                    
+                    if (returnTime > maxReturnTime) {
+                      showError('Immediate borrow cannot exceed 24 hours');
+                      return false;
+                    }
+                  } else { // Reservation
+                    const startTime = new Date(form.elements['reserved_from'].value);
+                    const endTime = new Date(form.elements['reserved_to'].value);
+                    const now = new Date();
+                    const maxReservationTime = new Date(now);
+                    maxReservationTime.setDate(maxReservationTime.getDate() + 7); // 7 days max
+                    
+                    if (!startTime || isNaN(startTime.getTime())) {
+                      showError('Please enter a valid start time');
+                      return false;
+                    }
+                    
+                    if (!endTime || isNaN(endTime.getTime())) {
+                      showError('Please enter a valid end time');
+                      return false;
+                    }
+                    
+                    if (startTime <= now) {
+                      showError('Reservation start time must be in the future');
+                      return false;
+                    }
+                    
+                    if (endTime <= startTime) {
+                      showError('End time must be after start time');
+                      return false;
+                    }
+                    
+                    if (endTime > maxReservationTime) {
+                      showError('Reservations can only be made up to 7 days in advance');
+                      return false;
+                    }
+                    
+                    const durationHours = (endTime - startTime) / (1000 * 60 * 60);
+                    if (durationHours > 24) {
+                      showError('Reservations cannot exceed 24 hours');
+                      return false;
+                    }
+                  }
+                  
+                  return true;
+                }
+                
+                function showError(message) {
+                  const errorEl = document.getElementById('formError');
+                  errorEl.textContent = message;
+                  errorEl.classList.remove('d-none');
+                  // Scroll to error
+                  errorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
                 (function(){
                   // Preserve Category/Model selections in modal even while page is polling
                   var modalEl = document.getElementById('submitRequestModal');

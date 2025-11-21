@@ -2,6 +2,9 @@
 // MongoDB connection helper
 // Usage: $db = get_mongo_db();
 
+// Set default timezone to UTC for database operations
+date_default_timezone_set('UTC');
+
 // Try multiple vendor locations to support both nested layout and promoted web root layout
 $__autoloads = [
     __DIR__ . '/vendor/autoload.php',            // when db/ lives at web root (after Docker promotion)
@@ -14,6 +17,7 @@ foreach ($__autoloads as $__a) {
 }
 
 use MongoDB\Client;
+use MongoDB\BSON\UTCDateTime;
 
 if (!function_exists('get_mongo_db')) {
     function get_mongo_db(): MongoDB\Database {
@@ -49,11 +53,35 @@ if (!function_exists('get_mongo_db')) {
         if (empty($uri) || empty($dbName)) {
             throw new RuntimeException('MongoDB config missing. Set MONGODB_URI and MONGODB_DB env vars or create inventory/config/mongo.php');
         }
-
+        
+        // Ensure MongoDB uses UTC for all date operations
+        $options = [
+            'typeMap' => [
+                'root' => 'array',
+                'document' => 'array',
+                'array' => 'array'
+            ]
+        ];
+        
         $client = new Client($uri, [
             'retryWrites' => true,
             'w' => 'majority',
+            'typeMap' => [
+                'root' => 'array',
+                'document' => 'array',
+                'array' => 'array'
+            ]
         ]);
+        
+        try {
+            // Set up MongoDB to use UTC for all date operations
+            $command = new MongoDB\Driver\Command(['setParameter' => 1, 'timeZoneInfo' => ['timezone' => 'UTC']]);
+            $client->getManager()->executeCommand('admin', $command);
+        } catch (Exception $e) {
+            error_log('MongoDB timezone setting warning: ' . $e->getMessage());
+            // Continue even if timezone setting fails
+        }
+        
         $cached = $client->selectDatabase($dbName);
         return $cached;
     }
