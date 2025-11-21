@@ -2754,21 +2754,83 @@ if (!empty($my_requests)) {
         function mapStatusClass(s){ switch(String(s||'')){ case 'Available': return 'bg-success'; case 'In Use': return 'bg-primary'; case 'Maintenance': return 'bg-warning'; case 'Out of Order': return 'bg-danger'; case 'Reserved': return 'bg-info'; case 'Lost': return 'bg-danger'; case 'Damaged': return 'bg-danger'; default: return 'bg-secondary'; } }
         async function onScan(txt){ stopScan(); try{
           let modelId=0, modelName='', category=''; let serial = String(txt||'').trim();
-          try{ const d=JSON.parse(txt); if (d){ if(!d.model_id && d.item_id){ d.model_id=d.item_id; delete d.item_id; } modelId=parseInt(d.model_id||0,10)||0; modelName=String(d.model||'').trim()||String(d.item_name||'').trim(); category=String(d.category||'').trim(); serial = String(d.serial_no||'').trim() || serial; } }catch(_){ }
-          if (!modelId && modelName===''){
-            if (!serial){ setStatus('Invalid QR data.','text-danger'); return; }
-            setStatus('Looking up serial...','text-muted');
-            const r = await fetch('inventory.php?action=item_by_serial&sid='+encodeURIComponent(serial), {cache:'no-store'});
-            const jr = await r.json().catch(()=>({success:false}));
-            if (!jr || !jr.success || !jr.item){ setStatus('Serial not recognized.','text-danger'); return; }
-            const it=jr.item; modelId=parseInt(it.id||0,10)||0; modelName=String(it.model||'').trim()||String(it.item_name||'').trim(); category=String(it.category||'').trim()||'Uncategorized';
+          
+          // Parse QR code data
+          try { 
+            const d = JSON.parse(txt); 
+            if (d) { 
+              if (!d.model_id && d.item_id) { 
+                d.model_id = d.item_id; 
+                delete d.item_id; 
+              } 
+              modelId = parseInt(d.model_id||0, 10) || 0; 
+              modelName = String(d.model||'').trim() || String(d.item_name||'').trim(); 
+              category = String(d.category||'').trim(); 
+              serial = String(d.serial_no||d.serial||'').trim() || serial; 
+            } 
+          } catch(_) { 
+            // If not JSON, try to extract serial from plain text
+            serial = String(txt||'').trim();
           }
-          if (modelName===''){ setStatus('Invalid QR data.','text-danger'); return; }
-          const payload = { model_id:modelId, model:modelName, item_name:modelName, category:category };
-          if (serial) { payload.qr_serial_no = serial; }
-          setStatus('Validating item...','text-muted');
-          const vr = await fetch('user_request.php?action=validate_qr',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(r=>r.json()).catch(()=>({allowed:false,reason:'Validation failed'}));
-          lastData = { data: payload, vr: vr, serial_no: serial };
+          
+          if (!serial) { 
+            setStatus('No serial number found in QR code.','text-danger'); 
+            return; 
+          }
+          
+          // First, verify the serial matches the borrowed item
+          setStatus('Verifying serial...', 'text-muted');
+          const verifyResponse = await fetch('user_request.php?action=returnship_check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `request_id=${encodeURIComponent(currentReqId)}&borrow_id=${encodeURIComponent(currentBorrowId)}&serial_no=${encodeURIComponent(serial)}`
+          });
+          
+          const verifyResult = await verifyResponse.json().catch(() => ({}));
+          
+          if (!verifyResult || !verifyResult.ok) {
+            const errorMsg = verifyResult?.reason || 'This QR code does not match the borrowed item.';
+            setStatus(errorMsg, 'text-danger');
+            return;
+          }
+          
+          // If we get here, the serial is valid for this return
+          // Now get the item details for display
+          setStatus('Looking up item details...','text-muted');
+          const r = await fetch('inventory.php?action=item_by_serial&sid='+encodeURIComponent(serial), {cache:'no-store'});
+          const jr = await r.json().catch(() => ({}));
+          
+          if (!jr || !jr.success || !jr.item) { 
+            setStatus('Item details not found.','text-warning'); 
+            // Continue with the data we have
+            if (!modelId && modelName === '') {
+              setStatus('Could not identify item.','text-danger');
+              return;
+            }
+          } else {
+            const it = jr.item; 
+            modelId = parseInt(it.id||0, 10) || modelId;
+            modelName = String(it.model||'').trim() || String(it.item_name||'').trim() || modelName;
+            category = String(it.category||'').trim() || category || 'Uncategorized';
+          }
+          
+          if (modelName === '') { 
+            modelName = 'Unknown Item'; 
+          }
+          
+          const payload = { 
+            model_id: modelId, 
+            model: modelName, 
+            item_name: modelName, 
+            category: category,
+            qr_serial_no: serial
+          };
+          
+          lastData = { 
+            data: payload, 
+            vr: { allowed: true, reason: 'OK' }, 
+            serial_no: serial 
+          };
           // Show info card basics
           document.getElementById('urItemName').textContent = modelName || '';
           badge.textContent = (vr && vr.status) ? vr.status : (vr.allowed ? 'Available' : 'Unavailable');
