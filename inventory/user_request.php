@@ -3170,13 +3170,33 @@ if (!empty($my_requests)) {
         
         try {
           // Start scanning
+          // Configure scanner with enhanced settings
+          const config = {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0,
+            // Enable experimental features for better barcode detection
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true
+            },
+            // Support multiple formats
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.QR_CODE,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E,
+              Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
+              Html5QrcodeSupportedFormats.CODE_128,
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.CODABAR,
+              Html5QrcodeSupportedFormats.CODE_39,
+              Html5QrcodeSupportedFormats.CODE_93
+            ]
+          };
+          
           await scanner.start(
             currentCameraId,
-            { 
-              fps: 10, 
-              qrbox: { width: 250, height: 250 },
-              aspectRatio: 1.0
-            },
+            config,
             onScanSuccess,
             (errorMessage) => {
               // Handle specific error cases
@@ -3223,10 +3243,12 @@ if (!empty($my_requests)) {
       }
       
       // Handle successful scan
-      async function onScanSuccess(decodedText) {
+      async function onScanSuccess(decodedText, decodedResult) {
         if (!decodedText) return;
         
         try {
+          console.log('Scan result:', decodedResult); // Debug log
+          
           // Stop scanning temporarily while we process
           await stopScan();
           
@@ -3235,16 +3257,34 @@ if (!empty($my_requests)) {
           
           try {
             // Try to parse as JSON
-            const data = JSON.parse(decodedText);
-            if (data) {
-              modelId = parseInt(data.model_id || data.item_id || 0, 10);
-              modelName = (data.model || data.item_name || '').trim();
+            let data;
+            try {
+              data = JSON.parse(decodedText);
+            } catch (e) {
+              // If not valid JSON, try to handle as URL-encoded JSON
+              try {
+                const decoded = decodeURIComponent(decodedText);
+                if (decoded !== decodedText) {
+                  data = JSON.parse(decoded);
+                }
+              } catch (e2) {
+                // Not JSON, will handle as plain text below
+              }
+            }
+            
+            if (data && typeof data === 'object') {
+              modelId = parseInt(data.model_id || data.item_id || data.id || 0, 10);
+              modelName = (data.model || data.name || data.item_name || '').trim();
               category = (data.category || '').trim();
-              serial = (data.serial_no || '').trim();
+              serial = (data.serial_no || data.serial || data.code || '').trim();
+            } else {
+              // Not JSON, use as plain text
+              serial = String(decodedText || '').trim();
             }
           } catch (e) {
-            // Not JSON, use as plain text
-            serial = decodedText.trim();
+            console.error('Error parsing scan data:', e);
+            // Fallback to using raw text
+            serial = String(decodedText || '').trim();
           }
           
           // Validate the scanned item
@@ -3258,18 +3298,24 @@ if (!empty($my_requests)) {
           }
           
           // If we get here, the scan was successful
-          setStatus('✓ Item verified: ' + (modelName || serial), 'text-success');
+          const displayText = modelName || serial || 'Unknown Item';
+          setStatus('✓ Item verified: ' + displayText, 'text-success');
           
           // Enable the submit button
           if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.focus();
-          }
-          
-          // Save the successful scan
-          if (serial) {
-            // Store the serial for form submission
-            if (submitBtn) submitBtn.dataset.serial = serial;
+            
+            // Store the data for form submission
+            submitBtn.dataset.serial = serial || '';
+            submitBtn.dataset.modelId = modelId || '';
+            submitBtn.dataset.modelName = modelName || '';
+            submitBtn.dataset.category = category || '';
+            
+            // Auto-fill location if empty
+            if (locInput && !locInput.value.trim()) {
+              locInput.value = 'Main Office'; // Default location
+            }
           }
           
         } catch (err) {
