@@ -3151,8 +3151,89 @@ if (!empty($my_requests)) {
       }
       
       // Start scanning with selected camera
+      // Enhanced scanner configuration
+      const getScannerConfig = () => ({
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+        // Enable experimental features for better barcode detection
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+          // Add more experimental features for better detection
+          tryHarder: true,
+          useAdaptiveThreshold: true,
+          useHybridThresholding: true
+        },
+        // Support multiple formats with better compatibility
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.RSS_14,
+          Html5QrcodeSupportedFormats.RSS_EXPANDED,
+          Html5QrcodeSupportedFormats.PDF_417,
+          Html5QrcodeSupportedFormats.AZTEC,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.MAXICODE
+        ],
+        // Add more robust scanning options
+        useBarcodeDetectorIfSupported: true,
+        showTorchButtonIfSupported: true,
+        showZoomSliderIfSupported: true,
+        defaultZoomValueIfSupported: 2,
+        disableFlip: false,
+        videoConstraints: {
+          facingMode: 'environment',
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
+          // Add focus mode for better scanning
+          focusMode: 'continuous',
+          // Add torch mode for low light conditions
+          torch: false
+        }
+      });
+
+      // Enhanced error handler
+      const handleScannerError = (errorMessage) => {
+        console.log('Scanner error:', errorMessage);
+        
+        // Skip common non-critical errors
+        if (errorMessage.includes('No MultiFormat Readers') || 
+            errorMessage.includes('No barcode detected') ||
+            errorMessage.includes('No QR code found')) {
+          return; // These are normal during scanning
+        }
+        
+        // Handle specific error cases
+        let displayMsg = errorMessage;
+        if (errorMessage.includes('NotAllowedError') || errorMessage.includes('Permission denied')) {
+          displayMsg = 'Camera access denied. Please allow camera access in your browser settings.';
+        } else if (errorMessage.includes('NotFoundError')) {
+          displayMsg = 'No camera found. Please connect a camera and try again.';
+        } else if (errorMessage.includes('NotReadableError')) {
+          displayMsg = 'Camera is already in use by another application.';
+        } else if (errorMessage.includes('OverconstrainedError')) {
+          displayMsg = 'Camera does not support the requested constraints.';
+        } else if (errorMessage.includes('Could not start video source')) {
+          displayMsg = 'Could not access camera. It may be in use by another application.';
+        }
+        
+        setStatus(displayMsg, 'text-danger');
+      };
+
       async function startScan() {
-        if (scanning || !currentCameraId) return;
+        if (scanning || !currentCameraId) {
+          console.log('Scan already in progress or no camera selected');
+          return;
+        }
         
         if (!readerEl) {
           setStatus('Scanner container not found', 'text-danger');
@@ -3161,92 +3242,38 @@ if (!empty($my_requests)) {
         
         // Clear previous scanner if exists
         if (scanner) {
-          try { await scanner.clear(); } 
-          catch (e) { console.warn('Error clearing previous scanner:', e); }
+          try { 
+            await scanner.clear();
+            scanner = null; // Ensure we create a new instance
+          } catch (e) { 
+            console.warn('Error clearing previous scanner:', e); 
+          }
         }
         
-        // Initialize scanner
+        // Initialize new scanner instance
         scanner = new Html5Qrcode('uqrReader');
         
         try {
-          // Start scanning
-          // Configure scanner with enhanced settings and better error handling
-          const config = {
-            fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0,
-            // Enable experimental features for better barcode detection
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true,
-              // Add more experimental features for better detection
-              tryHarder: true,
-              useAdaptiveThreshold: true,
-              useHybridThresholding: true
-            },
-            // Support multiple formats with better compatibility
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.QR_CODE,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
-              Html5QrcodeSupportedFormats.CODE_128,
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.CODABAR,
-              Html5QrcodeSupportedFormats.CODE_39,
-              Html5QrcodeSupportedFormats.CODE_93,
-              Html5QrcodeSupportedFormats.ITF,
-              Html5QrcodeSupportedFormats.RSS_14,
-              Html5QrcodeSupportedFormats.RSS_EXPANDED,
-              Html5QrcodeSupportedFormats.PDF_417,
-              Html5QrcodeSupportedFormats.AZTEC,
-              Html5QrcodeSupportedFormats.DATA_MATRIX,
-              Html5QrcodeSupportedFormats.MAXICODE
-            ],
-            // Add more robust scanning options
-            useBarcodeDetectorIfSupported: true,
-            showTorchButtonIfSupported: true,
-            showZoomSliderIfSupported: true,
-            defaultZoomValueIfSupported: 2,
-            disableFlip: false,
-            videoConstraints: {
-              facingMode: 'environment',
-              width: { min: 640, ideal: 1280, max: 1920 },
-              height: { min: 480, ideal: 720, max: 1080 }
-            }
-          };
+          const config = getScannerConfig();
           
           // Clear any previous scanner instances
           if (scanner && scanner._html5Qrcode) {
             try {
               await scanner._html5Qrcode.clear();
             } catch (e) {
-              console.warn('Error clearing previous scanner:', e);
+              console.warn('Error clearing previous scanner instance:', e);
             }
           }
           
+          // Start scanning with the new configuration
           await scanner.start(
-            currentCameraId,
+            currentCameraId, 
             config,
             onScanSuccess,
-            (errorMessage) => {
-              // Handle specific error cases
-              let displayMsg = errorMessage;
-              if (errorMessage.includes('NotAllowedError') || errorMessage.includes('Permission denied')) {
-                displayMsg = 'Camera access denied. Please allow camera access in your browser settings.';
-              } else if (errorMessage.includes('NotFoundError')) {
-                displayMsg = 'No camera found. Please connect a camera and try again.';
-              } else if (errorMessage.includes('NotReadableError')) {
-                displayMsg = 'Camera is already in use by another application.';
-              } else if (errorMessage.includes('OverconstrainedError')) {
-                displayMsg = 'Camera does not support the requested constraints.';
-              }
-              
-              setStatus(displayMsg, 'text-danger');
-            }
+            handleScannerError
           );
           
-          // Update UI
+          // Update UI state
           scanning = true;
           if (startBtn) startBtn.style.display = 'none';
           if (stopBtn) stopBtn.style.display = 'inline-block';
@@ -3256,16 +3283,11 @@ if (!empty($my_requests)) {
           setStatus('Scanning for QR code...', 'text-primary');
           
         } catch (err) {
-          console.error('Scanner error:', err);
+          console.error('Scanner initialization error:', err);
+          handleScannerError(err.message || 'Failed to start scanner');
           
-          let errorMsg = 'Error starting camera: ' + (err.message || 'Unknown error');
-          if (err.message && err.message.includes('Could not start video source')) {
-            errorMsg = 'Could not access camera. It may be in use by another application.';
-          }
-          
-          setStatus(errorMsg, 'text-danger');
-          
-          // Reset UI
+          // Reset UI state on error
+          scanning = false;
           if (startBtn) startBtn.style.display = 'inline-block';
           if (stopBtn) stopBtn.style.display = 'none';
           if (cameraSelect) cameraSelect.disabled = false;
@@ -3273,68 +3295,107 @@ if (!empty($my_requests)) {
         }
       }
       
-      // Handle successful scan
+      // Enhanced scan success handler with better parsing and validation
       async function onScanSuccess(decodedText, decodedResult) {
-        console.log('Scan success:', { decodedText, decodedResult });
+        console.log('QR scan success:', { decodedText, decodedResult });
         
         // Add a small delay to prevent rapid multiple scans
-        if (window.lastScanTime && (Date.now() - window.lastScanTime) < 1000) {
+        const now = Date.now();
+        if (window.lastScanTime && (now - window.lastScanTime) < 1000) {
           console.log('Skipping rapid scan');
           return;
         }
-        window.lastScanTime = Date.now();
+        window.lastScanTime = now;
         
         if (!decodedText) {
           console.log('No text in QR code');
+          setStatus('Empty QR code detected', 'text-warning', 2000);
           return;
         }
         
         try {
-          console.log('Scan result:', decodedResult); // Debug log
+          console.log('Processing scan result...');
           
           // Stop scanning temporarily while we process
           await stopScan();
           
-          // Process the scanned data
+          // Process the scanned data with enhanced parsing
           let modelId = 0, modelName = '', category = '', serial = '';
           
           try {
-            // Try to parse as JSON
-            let data;
+            // Try to parse as JSON (handle both direct and URL-encoded JSON)
+            let data = null;
+            
+            // First try direct JSON parse
             try {
               data = JSON.parse(decodedText);
-            } catch (e) {
-              // If not valid JSON, try to handle as URL-encoded JSON
+            } catch (e1) {
+              // If direct parse fails, try URL-decoding first
               try {
                 const decoded = decodeURIComponent(decodedText);
                 if (decoded !== decodedText) {
                   data = JSON.parse(decoded);
                 }
               } catch (e2) {
-                // Not JSON, will handle as plain text below
+                // If still not JSON, try to extract from URL parameters
+                try {
+                  const urlParams = new URLSearchParams(decodedText);
+                  if (urlParams) {
+                    data = Object.fromEntries(urlParams.entries());
+                  }
+                } catch (e3) {
+                  // Not JSON or URL-encoded, will handle as plain text below
+                }
               }
             }
             
+            // Extract data from parsed object or use as plain text
             if (data && typeof data === 'object') {
-              modelId = parseInt(data.model_id || data.item_id || data.id || 0, 10);
-              modelName = (data.model || data.name || data.item_name || '').trim();
-              category = (data.category || '').trim();
-              serial = (data.serial_no || data.serial || data.code || '').trim();
-            } else {
-              // Not JSON, use as plain text
+              modelId = parseInt(
+                data.model_id || data.item_id || data.id || 
+                (data.data && (data.data.model_id || data.data.item_id || data.data.id)) || 0, 
+              10);
+              
+              modelName = (
+                data.model || data.name || data.item_name || 
+                (data.data && (data.data.model || data.data.name || data.data.item_name)) ||
+                ''
+              ).trim();
+              
+              category = (
+                data.category || 
+                (data.data && data.data.category) ||
+                ''
+              ).trim();
+              
+              serial = (
+                data.serial_no || data.serial || data.code || data.qr_code ||
+                (data.data && (data.data.serial_no || data.data.serial || data.data.code)) ||
+                ''
+              ).trim();
+            } 
+            
+            // If no serial found in JSON, use the full text as fallback
+            if (!serial) {
               serial = String(decodedText || '').trim();
             }
+            
+            console.log('Parsed scan data:', { modelId, modelName, category, serial });
+            
           } catch (e) {
             console.error('Error parsing scan data:', e);
-            // Fallback to using raw text
+            // Fallback to using raw text as serial
             serial = String(decodedText || '').trim();
+            console.log('Using raw text as serial:', serial);
           }
           
-          // Validate the scanned item
+          // Validate the scanned item against expected model if available
           const expectedModel = document.getElementById('uqrModel')?.textContent.trim() || '';
           
           if (expectedModel && modelName && expectedModel !== modelName) {
-            setStatus(`Scanned item (${modelName}) does not match expected (${expectedModel})`, 'text-warning', 3000);
+            const errorMsg = `Scanned item (${modelName}) does not match expected (${expectedModel})`;
+            console.warn(errorMsg);
+            setStatus(errorMsg, 'text-warning', 3000);
             // Restart scanning after delay
             setTimeout(() => startScan(), 2000);
             return;
@@ -3344,7 +3405,7 @@ if (!empty($my_requests)) {
           const displayText = modelName || serial || 'Unknown Item';
           setStatus('✓ Item verified: ' + displayText, 'text-success');
           
-          // Enable the submit button
+          // Enable the submit button and store data
           if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.focus();
@@ -3359,12 +3420,21 @@ if (!empty($my_requests)) {
             if (locInput && !locInput.value.trim()) {
               locInput.value = 'Main Office'; // Default location
             }
+            
+            // Log successful scan for debugging
+            console.log('Scan successful, ready for submission:', {
+              serial,
+              modelId,
+              modelName,
+              category,
+              expectedModel
+            });
           }
           
         } catch (err) {
           console.error('Error processing scan:', err);
-          setStatus('Error processing QR code: ' + (err.message || 'Unknown error'), 'text-danger', 3000);
-          // Restart scanning after error
+          setStatus('Error: ' + (err.message || 'Failed to process QR code'), 'text-danger', 3000);
+          // Restart scanning after error with delay
           setTimeout(() => startScan(), 2000);
         }
       }
