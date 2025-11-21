@@ -2796,7 +2796,7 @@ try {
           <div class="mb-2"><strong>Item Name:</strong> <span id="qrAdmModel"></span></div>
           <div class="mb-2"><strong>Serial ID:</strong> <span id="qrAdmSerial"></span></div>
           
-          <div class="mb-2"><strong>User Location (if provided):</strong> <span id="qrAdmLoc">—</span></div>
+          <div class="mb-2"><strong>User Location:</strong> <span id="qrAdmLoc">—</span></div>
           <div class="mt-3 text-end"><small class="text-muted">View only</small></div>
         </div>
       </div>
