@@ -2772,16 +2772,7 @@ try {
           <div class="mb-2"><strong>Serial ID:</strong> <span id="qrAdmSerial"></span></div>
           <div class="mb-2"><small id="qrAdmStatus" class="text-muted">Waiting for user QR verification.</small></div>
           <div class="mb-2"><strong>User Location (if provided):</strong> <span id="qrAdmLoc">—</span></div>
-          <div class="d-flex gap-2 mt-3 justify-content-end">
-            <form id="qrAdmReqForm" method="POST" action="admin_borrow_center.php?action=request_returnship" class="d-inline">
-              <input type="hidden" name="request_id" id="qrAdmReqId1" value="" />
-              <button type="submit" id="qrAdmRequestBtn" class="btn btn-outline-secondary"><i class="bi bi-bell"></i> Request for return</button>
-            </form>
-            <form id="qrAdmApproveForm" method="POST" action="admin_borrow_center.php?action=approve_returnship" class="d-inline">
-              <input type="hidden" name="request_id" id="qrAdmReqId2" value="" />
-              <button type="submit" id="qrAdmApproveBtn" class="btn btn-secondary" disabled><i class="bi bi-check2"></i> Approve Return</button>
-            </form>
-          </div>
+          <div class="mt-3 text-end"><small class="text-muted">View only</small></div>
         </div>
       </div>
     </div>
@@ -3459,7 +3450,7 @@ try {
                             <div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Borrowed Actions">
                               <?php $isQrBorrow = (isset($b['type']) && trim((string)$b['type'])==='QR'); ?>
                               <?php if ($isQrBorrow): ?>
-                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="QR Return" aria-label="QR Return" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-qr-code"></i></button>
+                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="View" aria-label="View" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-eye"></i></button>
                               <?php else: ?>
                                 <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Return/Scan" aria-label="Return/Scan" data-bs-toggle="modal" data-bs-target="#returnScanModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-arrow-counterclockwise"></i></button>
                               <?php endif; ?>
@@ -4058,7 +4049,7 @@ try {
       '<td class="text-end">'+ 
         '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Borrowed Actions">'+ 
          (String(typ).toUpperCase()==='QR'
-            ? '<button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="QR Return" aria-label="QR Return" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-qr-code"></i></button>'
+            ? '<button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="View" aria-label="View" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-eye"></i></button>'
             : '<button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Return/Scan" aria-label="Return/Scan" data-bs-toggle="modal" data-bs-target="#returnScanModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-arrow-counterclockwise"></i></button>'
          )+ 
          '<button type="button" class="btn btn-sm btn-danger border border-dark rounded-0 py-1 px-1 lh-1 fs-6" title="Lost" aria-label="Lost" data-bs-toggle="modal" data-bs-target="#markLostModal" data-reqid="'+parseInt(b.request_id||0,10)+'" data-model_id="'+parseInt(b.model_id||0,10)+'" data-model_name="'+escapeHtml(b.model||'')+'" data-serial="'+escapeHtml(b.serial_no||'')+'"><i class="bi bi-exclamation-triangle"></i></button>'+ 

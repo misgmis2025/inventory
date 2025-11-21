@@ -195,6 +195,76 @@ if ($__act === 'returnship_check' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 
+// Auto-process user return via QR without admin approval
+if ($__act === 'process_return' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  $reqId = (int)($_POST['request_id'] ?? 0);
+  $borrowId = (int)($_POST['borrow_id'] ?? 0);
+  $serial = trim((string)($_POST['serial_no'] ?? ''));
+  $location = trim((string)($_POST['location'] ?? ''));
+  if ($serial === '') { echo json_encode(['success'=>false,'error'=>'Missing serial']); exit; }
+  try {
+    if ($USED_MONGO && $mongo_db) {
+      $erCol = $mongo_db->selectCollection('equipment_requests');
+      $iiCol = $mongo_db->selectCollection('inventory_items');
+      $ubCol = $mongo_db->selectCollection('user_borrows');
+      $raCol = $mongo_db->selectCollection('request_allocations');
+      $now = date('Y-m-d H:i:s');
+
+      // Resolve inventory item by serial
+      $item = $iiCol->findOne(['serial_no' => $serial]);
+      $mid = $item && isset($item['id']) ? (int)$item['id'] : 0;
+
+      // Find active borrow for this user
+      $borrow = null;
+      if ($borrowId > 0) {
+        $borrow = $ubCol->findOne(['id' => $borrowId, 'username' => (string)$_SESSION['username'], 'status' => 'Borrowed']);
+      }
+      if (!$borrow && $mid > 0) {
+        $borrow = $ubCol->findOne(['model_id' => $mid, 'username' => (string)$_SESSION['username'], 'status' => 'Borrowed']);
+      }
+      if (!$borrow) {
+        // Fallback: most recent borrow by this user for this serial/model not yet returned
+        $criteria = ['username'=>(string)$_SESSION['username'], 'status'=>'Borrowed'];
+        if ($mid > 0) { $criteria['model_id'] = $mid; }
+        $borrow = $ubCol->findOne($criteria, ['sort'=>['borrowed_at'=>-1, 'id'=>-1]]);
+      }
+      if (!$borrow) { echo json_encode(['success'=>false,'error'=>'Borrow record not found']); exit; }
+      $bid = (int)($borrow['id'] ?? 0);
+
+      // Mark borrow as returned
+      $ubCol->updateOne(['id' => $bid], ['$set' => ['status' => 'Returned', 'returned_at' => $now]]);
+
+      // Update inventory item to Available and set location
+      if ($mid > 0) {
+        $set = ['status' => 'Available', 'updated_at' => $now];
+        if ($location !== '') { $set['location'] = $location; }
+        $iiCol->updateOne(['id' => $mid], ['$set' => $set]);
+      }
+
+      // Update related request to Returned (if present)
+      if ($reqId > 0) {
+        $erCol->updateOne(['id' => $reqId, 'username' => (string)$_SESSION['username']], ['$set' => ['status' => 'Returned', 'returned_at' => $now]]);
+        try { $rsCol = $mongo_db->selectCollection('returnship_requests'); $rsCol->updateMany(['request_id'=>$reqId], ['$set'=>['status'=>'Completed','completed_at'=>$now,'location'=>$location]]); } catch (Throwable $_) {}
+      } else {
+        // Derive request from allocation if missing
+        try {
+          $alloc = $raCol->findOne(['borrow_id' => $bid], ['projection'=>['request_id'=>1]]);
+          $rid = (int)($alloc['request_id'] ?? 0);
+          if ($rid > 0) { $erCol->updateOne(['id' => $rid], ['$set' => ['status' => 'Returned', 'returned_at' => $now]]); }
+        } catch (Throwable $_a) {}
+      }
+
+      echo json_encode(['success' => true]);
+    } else {
+      echo json_encode(['success'=>false,'error'=>'DB unavailable']);
+    }
+  } catch (Throwable $e) {
+    echo json_encode(['success'=>false,'error'=>'Server error']);
+  }
+  exit;
+}
+
 if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin') { header('Location: admin_borrow_center.php'); exit(); }
 
 // Mongo-first connection (already initialized above)
