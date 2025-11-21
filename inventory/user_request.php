@@ -3170,16 +3170,20 @@ if (!empty($my_requests)) {
         
         try {
           // Start scanning
-          // Configure scanner with enhanced settings
+          // Configure scanner with enhanced settings and better error handling
           const config = {
             fps: 10,
             qrbox: { width: 250, height: 250 },
             aspectRatio: 1.0,
             // Enable experimental features for better barcode detection
             experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true
+              useBarCodeDetectorIfSupported: true,
+              // Add more experimental features for better detection
+              tryHarder: true,
+              useAdaptiveThreshold: true,
+              useHybridThresholding: true
             },
-            // Support multiple formats
+            // Support multiple formats with better compatibility
             formatsToSupport: [
               Html5QrcodeSupportedFormats.QR_CODE,
               Html5QrcodeSupportedFormats.UPC_A,
@@ -3190,9 +3194,36 @@ if (!empty($my_requests)) {
               Html5QrcodeSupportedFormats.EAN_8,
               Html5QrcodeSupportedFormats.CODABAR,
               Html5QrcodeSupportedFormats.CODE_39,
-              Html5QrcodeSupportedFormats.CODE_93
-            ]
+              Html5QrcodeSupportedFormats.CODE_93,
+              Html5QrcodeSupportedFormats.ITF,
+              Html5QrcodeSupportedFormats.RSS_14,
+              Html5QrcodeSupportedFormats.RSS_EXPANDED,
+              Html5QrcodeSupportedFormats.PDF_417,
+              Html5QrcodeSupportedFormats.AZTEC,
+              Html5QrcodeSupportedFormats.DATA_MATRIX,
+              Html5QrcodeSupportedFormats.MAXICODE
+            ],
+            // Add more robust scanning options
+            useBarcodeDetectorIfSupported: true,
+            showTorchButtonIfSupported: true,
+            showZoomSliderIfSupported: true,
+            defaultZoomValueIfSupported: 2,
+            disableFlip: false,
+            videoConstraints: {
+              facingMode: 'environment',
+              width: { min: 640, ideal: 1280, max: 1920 },
+              height: { min: 480, ideal: 720, max: 1080 }
+            }
           };
+          
+          // Clear any previous scanner instances
+          if (scanner && scanner._html5Qrcode) {
+            try {
+              await scanner._html5Qrcode.clear();
+            } catch (e) {
+              console.warn('Error clearing previous scanner:', e);
+            }
+          }
           
           await scanner.start(
             currentCameraId,
@@ -3244,7 +3275,19 @@ if (!empty($my_requests)) {
       
       // Handle successful scan
       async function onScanSuccess(decodedText, decodedResult) {
-        if (!decodedText) return;
+        console.log('Scan success:', { decodedText, decodedResult });
+        
+        // Add a small delay to prevent rapid multiple scans
+        if (window.lastScanTime && (Date.now() - window.lastScanTime) < 1000) {
+          console.log('Skipping rapid scan');
+          return;
+        }
+        window.lastScanTime = Date.now();
+        
+        if (!decodedText) {
+          console.log('No text in QR code');
+          return;
+        }
         
         try {
           console.log('Scan result:', decodedResult); // Debug log
