@@ -2475,10 +2475,9 @@ if (!empty($my_requests)) {
           const submitBtnGray = document.getElementById('uqrSubmitGray');
           const locInputEl = document.getElementById('uqrLoc');
           if (submitBtn && submitBtnGray) {
-            const locOk = !!(locInputEl && locInputEl.value && locInputEl.value.trim());
             submitBtn.dataset.serial = serial;
             submitBtn.style.display = '';
-            submitBtn.disabled = !locOk;
+            submitBtn.disabled = false;
             submitBtnGray.style.display = 'none';
           }
           try { serialValid = true; } catch(_) {}
@@ -2600,7 +2599,7 @@ if (!empty($my_requests)) {
             const hasSerial = !!(submitBtn.dataset && submitBtn.dataset.serial);
             if (hasSerial) {
               submitBtn.style.display = '';
-              submitBtn.disabled = !(this.value && this.value.trim());
+              submitBtn.disabled = false;
               submitBtnGray.style.display = 'none';
             } else {
               submitBtn.style.display = 'none';
@@ -2788,13 +2787,12 @@ if (!empty($my_requests)) {
           }).catch(function(){ /* ignore */ });
         }
         function updateSubmitState(){
-          const locOk = (locInput?.value||'').trim().length>0;
           const blue = document.getElementById('uqrSubmit');
           const gray = document.getElementById('uqrSubmitGray');
           if (blue && gray){
             if (serialValid){
               blue.style.display = '';
-              blue.disabled = !locOk;
+              blue.disabled = false;
               gray.style.display = 'none';
             } else {
               blue.style.display = 'none';
@@ -2803,7 +2801,7 @@ if (!empty($my_requests)) {
             }
           } else {
             // Fallback for environments without two-button structure
-            if (submitBtn){ submitBtn.disabled = !serialValid || !locOk; }
+            if (submitBtn){ submitBtn.disabled = !serialValid; }
           }
         }
         function onScan(txt){
