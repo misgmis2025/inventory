@@ -206,7 +206,7 @@ try {
     $stocksLabels = array_keys($stocksMap);
     $stocksValues = array_values($stocksMap);
     $groupLabel  = ($period === 'yearly') ? 'Year' : 'Month';
-    $stocksTitle = 'Stocks (Sum of Units Added - ' . ucfirst($period) . ')';
+    $stocksTitle = 'Stocks (' . ucfirst($period) . ')';
 
     $DASH_MONGO_FILLED = true;
 } catch (Throwable $e) {
