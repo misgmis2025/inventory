@@ -2565,6 +2565,21 @@ if (!empty($my_requests)) {
             }
           });
         }
+        // When user types a location, enable the button if a valid serial was verified; keep blue style when verified
+        if (locInput) {
+          locInput.addEventListener('input', function(){
+            const sb = document.getElementById('uqrSubmit');
+            if (!sb) return;
+            const hasSerial = !!(sb.dataset && sb.dataset.serial);
+            if (hasSerial) {
+              sb.className = 'btn btn-primary';
+              sb.disabled = !(this.value && this.value.trim());
+            } else {
+              sb.className = 'btn btn-secondary';
+              sb.disabled = true;
+            }
+          });
+        }
         
         // Handle refresh cameras button
         if (refreshBtn) {
