@@ -2458,12 +2458,12 @@ if (!empty($my_requests)) {
           if (!jr || !jr.ok) {
             setStatus('Wrong Serial ID', 'text-danger');
             const submitBtn = document.getElementById('uqrSubmit');
-            if (submitBtn) {
-              // Remove any outline styles and set solid gray
-              submitBtn.classList.remove('btn-outline-primary','btn-outline-success','btn-outline-secondary');
-              submitBtn.className = 'btn btn-secondary';
-              submitBtn.disabled = true;
+            const submitBtnGray = document.getElementById('uqrSubmitGray');
+            if (submitBtn && submitBtnGray) {
+              submitBtn.style.display = 'none';
               try { delete submitBtn.dataset.serial; } catch(_) {}
+              submitBtnGray.style.display = '';
+              submitBtnGray.disabled = true;
             }
             try { serialValid = false; } catch(_) {}
             setTimeout(() => startScan(), 1200);
@@ -2472,14 +2472,14 @@ if (!empty($my_requests)) {
           // Success: enable submit (blue) but require location to enable click
           setStatus('Item verified: '+serial, 'text-success');
           const submitBtn = document.getElementById('uqrSubmit');
+          const submitBtnGray = document.getElementById('uqrSubmitGray');
           const locInputEl = document.getElementById('uqrLoc');
-          if (submitBtn) {
-            // Ensure solid blue: strip any outline variants first
-            submitBtn.classList.remove('btn-outline-primary','btn-outline-success','btn-outline-secondary');
-            submitBtn.className = 'btn btn-primary';
+          if (submitBtn && submitBtnGray) {
             const locOk = !!(locInputEl && locInputEl.value && locInputEl.value.trim());
-            submitBtn.disabled = !locOk;
             submitBtn.dataset.serial = serial;
+            submitBtn.style.display = '';
+            submitBtn.disabled = !locOk;
+            submitBtnGray.style.display = 'none';
           }
           try { serialValid = true; } catch(_) {}
         } catch (err) {
@@ -2573,6 +2573,7 @@ if (!empty($my_requests)) {
         const cameraSelect = q('uqrCamera');
         const refreshBtn = q('uqrRefreshCams');
         const submitBtn = q('uqrSubmit');
+        const submitBtnGray = q('uqrSubmitGray');
         
         // Initialize camera selection
         populateCameraSelect();
@@ -2595,15 +2596,16 @@ if (!empty($my_requests)) {
         // When user types a location, enable the button if a valid serial was verified; keep blue style when verified
         if (locInput) {
           locInput.addEventListener('input', function(){
-            const sb = document.getElementById('uqrSubmit');
-            if (!sb) return;
-            const hasSerial = !!(sb.dataset && sb.dataset.serial);
+            if (!submitBtn || !submitBtnGray) return;
+            const hasSerial = !!(submitBtn.dataset && submitBtn.dataset.serial);
             if (hasSerial) {
-              sb.className = 'btn btn-primary';
-              sb.disabled = !(this.value && this.value.trim());
+              submitBtn.style.display = '';
+              submitBtn.disabled = !(this.value && this.value.trim());
+              submitBtnGray.style.display = 'none';
             } else {
-              sb.className = 'btn btn-secondary';
-              sb.disabled = true;
+              submitBtn.style.display = 'none';
+              submitBtnGray.style.display = '';
+              submitBtnGray.disabled = true;
             }
           });
         }
@@ -2639,6 +2641,7 @@ if (!empty($my_requests)) {
             
             // Disable form controls during submission
             this.disabled = true;
+            if (submitBtnGray) submitBtnGray.disabled = true;
             if (locInput) locInput.disabled = true;
             if (cameraSelect) cameraSelect.disabled = true;
             if (refreshBtn) refreshBtn.disabled = true;
@@ -2682,6 +2685,7 @@ if (!empty($my_requests)) {
               
               // Re-enable form controls
               this.disabled = false;
+              if (submitBtnGray) submitBtnGray.disabled = true;
               if (locInput) locInput.disabled = false;
               if (cameraSelect) cameraSelect.disabled = false;
               if (refreshBtn) refreshBtn.disabled = false;
@@ -2705,10 +2709,16 @@ if (!empty($my_requests)) {
           }
           
           // Reset form
-          if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.className = 'btn btn-secondary';
+          if (submitBtn && submitBtnGray) {
             try { delete submitBtn.dataset.serial; } catch(_) {}
+            submitBtn.style.display = 'none';
+            submitBtn.disabled = true;
+            submitBtnGray.style.display = '';
+            submitBtnGray.disabled = true;
+          } else if (submitBtn) {
+            try { delete submitBtn.dataset.serial; } catch(_) {}
+            submitBtn.style.display = 'none';
+            submitBtn.disabled = true;
           }
           serialValid = false;
           
@@ -2779,13 +2789,21 @@ if (!empty($my_requests)) {
         }
         function updateSubmitState(){
           const locOk = (locInput?.value||'').trim().length>0;
-          if (serialValid){
-            // Show blue style when serial is verified, but keep disabled until location is provided
-            submitBtn.className = 'btn btn-primary';
-            submitBtn.disabled = !locOk;
+          const blue = document.getElementById('uqrSubmit');
+          const gray = document.getElementById('uqrSubmitGray');
+          if (blue && gray){
+            if (serialValid){
+              blue.style.display = '';
+              blue.disabled = !locOk;
+              gray.style.display = 'none';
+            } else {
+              blue.style.display = 'none';
+              gray.style.display = '';
+              gray.disabled = true;
+            }
           } else {
-            submitBtn.className = 'btn btn-secondary';
-            submitBtn.disabled = true;
+            // Fallback for environments without two-button structure
+            if (submitBtn){ submitBtn.disabled = !serialValid || !locOk; }
           }
         }
         function onScan(txt){
@@ -2802,7 +2820,8 @@ if (!empty($my_requests)) {
             if (!serial){ setStatus('Invalid QR content','text-danger'); serialValid=false; updateSubmitState(); return; }
             lastSerial = serial;
             // Check with server if this serial is valid for this request+borrow before enabling Verify
-            setStatus('Checking serial...','text-info'); submitBtn.disabled = true; submitBtn.className='btn btn-secondary';
+            setStatus('Checking serial...','text-info');
+            (function(){ const blue=document.getElementById('uqrSubmit'); const gray=document.getElementById('uqrSubmitGray'); if (blue&&gray){ blue.style.display='none'; gray.style.display=''; gray.disabled=true; } })();
             const bodyChk = 'request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId)+'&serial_no='+encodeURIComponent(lastSerial);
             fetch('user_request.php?action=returnship_check', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: bodyChk })
               .then(r=>r.json())
@@ -2810,7 +2829,7 @@ if (!empty($my_requests)) {
                 if (resp && resp.ok){ setStatus('Item verified: '+serial, 'text-success'); serialValid=true; stop(); updateSubmitState(); }
                 else { setStatus('Wrong Serial ID','text-danger'); serialValid=false; updateSubmitState(); }
               })
-              .catch(function(){ setStatus('Network error','text-danger'); submitBtn.disabled = true; submitBtn.className='btn btn-secondary'; });
+              .catch(function(){ setStatus('Network error','text-danger'); (function(){ const blue=document.getElementById('uqrSubmit'); const gray=document.getElementById('uqrSubmitGray'); if (blue&&gray){ blue.style.display='none'; gray.style.display=''; gray.disabled=true; } })(); });
           } catch(_){ setStatus('Scan error','text-danger'); }
         }
         function mapStatusClass(s){ switch(String(s||'')){ case 'Available': return 'bg-success'; case 'In Use': return 'bg-primary'; case 'Maintenance': return 'bg-warning'; case 'Out of Order': return 'bg-danger'; case 'Reserved': return 'bg-info'; case 'Lost': return 'bg-danger'; case 'Damaged': return 'bg-danger'; default: return 'bg-secondary'; } }
@@ -2915,7 +2934,7 @@ if (!empty($my_requests)) {
         } catch(_){ setStatus('Invalid QR code data.','text-danger'); }
       }
       function submitBorrow(){ if (!lastData || !lastData.vr || !lastData.vr.allowed) return; const vr=lastData.vr; const src=lastData.data||{}; const loc = (reqLocInput && reqLocInput.value ? reqLocInput.value.trim() : ''); if (!loc){ setStatus('Request location is required.','text-danger'); return; } const exp = expInput ? String(expInput.value||'').trim() : ''; if (!exp){ setStatus('Please set Expected Return time.','text-danger'); return; } const form=document.createElement('form'); form.method='POST'; form.action='user_request.php'; const add=(n,v)=>{ const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=String(v); form.appendChild(i); }; add('category', vr.category || src.category || 'Uncategorized'); add('model', vr.model || (src.model||src.item_name||'')); add('quantity', 1); add('details', 'Requested via QR scan'); add('req_location', loc); add('req_type', 'immediate'); add('expected_return_at', exp); if (lastData && lastData.serial_no){ add('qr_serial_no', lastData.serial_no); } document.body.appendChild(form); form.submit(); }
-      mdl.addEventListener('show.bs.modal', function(e){ const btn = e.relatedTarget; currentReqId = btn?.getAttribute('data-reqid')||''; currentBorrowId = btn?.getAttribute('data-borrow_id')||''; const mdlName = btn?.getAttribute('data-model_name')||''; reqSpan.textContent = currentReqId; modelSpan.textContent = mdlName; lastSerial=''; serialValid=false; submitBtn.disabled = true; submitBtn.className='btn btn-secondary'; setStatus('Scan the item\'s QR.','text-muted'); if (readerDiv) readerDiv.innerHTML=''; if (locInput) locInput.value=''; });
+      mdl.addEventListener('show.bs.modal', function(e){ const btn = e.relatedTarget; currentReqId = btn?.getAttribute('data-reqid')||''; currentBorrowId = btn?.getAttribute('data-borrow_id')||''; const mdlName = btn?.getAttribute('data-model_name')||''; reqSpan.textContent = currentReqId; modelSpan.textContent = mdlName; lastSerial=''; serialValid=false; (function(){ const blue=document.getElementById('uqrSubmit'); const gray=document.getElementById('uqrSubmitGray'); if (blue&&gray){ try{ delete blue.dataset.serial; }catch(_){ } blue.style.display='none'; blue.disabled=true; gray.style.display=''; gray.disabled=true; } })(); setStatus('Scan the item\'s QR.','text-muted'); if (readerDiv) readerDiv.innerHTML=''; if (locInput) locInput.value=''; });
       function cleanupBackdrops(){
         try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.parentNode && el.parentNode.removeChild(el); }); } catch(_){ }
         try { document.body.classList.remove('modal-open'); document.body.style.removeProperty('padding-right'); } catch(_){ }
@@ -2932,7 +2951,7 @@ if (!empty($my_requests)) {
       submitBtn.addEventListener('click', function(){
         if (!currentReqId || !lastSerial) { setStatus('Missing data','text-danger'); return; }
         const body = 'request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId)+'&serial_no='+encodeURIComponent(lastSerial)+'&location='+encodeURIComponent(locInput?.value||'');
-        submitBtn.disabled = true; submitBtn.className='btn btn-secondary'; setStatus('Verifying...','text-info');
+        submitBtn.disabled = true; (function(){ const gray=document.getElementById('uqrSubmitGray'); if (gray){ gray.disabled=true; } })(); setStatus('Verifying...','text-info');
         fetch('user_request.php?action=returnship_verify', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body })
           .then(r=>r.json())
           .then(function(resp){
@@ -3192,7 +3211,8 @@ if (!empty($my_requests)) {
             <input type="text" class="form-control" id="uqrLoc" placeholder="e.g. Storage Room A" required />
           </div>
           <div class="text-end">
-            <button type="button" id="uqrSubmit" class="btn btn-secondary" disabled><i class="bi bi-check2"></i> Verify Return</button>
+            <button type="button" id="uqrSubmit" class="btn btn-primary" style="display:none;"><i class="bi bi-check2"></i> Verify Return</button>
+            <button type="button" id="uqrSubmitGray" class="btn btn-secondary" disabled><i class="bi bi-check2"></i> Verify Return</button>
           </div>
         </div>
       </div>
