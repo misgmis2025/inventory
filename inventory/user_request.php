@@ -2396,59 +2396,61 @@ if (!empty($my_requests)) {
         }
       }
       
-      // Handle scan results
+      // Handle scan results with strict serial validation against borrowed item
       async function onScan(decodedText) {
         if (!decodedText) return;
-        
         try {
-          // Stop scanning temporarily while we process
           await stopScan();
-          
-          // Process the scanned data
-          let modelId = 0, modelName = '', category = '', serial = '';
-          
+          // Extract serial robustly
+          let serial = '';
           try {
-            // Try to parse as JSON
             const data = JSON.parse(decodedText);
-            if (data) {
-              modelId = parseInt(data.model_id || data.item_id || 0, 10);
-              modelName = (data.model || data.item_name || '').trim();
-              category = (data.category || '').trim();
-              serial = (data.serial_no || '').trim();
+            if (data && typeof data === 'object') {
+              serial = String(
+                data.serial_no || data.serial || data.sn || data.sid ||
+                (data.data && (data.data.serial_no || data.data.serial || data.data.sid)) ||
+                ''
+              ).trim();
             }
-          } catch (e) {
-            // Not JSON, use as plain text
-            serial = decodedText.trim();
+          } catch(_) {}
+          if (!serial) {
+            let s = String(decodedText||'').trim();
+            try {
+              if (/^https?:\/\//i.test(s)) {
+                const u = new URL(s);
+                const p = u.searchParams;
+                serial = String(p.get('serial_no')||p.get('serial')||p.get('sn')||p.get('sid')||p.get('id')||'').trim();
+                if (!serial) {
+                  const parts = u.pathname.split('/').filter(Boolean);
+                  if (parts.length) serial = parts[parts.length-1];
+                }
+              }
+            } catch(_) {}
+            if (!serial && /^\s*[\w\-]+\s*$/.test(s)) serial = s;
           }
-          
-          // Validate the scanned item
-          const expectedModel = q('uqrModel') ? q('uqrModel').textContent.trim() : '';
-          
-          if (expectedModel && modelName && expectedModel !== modelName) {
-            setStatus(`Scanned item (${modelName}) does not match expected (${expectedModel})`, 'text-warning', 3000);
-            // Restart scanning after delay
-            setTimeout(() => startScan(), 2000);
+          if (!serial) {
+            setStatus('Invalid or missing serial in QR', 'text-danger', 2500);
+            setTimeout(() => startScan(), 1200);
             return;
           }
-          
-          // If we get here, the scan was successful
-          setStatus('✓ Item verified: ' + (modelName || serial), 'text-success');
-          
-          // Enable the submit button
-          const submitBtn = q('uqrSubmit');
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.focus();
+          // Verify exact match against this request's borrowed item
+          setStatus('Verifying serial...', 'text-muted');
+          const body = 'request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId||0)+'&serial_no='+encodeURIComponent(serial);
+          const resp = await fetch('user_request.php?action=returnship_check', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+          const jr = await resp.json().catch(()=>({ok:false,reason:'Validation failed'}));
+          if (!jr || !jr.ok) {
+            setStatus(jr && jr.reason ? jr.reason : 'QR mismatch', 'text-danger');
+            setTimeout(() => startScan(), 1200);
+            return;
           }
-          
-          // Save the successful scan
-          serialValid = true;
-          
+          // Success: enable submit and store serial
+          setStatus('✓ Scanned Serial: '+serial, 'text-success');
+          const submitBtn = q('uqrSubmit');
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.dataset.serial = serial; }
         } catch (err) {
-          console.error('Error processing scan:', err);
-          setStatus('Error processing QR code: ' + (err.message || 'Unknown error'), 'text-danger', 3000);
-          // Restart scanning after error
-          setTimeout(() => startScan(), 2000);
+          console.error('Scan processing error:', err);
+          setStatus('Error processing QR code', 'text-danger', 2000);
+          setTimeout(() => startScan(), 1200);
         }
       }
       
@@ -2752,7 +2754,7 @@ if (!empty($my_requests)) {
           } catch(_){ setStatus('Scan error','text-danger'); }
         }
         function mapStatusClass(s){ switch(String(s||'')){ case 'Available': return 'bg-success'; case 'In Use': return 'bg-primary'; case 'Maintenance': return 'bg-warning'; case 'Out of Order': return 'bg-danger'; case 'Reserved': return 'bg-info'; case 'Lost': return 'bg-danger'; case 'Damaged': return 'bg-danger'; default: return 'bg-secondary'; } }
-        async function onScan(txt){ stopScan(); try{
+        async function onScanBorrow(txt){ stopScan(); try{
           let modelId=0, modelName='', category=''; let serial = String(txt||'').trim();
           
           // Parse QR code data
