@@ -257,6 +257,31 @@ if ($act === 'overdue_json' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   }
   exit();
 }
+// Request info (admin): return request_location and basic fields for a request id (JSON)
+if ($act === 'request_info' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $rid = intval($_GET['request_id'] ?? 0);
+    if ($rid <= 0) { echo json_encode(['ok'=>false,'reason'=>'Missing id']); exit(); }
+    $doc = $er->findOne(['id'=>$rid], ['projection'=>['id'=>1,'item_name'=>1,'request_location'=>1,'qr_serial_no'=>1,'status'=>1,'approved_at'=>1]]);
+    if (!$doc) { echo json_encode(['ok'=>false,'reason'=>'Not found']); exit(); }
+    echo json_encode(['ok'=>true,'request'=>[
+      'id' => (int)($doc['id'] ?? 0),
+      'item_name' => (string)($doc['item_name'] ?? ''),
+      'request_location' => (string)($doc['request_location'] ?? ''),
+      'qr_serial_no' => (string)($doc['qr_serial_no'] ?? ''),
+      'status' => (string)($doc['status'] ?? ''),
+      'approved_at' => (string)($doc['approved_at'] ?? ''),
+    ]]);
+  } catch (Throwable $e) {
+    echo json_encode(['ok'=>false,'reason'=>'DB unavailable']);
+  }
+  exit();
+}
 // Action routing (legacy position; $act already defined above)
 
 // List selectable serials (not yet whitelisted) for a given category and model (JSON)
@@ -2770,7 +2795,7 @@ try {
           <div class="mb-2"><strong>Request ID:</strong> <span id="qrAdmReq"></span></div>
           <div class="mb-2"><strong>Item Name:</strong> <span id="qrAdmModel"></span></div>
           <div class="mb-2"><strong>Serial ID:</strong> <span id="qrAdmSerial"></span></div>
-          <div class="mb-2"><small id="qrAdmStatus" class="text-muted">Waiting for user QR verification.</small></div>
+          
           <div class="mb-2"><strong>User Location (if provided):</strong> <span id="qrAdmLoc">—</span></div>
           <div class="mt-3 text-end"><small class="text-muted">View only</small></div>
         </div>
@@ -2805,69 +2830,26 @@ try {
         var reqSpan = document.getElementById('qrAdmReq');
         var modelSpan = document.getElementById('qrAdmModel');
         var serialSpan = document.getElementById('qrAdmSerial');
-        var statusEl = document.getElementById('qrAdmStatus');
         var locEl = document.getElementById('qrAdmLoc');
-        var reqId1 = document.getElementById('qrAdmReqId1');
-        var reqId2 = document.getElementById('qrAdmReqId2');
-        var approveBtn = document.getElementById('qrAdmApproveBtn');
-        function checkStatus(rid){
-          if (!rid) return;
-          fetch('admin_borrow_center.php?action=returnship_status&request_id='+encodeURIComponent(String(rid)))
-            .then(r=>r.json())
-            .then(function(resp){
-              var reqBtn = document.getElementById('qrAdmRequestBtn');
-              if (!resp || resp.ok===false) {
-                statusEl.textContent = (resp && resp.reason) ? resp.reason : 'Status check failed.';
-                statusEl.className='small text-danger';
-                if(approveBtn){ approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
-                if(reqBtn){ reqBtn.disabled = true; reqBtn.classList.add('disabled'); }
-                return;
-              }
-              if (!resp.exists) {
-                statusEl.textContent = 'No returnship request yet. You can request it.';
-                statusEl.className='small text-muted';
-                locEl.textContent='—';
-                if(approveBtn){ approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
-                if(reqBtn){ reqBtn.disabled = false; reqBtn.classList.remove('disabled'); }
-                return;
-              }
-              locEl.textContent = String(resp.location||'—');
-              if (reqBtn){ reqBtn.disabled = true; reqBtn.classList.add('disabled'); }
-              if (resp.verified) {
-                if (reqBtn){ reqBtn.style.display = 'none'; }
-                statusEl.textContent = 'User has verified the correct QR. You can approve the return.';
-                statusEl.className='small text-success';
-                if(approveBtn){ approveBtn.disabled = false; approveBtn.className='btn btn-primary'; }
-              }
-              else {
-                statusEl.textContent = 'Waiting for user QR verification.';
-                statusEl.className='small text-warning';
-                if(approveBtn){ approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
-              }
-            })
-            .catch(function(){ statusEl.textContent='Status check error.'; statusEl.className='small text-danger'; if(approveBtn){ approveBtn.disabled=true; approveBtn.className='btn btn-secondary'; } });
-        }
         mdl.addEventListener('show.bs.modal', function(e){
           var btn = e.relatedTarget; if (!btn) return;
           var rid = btn.getAttribute('data-reqid')||'';
           var mdlName = btn.getAttribute('data-model_name')||'';
           var serial = btn.getAttribute('data-serial')||'';
           reqSpan.textContent = rid; modelSpan.textContent = mdlName; serialSpan.textContent = serial || '—';
-          if (reqId1) reqId1.value = rid; if (reqId2) reqId2.value = rid;
-          var reqBtn = document.getElementById('qrAdmRequestBtn');
-          if (approveBtn) { approveBtn.disabled = true; approveBtn.className='btn btn-secondary'; }
-          if (reqBtn) { reqBtn.disabled = true; reqBtn.classList.add('disabled'); reqBtn.style.display=''; }
-          if (statusEl){ statusEl.textContent = 'Checking status...'; statusEl.className='small text-info'; }
           if (locEl) locEl.textContent = '—';
-          checkStatus(rid);
+          if (rid) {
+            fetch('admin_borrow_center.php?action=request_info&request_id='+encodeURIComponent(String(rid)))
+              .then(function(r){ return r.json(); })
+              .then(function(resp){
+                if (resp && resp.ok && resp.request) {
+                  var loc = String(resp.request.request_location || resp.request.req_location || '');
+                  if (locEl) locEl.textContent = loc ? loc : '—';
+                } else { if (locEl) locEl.textContent = '—'; }
+              })
+              .catch(function(){ if (locEl) locEl.textContent = '—'; });
+          }
         });
-        // Poll while open
-        var pollTimer = null;
-        mdl.addEventListener('shown.bs.modal', function(){
-          var rid = reqId2 && reqId2.value; if (!rid) return;
-          pollTimer = setInterval(function(){ checkStatus(rid); }, 2000);
-        });
-        mdl.addEventListener('hide.bs.modal', function(){ if (pollTimer){ clearInterval(pollTimer); pollTimer=null; } });
       });
     })();
   </script>
