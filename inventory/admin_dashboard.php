@@ -31,14 +31,21 @@ try {
     $db = get_mongo_db();
     $itemsCol = $db->selectCollection('inventory_items');
 
-    // Build match filter for dates (date_acquired stored as 'Y-m-d' string)
+    // Build match filter for dates (prefer date_acquired, fallback to created_at)
     $match = [];
-    if ($date_from !== '' && $date_to !== '') {
-        $match['date_acquired'] = ['$gte' => $date_from, '$lte' => $date_to];
-    } elseif ($date_from !== '') {
-        $match['date_acquired'] = ['$gte' => $date_from];
-    } elseif ($date_to !== '') {
-        $match['date_acquired'] = ['$lte' => $date_to];
+    if ($date_from !== '' || $date_to !== '') {
+        $dateOr = [];
+        $cond1 = [];
+        if ($date_from !== '') { $cond1['date_acquired']['$gte'] = $date_from; }
+        if ($date_to !== '')   { $cond1['date_acquired']['$lte'] = $date_to; }
+        if (!empty($cond1)) { $dateOr[] = $cond1; }
+        $fromTs = ($date_from !== '') ? ($date_from . ' 00:00:00') : '';
+        $toTs   = ($date_to   !== '') ? ($date_to   . ' 23:59:59') : '';
+        $cond2 = [];
+        if ($fromTs !== '') { $cond2['created_at']['$gte'] = $fromTs; }
+        if ($toTs   !== '') { $cond2['created_at']['$lte'] = $toTs; }
+        if (!empty($cond2)) { $dateOr[] = $cond2; }
+        if (!empty($dateOr)) { $match['$or'] = $dateOr; }
     }
 
     // Fetch and aggregate by item_name in PHP for simplicity/compatibility
@@ -53,14 +60,21 @@ try {
     $cursor = $itemsCol->find($match);
     foreach ($cursor as $doc) {
         $nm = (string)($doc['item_name'] ?? '');
-        $qty = (int)($doc['quantity'] ?? 0);
+        // Default quantity to 1 if missing or invalid to reflect per-unit documents
+        $qty = isset($doc['quantity']) ? (int)$doc['quantity'] : 1;
+        if ($qty <= 0) { $qty = 1; }
         $totalUnits += $qty;
         if (!isset($byItem[$nm])) { $byItem[$nm] = 0; }
         $byItem[$nm] += $qty;
-        // Stock time bucket
-        $dstr = (string)($doc['date_acquired'] ?? '');
-        if ($dstr !== '') {
-            $grp = ($period === 'yearly') ? substr($dstr, 0, 4) : substr($dstr, 0, 7);
+        // Stock time bucket: prefer date_acquired, fallback to created_at
+        $dstr = trim((string)($doc['date_acquired'] ?? ''));
+        $when = ($dstr !== '') ? $dstr : '';
+        if ($when === '') {
+            $ca = trim((string)($doc['created_at'] ?? ''));
+            if ($ca !== '') { $when = substr($ca, 0, 10); }
+        }
+        if ($when !== '') {
+            $grp = ($period === 'yearly') ? substr($when, 0, 4) : substr($when, 0, 7);
             if (!isset($stocksMap[$grp])) { $stocksMap[$grp] = 0; }
             $stocksMap[$grp] += $qty;
         }
@@ -160,6 +174,34 @@ try {
     $chartValues = array_map(function($r){ return (int)$r['total_qty']; }, $itemsAgg);
 
     // Stocks chart (grouped by period)
+    // Fill missing periods within selected range with zeros for continuous charting
+    if ($period === 'monthly') {
+        // Determine range
+        $startYM = '';
+        $endYM = '';
+        if ($date_from !== '') { $startYM = substr($date_from, 0, 7); }
+        if ($date_to   !== '') { $endYM   = substr($date_to, 0, 7); }
+        // If no explicit filter, infer from existing keys
+        if ($startYM === '' && !empty($stocksMap)) { $keys = array_keys($stocksMap); sort($keys, SORT_NATURAL); $startYM = substr($keys[0], 0, 7); }
+        if ($endYM   === '' && !empty($stocksMap)) { $keys = isset($keys) ? $keys : array_keys($stocksMap); sort($keys, SORT_NATURAL); $endYM = substr($keys[count($keys)-1], 0, 7); }
+        if ($startYM !== '' && $endYM !== '') {
+            $y = (int)substr($startYM, 0, 4); $m = (int)substr($startYM, 5, 2);
+            $yEnd = (int)substr($endYM, 0, 4); $mEnd = (int)substr($endYM, 5, 2);
+            while ($y < $yEnd || ($y === $yEnd && $m <= $mEnd)) {
+                $key = sprintf('%04d-%02d', $y, $m);
+                if (!isset($stocksMap[$key])) { $stocksMap[$key] = 0; }
+                $m++; if ($m > 12) { $m = 1; $y++; }
+            }
+        }
+    } else { // yearly
+        $startY = ($date_from !== '') ? (int)substr($date_from, 0, 4) : 0;
+        $endY   = ($date_to   !== '') ? (int)substr($date_to, 0, 4) : 0;
+        if ($startY === 0 && !empty($stocksMap)) { $keys = array_keys($stocksMap); sort($keys, SORT_NATURAL); $startY = (int)substr($keys[0], 0, 4); }
+        if ($endY   === 0 && !empty($stocksMap)) { $keys = isset($keys) ? $keys : array_keys($stocksMap); sort($keys, SORT_NATURAL); $endY = (int)substr($keys[count($keys)-1], 0, 4); }
+        if ($startY > 0 && $endY > 0) {
+            for ($yy = $startY; $yy <= $endY; $yy++) { $k = (string)$yy; if (!isset($stocksMap[$k])) { $stocksMap[$k] = 0; } }
+        }
+    }
     ksort($stocksMap, SORT_NATURAL);
     $stocksLabels = array_keys($stocksMap);
     $stocksValues = array_values($stocksMap);
