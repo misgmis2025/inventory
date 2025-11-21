@@ -1656,6 +1656,23 @@ if (!empty($my_requests)) {
       </div>
     </div>
   </div>
+  <style>
+    #userQrReturnModal #uqrSubmit.btn-primary:disabled,
+    #userQrReturnModal #uqrSubmit.btn-primary.disabled {
+      background-color: #0d6efd !important;
+      border-color: #0d6efd !important;
+      color: #fff !important;
+      opacity: 1 !important;
+    }
+    /* Force blue look when a serial is verified, regardless of current btn-* class */
+    #userQrReturnModal #uqrSubmit[data-serial]:disabled,
+    #userQrReturnModal #uqrSubmit[data-serial].disabled {
+      background-color: #0d6efd !important;
+      border-color: #0d6efd !important;
+      color: #fff !important;
+      opacity: 1 !important;
+    }
+  </style>
       <div class="list-group list-group-flush my-3">
         <a href="user_dashboard.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
         <a href="user_request.php" class="list-group-item list-group-item-action bg-transparent fw-bold"><i class="bi bi-clipboard-plus me-2"></i>Request to Borrow</a>
@@ -2448,6 +2465,7 @@ if (!empty($my_requests)) {
               submitBtn.disabled = true;
               try { delete submitBtn.dataset.serial; } catch(_) {}
             }
+            try { serialValid = false; } catch(_) {}
             setTimeout(() => startScan(), 1200);
             return;
           }
@@ -2463,6 +2481,7 @@ if (!empty($my_requests)) {
             submitBtn.disabled = !locOk;
             submitBtn.dataset.serial = serial;
           }
+          try { serialValid = true; } catch(_) {}
         } catch (err) {
           console.error('Scan processing error:', err);
           setStatus('Error processing QR code', 'text-danger', 2000);
