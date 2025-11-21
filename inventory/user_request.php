@@ -2747,8 +2747,8 @@ if (!empty($my_requests)) {
             fetch('user_request.php?action=returnship_check', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: bodyChk })
               .then(r=>r.json())
               .then(function(resp){
-                if (resp && resp.ok){ setStatus('Scanned Serial: '+serial, 'text-success'); serialValid=true; stop(); updateSubmitState(); }
-                else { setStatus(resp && resp.reason ? resp.reason : 'QR mismatch','text-danger'); serialValid=false; updateSubmitState(); }
+                if (resp && resp.ok){ setStatus('Item verified: '+serial, 'text-success'); serialValid=true; stop(); updateSubmitState(); }
+                else { setStatus('Wrong Serial ID','text-danger'); serialValid=false; updateSubmitState(); }
               })
               .catch(function(){ setStatus('Network error','text-danger'); submitBtn.disabled = true; submitBtn.className='btn btn-secondary'; });
           } catch(_){ setStatus('Scan error','text-danger'); }
@@ -3329,11 +3329,46 @@ if (!empty($my_requests)) {
             }
           }
           
-          // Start scanning with the new configuration
+          // Strict return scan handler: verify exact serial against borrowed item
+          async function onReturnScan(decodedText){
+            if (!decodedText) return;
+            try{
+              await stopScan();
+              let serial = '';
+              try {
+                const data = JSON.parse(decodedText);
+                if (data && typeof data === 'object') {
+                  serial = String(data.serial_no||data.serial||data.sn||data.sid||'').trim();
+                  if (!serial && data.data) serial = String(data.data.serial_no||data.data.serial||data.data.sid||'').trim();
+                }
+              } catch(_) {}
+              if (!serial){
+                let s=String(decodedText||'').trim();
+                try{
+                  if (/^https?:\/\//i.test(s)){
+                    const u=new URL(s); const p=u.searchParams;
+                    serial = String(p.get('serial_no')||p.get('serial')||p.get('sn')||p.get('sid')||p.get('id')||'').trim();
+                    if (!serial){ const parts=u.pathname.split('/').filter(Boolean); if (parts.length) serial=parts[parts.length-1]; }
+                  }
+                }catch(_){ }
+                if (!serial && /^\s*[\w\-]+\s*$/.test(s)) serial = s;
+              }
+              if (!serial){ setStatus('Invalid QR content','text-danger'); setTimeout(()=>startScan(), 1000); return; }
+              setStatus('Verifying serial...','text-muted');
+              const body='request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId||0)+'&serial_no='+encodeURIComponent(serial);
+              const r=await fetch('user_request.php?action=returnship_check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+              const jr=await r.json().catch(()=>({ok:false}));
+              if (!jr || !jr.ok){ setStatus('Wrong Serial ID','text-danger'); setTimeout(()=>startScan(), 1000); return; }
+              setStatus('Item verified: '+serial,'text-success');
+              const submitBtn = document.getElementById('uqrSubmit');
+              if (submitBtn){ submitBtn.disabled=false; submitBtn.dataset.serial=serial; try{ submitBtn.focus(); }catch(_){ } }
+            }catch(e){ setStatus('Scan error','text-danger'); setTimeout(()=>startScan(), 1000); }
+          }
+          // Start scanning with the strict return validator
           await scanner.start(
             currentCameraId, 
             config,
-            onScanSuccess,
+            onReturnScan,
             handleScannerError
           );
           
