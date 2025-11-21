@@ -1905,13 +1905,7 @@ if (!empty($my_requests)) {
                       </div>
                     </div>
                   </div>
-                  <div class="tab-content border-0 p-0">
-                    <div class="tab-pane fade show active" id="paneImmediate" role="tabpanel" aria-labelledby="tabImmediate" tabindex="0">
-                      <div class="alert alert-info small mb-3">
-                        <i class="bi bi-info-circle me-2"></i> For immediate borrowing, please specify when you will return the item.
-                      </div>
-                      <div class="row g-3">
-                        <div class="col-12">
+ 
                           <label class="form-label fw-bold" for="expected_return_at">Expected Return Time <span class="text-danger">*</span></label>
                           <input type="datetime-local" id="expected_return_at" name="expected_return_at" class="form-control" required 
                                  min="<?php echo date('Y-m-d\TH:i'); ?>" />
@@ -1919,12 +1913,7 @@ if (!empty($my_requests)) {
                         </div>
                       </div>
                     </div>
-                    <div class="tab-pane fade" id="paneReservation" role="tabpanel" aria-labelledby="tabReservation" tabindex="0">
-                      <div class="alert alert-info small mb-3">
-                        <i class="bi bi-info-circle me-2"></i> For reservations, please specify the start and end time of your reservation.
-                      </div>
-                      <div class="row g-3">
-                        <div class="col-12">
+                  
                           <label class="form-label fw-bold" for="reserved_from">Start Time <span class="text-danger">*</span></label>
                           <input type="datetime-local" id="reserved_from" name="reserved_from" class="form-control" 
                                  min="<?php echo date('Y-m-d\TH:i'); ?>" />
