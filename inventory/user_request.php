@@ -3087,6 +3087,433 @@ if (!empty($my_requests)) {
       localStorage.setItem(USER_PREFS_KEY, JSON.stringify(userPrefs));
     }
     
+    // Initialize scanner when document is ready
+    document.addEventListener('DOMContentLoaded', function() {
+      initQRScanner();
+    });
+    
+    // Main QR Scanner Initialization
+    function initQRScanner() {
+      const modal = document.getElementById('userQrReturnModal');
+      if (!modal) return;
+      
+      // Elements
+      const statusEl = document.getElementById('uqrStatus');
+      const startBtn = document.getElementById('uqrStart');
+      const stopBtn = document.getElementById('uqrStop');
+      const cameraSelect = document.getElementById('uqrCamera');
+      const refreshBtn = document.getElementById('uqrRefreshCams');
+      const submitBtn = document.getElementById('uqrSubmit');
+      const readerEl = document.getElementById('uqrReader');
+      const locInput = document.getElementById('uqrLoc');
+      
+      let scanner = null;
+      let scanning = false;
+      let currentCameraId = userPrefs.cameraId || '';
+      let currentReqId = 0;
+      let currentBorrowId = 0;
+      
+      // Status message helper
+      function setStatus(message, className = 'text-muted', timeout = 0) {
+        if (!statusEl) return;
+        statusEl.textContent = message;
+        statusEl.className = 'small ' + className;
+        
+        if (timeout > 0) {
+          setTimeout(() => {
+            if (statusEl.textContent === message) {
+              statusEl.textContent = 'Ready to scan';
+              statusEl.className = 'small text-muted';
+            }
+          }, timeout);
+        }
+      }
+      
+      // Stop scanning
+      async function stopScan() {
+        if (!scanner || !scanning) return;
+        
+        try {
+          await scanner.stop();
+          scanning = false;
+          
+          if (startBtn) startBtn.style.display = 'inline-block';
+          if (stopBtn) stopBtn.style.display = 'none';
+          if (cameraSelect) cameraSelect.disabled = false;
+          if (refreshBtn) refreshBtn.disabled = false;
+          
+          setStatus('Scanner stopped', 'text-muted');
+          
+        } catch (err) {
+          console.error('Error stopping scanner:', err);
+          setStatus('Error stopping scanner', 'text-danger');
+        }
+      }
+      
+      // Start scanning with selected camera
+      async function startScan() {
+        if (scanning || !currentCameraId) return;
+        
+        if (!readerEl) {
+          setStatus('Scanner container not found', 'text-danger');
+          return;
+        }
+        
+        // Clear previous scanner if exists
+        if (scanner) {
+          try { await scanner.clear(); } 
+          catch (e) { console.warn('Error clearing previous scanner:', e); }
+        }
+        
+        // Initialize scanner
+        scanner = new Html5Qrcode('uqrReader');
+        
+        try {
+          // Start scanning
+          await scanner.start(
+            currentCameraId,
+            { 
+              fps: 10, 
+              qrbox: { width: 250, height: 250 },
+              aspectRatio: 1.0
+            },
+            onScanSuccess,
+            (errorMessage) => {
+              // Handle specific error cases
+              let displayMsg = errorMessage;
+              if (errorMessage.includes('NotAllowedError') || errorMessage.includes('Permission denied')) {
+                displayMsg = 'Camera access denied. Please allow camera access in your browser settings.';
+              } else if (errorMessage.includes('NotFoundError')) {
+                displayMsg = 'No camera found. Please connect a camera and try again.';
+              } else if (errorMessage.includes('NotReadableError')) {
+                displayMsg = 'Camera is already in use by another application.';
+              } else if (errorMessage.includes('OverconstrainedError')) {
+                displayMsg = 'Camera does not support the requested constraints.';
+              }
+              
+              setStatus(displayMsg, 'text-danger');
+            }
+          );
+          
+          // Update UI
+          scanning = true;
+          if (startBtn) startBtn.style.display = 'none';
+          if (stopBtn) stopBtn.style.display = 'inline-block';
+          if (cameraSelect) cameraSelect.disabled = true;
+          if (refreshBtn) refreshBtn.disabled = true;
+          
+          setStatus('Scanning for QR code...', 'text-primary');
+          
+        } catch (err) {
+          console.error('Scanner error:', err);
+          
+          let errorMsg = 'Error starting camera: ' + (err.message || 'Unknown error');
+          if (err.message && err.message.includes('Could not start video source')) {
+            errorMsg = 'Could not access camera. It may be in use by another application.';
+          }
+          
+          setStatus(errorMsg, 'text-danger');
+          
+          // Reset UI
+          if (startBtn) startBtn.style.display = 'inline-block';
+          if (stopBtn) stopBtn.style.display = 'none';
+          if (cameraSelect) cameraSelect.disabled = false;
+          if (refreshBtn) refreshBtn.disabled = false;
+        }
+      }
+      
+      // Handle successful scan
+      async function onScanSuccess(decodedText) {
+        if (!decodedText) return;
+        
+        try {
+          // Stop scanning temporarily while we process
+          await stopScan();
+          
+          // Process the scanned data
+          let modelId = 0, modelName = '', category = '', serial = '';
+          
+          try {
+            // Try to parse as JSON
+            const data = JSON.parse(decodedText);
+            if (data) {
+              modelId = parseInt(data.model_id || data.item_id || 0, 10);
+              modelName = (data.model || data.item_name || '').trim();
+              category = (data.category || '').trim();
+              serial = (data.serial_no || '').trim();
+            }
+          } catch (e) {
+            // Not JSON, use as plain text
+            serial = decodedText.trim();
+          }
+          
+          // Validate the scanned item
+          const expectedModel = document.getElementById('uqrModel')?.textContent.trim() || '';
+          
+          if (expectedModel && modelName && expectedModel !== modelName) {
+            setStatus(`Scanned item (${modelName}) does not match expected (${expectedModel})`, 'text-warning', 3000);
+            // Restart scanning after delay
+            setTimeout(() => startScan(), 2000);
+            return;
+          }
+          
+          // If we get here, the scan was successful
+          setStatus('✓ Item verified: ' + (modelName || serial), 'text-success');
+          
+          // Enable the submit button
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.focus();
+          }
+          
+          // Save the successful scan
+          if (serial) {
+            // Store the serial for form submission
+            if (submitBtn) submitBtn.dataset.serial = serial;
+          }
+          
+        } catch (err) {
+          console.error('Error processing scan:', err);
+          setStatus('Error processing QR code: ' + (err.message || 'Unknown error'), 'text-danger', 3000);
+          // Restart scanning after error
+          setTimeout(() => startScan(), 2000);
+        }
+      }
+      
+      // Populate camera selection dropdown
+      async function populateCameraSelect() {
+        if (!cameraSelect) return;
+        
+        try {
+          setStatus('Loading cameras...', 'text-muted');
+          
+          // Request camera permissions first
+          await navigator.mediaDevices.getUserMedia({ video: true });
+          
+          const devices = await Html5Qrcode.getCameras();
+          cameraSelect.innerHTML = '';
+          
+          if (devices.length === 0) {
+            setStatus('No cameras found', 'text-warning');
+            cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+            return;
+          }
+          
+          // Add default option
+          const defaultOption = document.createElement('option');
+          defaultOption.value = '';
+          defaultOption.textContent = 'Select camera...';
+          cameraSelect.appendChild(defaultOption);
+          
+          // Add cameras to dropdown
+          devices.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.id;
+            option.textContent = device.label || `Camera ${cameraSelect.length}`;
+            cameraSelect.appendChild(option);
+          });
+          
+          // Restore saved camera preference
+          if (userPrefs.cameraId) {
+            const savedCam = Array.from(cameraSelect.options).find(
+              opt => opt.value === userPrefs.cameraId
+            );
+            if (savedCam) {
+              cameraSelect.value = savedCam.value;
+              currentCameraId = savedCam.value;
+            }
+          }
+          
+          // If no camera selected and we have cameras, select first one
+          if (!currentCameraId && devices.length > 0) {
+            cameraSelect.value = devices[0].id;
+            currentCameraId = devices[0].id;
+          }
+          
+          setStatus('Ready to scan', 'text-muted');
+          
+        } catch (err) {
+          console.error('Error getting cameras:', err);
+          
+          let errorMsg = 'Error accessing camera: ' + (err.message || 'Unknown error');
+          if (err.name === 'NotAllowedError') {
+            errorMsg = 'Camera access was denied. Please allow camera access to use the scanner.';
+          } else if (err.name === 'NotFoundError') {
+            errorMsg = 'No camera found. Please connect a camera and try again.';
+          } else if (err.name === 'NotReadableError') {
+            errorMsg = 'Camera is already in use by another application.';
+          }
+          
+          setStatus(errorMsg, 'text-danger');
+          cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
+        }
+      }
+      
+      // Event Listeners
+      if (cameraSelect) {
+        cameraSelect.addEventListener('change', function() {
+          if (this.value) {
+            currentCameraId = this.value;
+            userPrefs.cameraId = currentCameraId;
+            saveUserPrefs();
+            
+            // If scanner is running with a different camera, restart it
+            if (scanning && scanner) {
+              stopScan().then(() => startScan());
+            }
+          }
+        });
+      }
+      
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', populateCameraSelect);
+      }
+      
+      if (startBtn) {
+        startBtn.addEventListener('click', startScan);
+      }
+      
+      if (stopBtn) {
+        stopBtn.addEventListener('click', stopScan);
+      }
+      
+      if (submitBtn) {
+        submitBtn.addEventListener('click', async function() {
+          const serial = this.dataset.serial;
+          if (!serial) {
+            setStatus('Please scan a valid QR code first', 'text-warning');
+            return;
+          }
+          
+          const location = locInput ? locInput.value.trim() : '';
+          if (!location) {
+            setStatus('Please enter a return location', 'text-warning');
+            if (locInput) locInput.focus();
+            return;
+          }
+          
+          // Disable form controls during submission
+          this.disabled = true;
+          if (locInput) locInput.disabled = true;
+          if (cameraSelect) cameraSelect.disabled = true;
+          if (refreshBtn) refreshBtn.disabled = true;
+          
+          setStatus('Processing return...', 'text-info');
+          
+          try {
+            const formData = new FormData();
+            formData.append('request_id', currentReqId);
+            formData.append('borrow_id', currentBorrowId);
+            formData.append('serial_no', serial);
+            formData.append('location', location);
+            
+            const response = await fetch('user_request.php?action=process_return', {
+              method: 'POST',
+              body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result && result.success) {
+              setStatus('✓ Return processed successfully!', 'text-success');
+              
+              // Save the successful location for next time
+              userPrefs.lastLocation = location;
+              saveUserPrefs();
+              
+              // Close modal and refresh after delay
+              setTimeout(() => {
+                const modal = bootstrap.Modal.getInstance(modal);
+                if (modal) modal.hide();
+                window.location.reload();
+              }, 1500);
+              
+            } else {
+              throw new Error(result.error || 'Failed to process return');
+            }
+            
+          } catch (err) {
+            console.error('Return error:', err);
+            setStatus('Error: ' + (err.message || 'Failed to process return'), 'text-danger');
+            
+            // Re-enable form controls
+            this.disabled = false;
+            if (locInput) locInput.disabled = false;
+            if (cameraSelect) cameraSelect.disabled = false;
+            if (refreshBtn) refreshBtn.disabled = false;
+          }
+        });
+      }
+      
+      // Handle modal show/hide events
+      modal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        currentReqId = parseInt(button.getAttribute('data-reqid') || '0', 10);
+        currentBorrowId = parseInt(button.getAttribute('data-borrow_id') || '0', 10);
+        
+        // Update UI
+        const reqSpan = document.getElementById('uqrReq');
+        const modelSpan = document.getElementById('uqrModel');
+        
+        if (reqSpan && button.hasAttribute('data-reqid')) {
+          reqSpan.textContent = '#' + button.getAttribute('data-reqid');
+        }
+        
+        if (modelSpan && button.hasAttribute('data-model_name')) {
+          modelSpan.textContent = button.getAttribute('data-model_name');
+        }
+        
+        // Reset form
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          delete submitBtn.dataset.serial;
+        }
+        
+        // Restore last used location
+        if (locInput) {
+          locInput.value = userPrefs.lastLocation || '';
+          locInput.disabled = false;
+        }
+        
+        // Initialize cameras and start scanning
+        populateCameraSelect().then(() => {
+          if (currentCameraId) {
+            setTimeout(() => startScan(), 300);
+          } else {
+            setStatus('Please select a camera', 'text-muted');
+          }
+        });
+      });
+      
+      // Clean up on modal hide
+      modal.addEventListener('hidden.bs.modal', function() {
+        stopScan().catch(console.error);
+        
+        // Clear scanner
+        if (scanner) { 
+          scanner.clear().catch(console.error);
+          scanner = null;
+        }
+        
+        // Clear the scanner container
+        if (readerEl) readerEl.innerHTML = '';
+      });
+      
+      // Handle Enter key in location field
+      if (locInput) {
+        locInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (submitBtn && !submitBtn.disabled) {
+              submitBtn.click();
+            } else if (startBtn && startBtn.style.display !== 'none') {
+              startScan();
+            }
+          }
+        });
+      }
+    }
+    
     // Sync the heights of the Submit Request and Recent Requests cards only
     function syncSubmitCardHeight(){
       try {
