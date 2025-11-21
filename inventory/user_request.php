@@ -2705,7 +2705,11 @@ if (!empty($my_requests)) {
           }
           
           // Reset form
-          if (submitBtn) submitBtn.disabled = true;
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.className = 'btn btn-secondary';
+            try { delete submitBtn.dataset.serial; } catch(_) {}
+          }
           serialValid = false;
           
           // Restore last used location
