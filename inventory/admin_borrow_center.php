@@ -3926,10 +3926,11 @@ try {
                           }
                           $isActive = ((int)$bm['active'] === 1);
                           if ($isActive) {
-                            // Active: show only if there is remaining capacity and availability
-                            if ($showPre <= 0) { continue; }
+                            // Active: do not remove groups that still have in-use items.
+                            // Show if either remaining capacity is > 0 OR there are items currently in use.
+                            if ($showPre <= 0 && $inUsePre <= 0) { continue; }
                           } else {
-                            // Inactive/Deleted: show only if there are items currently in use
+                            // Inactive/Deleted: show only if there are items currently in use.
                             if ($inUsePre <= 0) { continue; }
                           }
                         ?>
