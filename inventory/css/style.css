@@ -1225,8 +1225,25 @@ button[data-bs-target="#addItemModal"],
 
 /* Compact size for Return via QR buttons */
 .btn.open-qr-return {
-  padding: 0.2rem 0.45rem !important;
-  font-size: 0.75rem !important;
-  line-height: 1.1 !important;
+  padding: 0.15rem 0.35rem !important;
+  font-size: 0.72rem !important;
+  line-height: 1 !important;
   border-width: 1px !important;
 }
+
+/* Even smaller when also marked as btn-sm */
+.btn.btn-sm.open-qr-return {
+  padding: 0.12rem 0.30rem !important;
+  font-size: 0.68rem !important;
+  line-height: 1 !important;
+}
+
+/* Ensure mobile keeps it compact */
+body.allow-mobile .btn.open-qr-return {
+  padding: 0.12rem 0.30rem !important;
+  font-size: 0.68rem !important;
+  line-height: 1 !important;
+}
+
+/* Slightly reduce icon size inside the compact QR button */
+.btn.open-qr-return i { font-size: 0.9em !important; }

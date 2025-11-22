@@ -3322,7 +3322,7 @@ if (!empty($my_requests)) {
                             <td class="text-end">
                               <?php $isQr = false; if (isset($b['request_id'])) { try { $___r = $USED_MONGO && $mongo_db ? $mongo_db->selectCollection('equipment_requests')->findOne(['id'=>(int)$b['request_id']], ['projection'=>['qr_serial_no'=>1]]) : null; $isQr = $___r && isset($___r['qr_serial_no']) && trim((string)$___r['qr_serial_no'])!==''; } catch (Throwable $_) { $isQr=false; } } ?>
                               <?php if ($isQr): ?>
-                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#userQrReturnModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-borrow_id="<?php echo (int)$b['borrow_id']; ?>" data-model_name="<?php echo htmlspecialchars(($b['model'] ?: ($b['item_name'] ?: ($b['model_display'] ?? ''))) ?? ''); ?>"><i class="bi bi-qr-code-scan"></i> Return via QR</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-bs-toggle="modal" data-bs-target="#userQrReturnModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-borrow_id="<?php echo (int)$b['borrow_id']; ?>" data-model_name="<?php echo htmlspecialchars(($b['model'] ?: ($b['item_name'] ?: ($b['model_display'] ?? ''))) ?? ''); ?>"><i class="bi bi-qr-code-scan"></i> Return via QR</button>
                               <?php else: ?>
                                 —
                               <?php endif; ?>

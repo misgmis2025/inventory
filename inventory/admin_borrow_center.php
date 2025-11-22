@@ -4589,7 +4589,7 @@ try {
             <div><strong>Category:</strong> <span id="bmDelCat"></span> &nbsp; <strong>Model:</strong> <span id="bmDelModel"></span></div>
             <div>
               <button type="button" class="btn btn-sm btn-outline-secondary" id="bmDelSelectAll">Select All</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="bmDelUnselectAll">Unselect All</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-2 d-none" id="bmDelUnselectAll">Unselect All</button>
             </div>
           </div>
           <div id="bmDeleteBody"><div class="text-muted">Loading whitelisted serials...</div></div>
@@ -5260,11 +5260,15 @@ try {
           loadWhitelisted(curCat, curModel);
         });
       });
+      // Ensure Unselect All hidden initially on each load
+      if (btnNone) { btnNone.classList.add('d-none'); }
       btnAll && btnAll.addEventListener('click', function(){
         bodyEl.querySelectorAll('.bm-del-check:not(:disabled)').forEach(cb=>{ cb.checked = true; });
+        if (btnNone) btnNone.classList.remove('d-none');
       });
       btnNone && btnNone.addEventListener('click', function(){
         bodyEl.querySelectorAll('.bm-del-check:not(:disabled)').forEach(cb=>{ cb.checked = false; });
+        if (btnNone) btnNone.classList.add('d-none');
       });
       btnConfirm && btnConfirm.addEventListener('click', function(){
         const picks = Array.from(bodyEl.querySelectorAll('.bm-del-check:checked')).map(cb=>cb.value);
