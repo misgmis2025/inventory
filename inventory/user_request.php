@@ -873,8 +873,7 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       }
     }
     if (!empty($catOptionsLive)) { natcasesort($catOptionsLive); $catOptionsLive = array_values(array_unique($catOptionsLive)); }
-  }
-  echo json_encode(['categories'=>$catOptionsLive,'catModelMap'=>array_map(function($mods){ $vals=array_values($mods); natcasesort($vals); return array_values(array_unique($vals)); }, $availableMapLive),'modelMaxMap'=>$modelMaxMapLive]);
+    echo json_encode(['categories'=>$catOptionsLive,'catModelMap'=>array_map(function($mods){ $vals=array_values($mods); natcasesort($vals); return array_values(array_unique($vals)); }, $availableMapLive),'modelMaxMap'=>$modelMaxMapLive]);
   }
   exit;
 }
