@@ -4724,36 +4724,35 @@ if (!empty($my_requests)) {
                 try {
                   var dt = new Date(reservationEarliestMin.replace(' ','T'));
                   if (isNaN(dt)) {
-                    var raw = reservationEarliestMin.replace(/:\d{2}$/,'');
-                    var m = raw.match(/(\d{2}):(\d{2})$/);
+                    var m = reservationEarliestMin.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
                     if (m) {
-                      var H = parseInt(m[1],10), min = m[2];
-                      var ampm2 = H >= 12 ? 'PM' : 'AM';
-                      var h12b = H % 12; if (h12b === 0) h12b = 12;
-                      hintEl.textContent = 'Will be available at: ' + h12b + ':' + min + ' ' + ampm2;
-                    } else {
-                      hintEl.textContent = 'Will be available at: ' + raw;
+                      dt = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), parseInt(m[4],10), parseInt(m[5],10), 0, 0);
                     }
-                  } else {
+                  }
+                  var textOut = '';
+                  if (dt && !isNaN(dt.getTime())) {
+                    var now = new Date();
+                    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    var targetDay = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+                    var diffDays = Math.round((targetDay - today)/86400000);
                     var pad = function(n){ return n<10 ? ('0'+n) : n; };
                     var h = dt.getHours();
                     var ampm = h >= 12 ? 'PM' : 'AM';
                     var h12 = h % 12; if (h12 === 0) h12 = 12;
-                    var tStr = h12 + ':' + pad(dt.getMinutes()) + ' ' + ampm;
-                    hintEl.textContent = 'Will be available at: ' + tStr;
-                  }
-                } catch(_){
-                  var raw2 = reservationEarliestMin.replace(/:\d{2}$/,'');
-                  var m2 = raw2.match(/(\d{2}):(\d{2})$/);
-                  if (m2) {
-                    var H2 = parseInt(m2[1],10), min2 = m2[2];
-                    var ampm3 = H2 >= 12 ? 'PM' : 'AM';
-                    var h12c = H2 % 12; if (h12c === 0) h12c = 12;
-                    hintEl.textContent = 'Will be available at: ' + h12c + ':' + min2 + ' ' + ampm3;
+                    var timeStr = h12 + ':' + pad(dt.getMinutes()) + ' ' + ampm;
+                    if (diffDays === 0) {
+                      textOut = 'Will be available at: ' + timeStr;
+                    } else if (diffDays === 1) {
+                      textOut = 'Will be available tomorrow at ' + timeStr;
+                    } else {
+                      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                      textOut = 'Will be available at: ' + months[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear() + ' ' + timeStr;
+                    }
                   } else {
-                    hintEl.textContent = 'Will be available at: ' + raw2;
+                    textOut = 'Will be available at: ' + reservationEarliestMin;
                   }
-                }
+                  hintEl.textContent = textOut;
+                } catch(_) { hintEl.textContent = 'Will be available at: ' + reservationEarliestMin; }
                 // Update min attribute
                 var sf = document.getElementById('reserved_from'); if (sf){ try { var dt2=new Date(reservationEarliestMin.replace(' ','T')); var pad=n=>n<10?('0'+n):n; var v = dt2.getFullYear()+'-'+pad(dt2.getMonth()+1)+'-'+pad(dt2.getDate())+'T'+pad(dt2.getHours())+':'+pad(dt2.getMinutes()); sf.min = v; } catch(_){ } }
               } else { hintEl.textContent=''; }
