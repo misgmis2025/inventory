@@ -4727,8 +4727,23 @@ if (!empty($my_requests)) {
           });
         })();
         // No fallback cycling; clicking the button should only open the dropdown
-        // Default view on load
-        showSection('section-recent', 'My Recent Requests');
+        // Default view on load: honor URL ?view=overdue, else last selection, else Recent
+        (function(){
+          try {
+            var v = (new URL(window.location.href)).searchParams.get('view');
+            v = v ? String(v).toLowerCase() : '';
+            if (v === 'overdue') { showSection('section-overdue', 'Overdue Items'); return; }
+          } catch(_){ }
+          try {
+            var saved = localStorage.getItem('ur_last_section') || '';
+            if (['section-recent','section-borrowed','section-overdue','section-history'].indexOf(saved) >= 0){
+              var label = saved==='section-recent'?'My Recent Requests': (saved==='section-borrowed'?'My Borrowed': (saved==='section-overdue'?'Overdue Items':'Borrow History'));
+              showSection(saved, label);
+              return;
+            }
+          } catch(_){ }
+          showSection('section-recent', 'My Recent Requests');
+        })();
       })();
       // Cleanup any lingering nav dots on load
       try {
@@ -4964,6 +4979,54 @@ if (!empty($my_requests)) {
         }
       }
       function removeReturnshipNotice(id){ const el=document.getElementById('rs-alert-'+id); if (el){ try{ el.remove(); }catch(_){ el.style.display='none'; } } }
+      function addOrUpdateOverdueNotice(cnt){
+        const wrap = ensurePersistentWrap();
+        const id = 'ov-alert';
+        let el = document.getElementById(id);
+        const n = parseInt(cnt||0,10);
+        const html = '<i class="bi bi-exclamation-octagon me-2"></i>' + (n===1 ? 'You have an overdue item. Click to view.' : ('You have an overdue items ('+ n +') Click to view.'));
+        if (!el){
+          el = document.createElement('div');
+          el.id = id;
+          el.className='alert alert-danger shadow-sm border-0';
+          el.style.minWidth='300px';
+          el.style.maxWidth='340px';
+          el.style.cursor='pointer';
+          el.style.margin='0';
+          el.style.lineHeight='1.25';
+          el.style.borderRadius='8px';
+          el.style.pointerEvents='auto';
+          el.innerHTML = html;
+          try {
+            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+              el.style.minWidth='150px';
+              el.style.maxWidth='180px';
+              el.style.padding='4px 6px';
+              el.style.fontSize='10px';
+              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '12px';
+            }
+          } catch(_){ }
+          el.addEventListener('click', function(){ window.location.href = 'user_request.php?view=overdue'; });
+          wrap.appendChild(el);
+        } else {
+          el.innerHTML = html;
+          try {
+            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+              el.style.minWidth='150px';
+              el.style.maxWidth='180px';
+              el.style.padding='4px 6px';
+              el.style.fontSize='10px';
+              const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '12px';
+            } else {
+              el.style.minWidth='300px';
+              el.style.maxWidth='340px';
+              el.style.padding='';
+              el.style.fontSize='';
+            }
+          } catch(_){ }
+        }
+      }
+      function removeOverdueNotice(){ const el=document.getElementById('ov-alert'); if (el){ try{ el.remove(); }catch(_){ el.style.display='none'; } } }
       function notifPoll(){
         fetch('user_request.php?action=user_notifications')
           .then(r=>r.json())
@@ -4980,11 +5043,12 @@ if (!empty($my_requests)) {
             let ding = false;
             approvals.forEach(a=>{ const id=parseInt(a.alloc_id||0,10); if(!baseAlloc.has(id)){ ding=true; showToastCustom('The ID.'+String(a.model_id||'')+' ('+String(a.model_name||'')+') has been approved', 'alert-success'); } });
             logs.forEach(l=>{ const id=parseInt(l.log_id||0,10); if(!baseLogs.has(id)){ ding=true; const act=String(l.action||''); const label=(act==='Under Maintenance')?'damaged':'lost'; showToastCustom('The ID.'+String(l.model_id||'')+' ('+String(l.model_name||'')+') was marked as '+label, 'alert-danger'); } });
-            decisions.forEach(x=>{ const key=(parseInt(x.id||0,10)+'|'+String(x.status||'')); if(!baseDec.has(key)){ ding=true; const st=String(x.status||''); const nm=String(x.item_name||''); if (st==='Rejected'){ showToastCustom('Your request #'+String(x.id||'')+' ('+nm+') was rejected', 'alert-danger'); } else if (st==='Approved'){ showToastCustom('Your request #'+String(x.id||'')+' ('+nm+') was approved', 'alert-success'); } else if (st==='Borrowed'){ showToastCustom('Your request #'+String(x.id||'')+' ('+nm+') is now borrowed', 'alert-success'); } else if (st==='Returned'){ showToastCustom('Your request #'+String(x.id||'')+' ('+nm+') was returned', 'alert-secondary'); } }});
-            // Persistent red notices only for Pending
             const pendingSet = new Set();
-            returnships.forEach(rs=>{ const id=parseInt(rs.id||0,10); if(!id) return; const st=String(rs.status||''); if (st==='Pending'){ pendingSet.add(id); addOrUpdateReturnshipNotice(rs); } });
-            if (typeof baseReturnships !== 'undefined') { baseReturnships.forEach(oldId=>{ if(!pendingSet.has(oldId)) removeReturnshipNotice(oldId); }); }
+            if (typeof baseReturnships !== 'undefined') { baseReturnships.forEach(oldId=>{ removeReturnshipNotice(oldId); }); }
+            fetch('user_request.php?action=my_overdue', { cache:'no-store' })
+              .then(r=>r.json())
+              .then(o=>{ const c = (o && Array.isArray(o.overdue)) ? o.overdue.length : 0; if (c>0) addOrUpdateOverdueNotice(c); else removeOverdueNotice(); })
+              .catch(()=>{});
             if (ding) playBeep();
             baseAlloc = idsA; baseLogs = idsL; baseDec = idsD; baseReturnships = idsR;
           })

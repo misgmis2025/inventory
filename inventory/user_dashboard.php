@@ -693,15 +693,12 @@ if (!$USED_MONGO) {
                 } catch(_){ }
                 return wrap;
             }
-            function addOrUpdateReturnshipNotice(rs){
+            function addOrUpdateOverdueNotice(cnt){
                 const wrap = ensurePersistentWrap();
-                const id = parseInt(rs.id||0,10); if (!id) return;
-                const elId = 'rs-alert-'+id;
+                const elId = 'ov-alert';
                 let el = document.getElementById(elId);
-                const name = String(rs.model_name||'');
-                const sn = String(rs.qr_serial_no||'');
-                const html = '<i class="bi bi-exclamation-octagon me-2"></i>'+
-                  'Admin requested you to return '+(name?name+' ':'')+(sn?('['+sn+']'):'')+'. Click to open.';
+                const n = parseInt(cnt||0,10);
+                const html = '<i class="bi bi-exclamation-octagon me-2"></i>' + (n===1 ? 'You have an overdue item. Click to view.' : ('You have an overdue items ('+ n +') Click to view.'));
                 if (!el){
                     el = document.createElement('div'); el.id = elId;
                     el.className = 'alert alert-danger shadow-sm border-0';
@@ -710,18 +707,14 @@ if (!$USED_MONGO) {
                     el.style.pointerEvents='auto';
                     el.innerHTML = html;
                     try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } } catch(_){ }
-                    el.addEventListener('click', function(){ window.location.href = 'user_request.php'; });
+                    el.addEventListener('click', function(){ window.location.href = 'user_request.php?view=overdue'; });
                     wrap.appendChild(el);
-                    try { playBeep(); } catch(_){ }
                 } else {
                     el.innerHTML = html;
                     try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
                 }
             }
-            function removeReturnshipNotice(id){
-                const el = document.getElementById('rs-alert-'+id);
-                if (el) { try { el.remove(); } catch(_){ el.style.display='none'; } }
-            }
+            function removeOverdueNotice(){ const el=document.getElementById('ov-alert'); if (el){ try{ el.remove(); }catch(_){ el.style.display='none'; } } }
             function notifPoll(){
                 fetch('user_request.php?action=user_notifications')
                   .then(r=>r.json())
@@ -745,17 +738,11 @@ if (!$USED_MONGO) {
                         const id = parseInt(l.log_id||0,10);
                         if (!baseLogs.has(id)) { ding = true; const act = String(l.action||''); const label = (act==='Under Maintenance')?'damaged':'lost'; showToastCustom('The '+String(l.model_id||'')+' '+String(l.model_name||'')+' was marked as '+label, 'alert-danger'); }
                     });
-                    // Persistent red notices only for Pending (not yet verified)
-                    const pendingSet = new Set();
-                    returnships.forEach(rs=>{
-                        const id = parseInt(rs.id||0,10); if (!id) return;
-                        const status = String(rs.status||'');
-                        if (status === 'Pending') { pendingSet.add(id); addOrUpdateReturnshipNotice(rs); }
-                    });
-                    // Remove any notices that are no longer pending
-                    if (typeof baseReturnships !== 'undefined'){
-                        baseReturnships.forEach(oldId=>{ if (!pendingSet.has(oldId)) removeReturnshipNotice(oldId); });
-                    }
+                    // Replace returnship notices with aggregated overdue alert
+                    fetch('user_request.php?action=my_overdue', { cache:'no-store' })
+                      .then(r=>r.json())
+                      .then(o=>{ const c = (o && Array.isArray(o.overdue)) ? o.overdue.length : 0; if (c>0) addOrUpdateOverdueNotice(c); else removeOverdueNotice(); })
+                      .catch(()=>{});
                     if (ding) playBeep();
                     baseAlloc = idsA; baseLogs = idsL; baseReturnships = idsR;
                   })
