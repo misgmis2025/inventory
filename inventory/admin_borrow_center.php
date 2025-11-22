@@ -920,7 +920,7 @@ if (in_array($act, ['mark_returned','mark_lost','mark_maintenance'], true) && is
     header('Location: admin_borrow_center.php?error=mark'); exit();
   }
 }
-if (in_array($act, ['validate_model_id','approve_with','approve','validate_return_id','return_with','returnship_status','request_returnship','approve_returnship','returnship_feed'], true)) {
+if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial','approve','validate_return_id','return_with','returnship_status','request_returnship','approve_returnship','returnship_feed'], true)) {
   @require_once __DIR__ . '/../vendor/autoload.php';
   @require_once __DIR__ . '/db/mongo.php';
   try {
@@ -1098,6 +1098,49 @@ if (in_array($act, ['validate_model_id','approve_with','approve','validate_retur
         $left = max(0, $qty - $allocCount);
         header('Location: admin_borrow_center.php?allocated=1&left=' . $left . '&req=' . $id); exit();
       }
+    }
+
+    if ($act === 'edit_reservation_serial' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+      $id = (int)($_POST['request_id'] ?? 0);
+      $serial = trim((string)($_POST['serial_no'] ?? ''));
+      if ($id <= 0 || $serial === '') { header('Location: admin_borrow_center.php?error=edit_serial_missing#reservations-list'); exit(); }
+      $reqDoc = $er->findOne(['id'=>$id]);
+      if (!$reqDoc || (string)($reqDoc['status'] ?? '') !== 'Approved' || (string)($reqDoc['type'] ?? '') !== 'reservation') { header('Location: admin_borrow_center.php?error=edit_serial_notapproved#reservations-list'); exit(); }
+      $item = trim((string)($reqDoc['item_name'] ?? ''));
+      if ($item === '') { header('Location: admin_borrow_center.php?error=edit_serial_baditem#reservations-list'); exit(); }
+      // Ensure model has more than one total units
+      $totalUnits = 0; try { $curI = $ii->find(['$or'=>[['model'=>$item], ['item_name'=>$item]]], ['projection'=>['quantity'=>1]]); foreach ($curI as $it) { $totalUnits += (int)($it['quantity'] ?? 1); } } catch (Throwable $_) { $totalUnits = 0; }
+      if ($totalUnits <= 1) { header('Location: admin_borrow_center.php?error=edit_serial_single#reservations-list'); exit(); }
+      // Resolve desired model/category
+      [$dm,$dc] = $getDesired($item);
+      // Find unit by serial
+      $unit = $ii->findOne(['serial_no'=>$serial]);
+      if (!$unit) { header('Location: admin_borrow_center.php?error=edit_serial_notfound#reservations-list'); exit(); }
+      $um = (string)($unit['model'] ?? ($unit['item_name'] ?? ''));
+      $uc = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
+      $match = (strcasecmp(trim($um), trim($dm))===0) && (strcasecmp(trim($uc), trim($dc))===0);
+      if (!$match) { header('Location: admin_borrow_center.php?error=edit_serial_mismatch#reservations-list'); exit(); }
+      // Conflict check on the specific unit with 5-min buffer
+      $tsStart = isset($reqDoc['reserved_from']) ? strtotime((string)$reqDoc['reserved_from']) : null;
+      $tsEnd   = isset($reqDoc['reserved_to']) ? strtotime((string)$reqDoc['reserved_to']) : null;
+      if (!$tsStart || !$tsEnd || $tsEnd <= $tsStart) { header('Location: admin_borrow_center.php?error=edit_serial_time#reservations-list'); exit(); }
+      $assignedMid = (int)($unit['id'] ?? 0);
+      $buf = 5*60; $conflict = false;
+      try {
+        $curR = $er->find(['type'=>'reservation','status'=>'Approved','reserved_model_id'=>$assignedMid,'id'=>['$ne'=>$id]], ['projection'=>['reserved_from'=>1,'reserved_to'=>1,'id'=>1]]);
+        foreach ($curR as $row) {
+          $ofs = isset($row['reserved_from']) ? strtotime((string)$row['reserved_from']) : null;
+          $ote = isset($row['reserved_to']) ? strtotime((string)$row['reserved_to']) : null;
+          if (!$ofs || !$ote) { continue; }
+          $noOverlapWithBuffer = ($ote <= ($tsStart - $buf)) || ($tsEnd <= ($ofs - $buf));
+          if (!$noOverlapWithBuffer) { $conflict = true; break; }
+        }
+      } catch (Throwable $_) { $conflict = false; }
+      if ($conflict) { header('Location: admin_borrow_center.php?error=edit_serial_conflict#reservations-list'); exit(); }
+      // Save assignment
+      $assignedSerial = (string)($unit['serial_no'] ?? '');
+      $er->updateOne(['id'=>$id], ['$set'=>['reserved_model_id'=>$assignedMid, 'reserved_serial_no'=>$assignedSerial]]);
+      header('Location: admin_borrow_center.php?edit_serial=1#reservations-list'); exit();
     }
 
     if ($act === 'approve') {
@@ -1582,9 +1625,10 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
       // Now list remaining active reservations (Approved)
       $rows = [];
       $uCol = $db->selectCollection('users');
+      $unitSumCache = [];
       try {
         // List upcoming/active approved reservations with a limit to keep UI fast
-        $rq = $erCol->find(['type'=>'reservation','status'=>'Approved'], ['sort'=>['reserved_from'=>1,'id'=>1], 'limit' => $reqLimit, 'projection'=>['id'=>1,'username'=>1,'item_name'=>1,'reserved_from'=>1,'reserved_to'=>1,'request_location'=>1,'qr_serial_no'=>1]]);
+        $rq = $erCol->find(['type'=>'reservation','status'=>'Approved'], ['sort'=>['reserved_from'=>1,'id'=>1], 'limit' => $reqLimit, 'projection'=>['id'=>1,'username'=>1,'item_name'=>1,'reserved_from'=>1,'reserved_to'=>1,'request_location'=>1,'qr_serial_no'=>1,'reserved_model_id'=>1,'reserved_serial_no'=>1]]);
         foreach ($rq as $doc) {
           $uname = (string)($doc['username'] ?? '');
           $sid = '';
@@ -1596,6 +1640,21 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             try {
               $iiDoc = $iiCol->findOne(['$or' => [['model'=>$itemName], ['item_name'=>$itemName]]], ['projection'=>['category'=>1,'location'=>1]]);
             } catch (Throwable $_) { $iiDoc = null; }
+          }
+          $totalUnits = 0;
+          if ($itemName !== '') {
+            if (array_key_exists($itemName, $unitSumCache)) { $totalUnits = (int)$unitSumCache[$itemName]; }
+            else {
+              try {
+                $agg = $iiCol->aggregate([
+                  ['$match'=>['$or'=>[['model'=>$itemName],['item_name'=>$itemName]]]],
+                  ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+                  ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+                ])->toArray();
+                $totalUnits = (int)($agg[0]['sum'] ?? 0);
+              } catch (Throwable $_) { $totalUnits = 0; }
+              $unitSumCache[$itemName] = $totalUnits;
+            }
           }
           $cat = $iiDoc ? ((string)($iiDoc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
           // Location should reflect user's requested location on reservation
@@ -1610,6 +1669,9 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             'category' => $cat,
             'location' => $loc,
             'type' => ((isset($doc['qr_serial_no']) && trim((string)$doc['qr_serial_no'])!=='') ? 'QR' : 'Manual'),
+            'reserved_model_id' => (int)($doc['reserved_model_id'] ?? 0),
+            'reserved_serial_no' => (string)($doc['reserved_serial_no'] ?? ''),
+            'multi' => ($totalUnits > 1),
           ];
         }
       } catch (Throwable $_) { $rows = []; }
@@ -4189,7 +4251,8 @@ try {
       '<td>'+escapeHtml(r.item_name||'')+'</td>'+
       '<td class="text-end">'+
         '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Reservation Actions">'+
-          '<a href="admin_borrow_center.php?action=cancel_reservation&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-outline-danger border border-dark rounded py-1 px-1 lh-1 fs-6" title="Cancel" aria-label="Cancel" onclick="return confirm(\'Cancel this reservation?\');"><i class="bi bi-x"></i> Cancel</a>'+
+          ''+(r && r.multi ? '<button type="button" class="btn btn-sm btn-outline-primary border border-dark rounded py-1 px-1 lh-1 fs-6" title="Edit Serial" aria-label="Edit Serial" data-bs-toggle="modal" data-bs-target="#editResSerialModal" data-reqid="'+parseInt(r.id||0,10)+'" data-item="'+escapeHtml(r.item_name||'')+'" data-serial="'+escapeHtml(String(r.reserved_serial_no||''))+'"><i class="bi bi-pencil-square"></i> Edit Serial</button>' : '')+''+
+          '<a href="admin_borrow_center.php?action=cancel_reservation&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-outline-danger border border-dark rounded py-1 px-1 lh-1 fs-6'+(r&&r.multi?' ms-2':'')+'" title="Cancel" aria-label="Cancel" onclick="return confirm(\'Cancel this reservation?\');"><i class="bi bi-x"></i> Cancel</a>'+
         '</div>'+
       '</td>'+
     '</tr>'); }); }
@@ -4223,31 +4286,6 @@ try {
       </div>
     </div>
   </div>
-
-  <script>
-    // Returned list: open details on row click/keyboard
-    (function(){
-      document.addEventListener('DOMContentLoaded', function(){
-        var tbody = document.getElementById('returnedTbody');
-        if (!tbody) return;
-        function openFrom(el){ try { window._rtdSrc = el; } catch(_) {}
-          var mdl = document.getElementById('returnedDetailsModal');
-          if (mdl) bootstrap.Modal.getOrCreateInstance(mdl).show();
-        }
-        tbody.addEventListener('click', function(e){
-          var inActions = (e.target && e.target.closest && (e.target.closest('.segmented-actions') || e.target.closest('form')));
-          if (inActions) { e.stopPropagation(); return; }
-          var tr = e.target && e.target.closest && e.target.closest('tr.returned-row');
-          if (tr) openFrom(tr);
-        });
-        tbody.addEventListener('keydown', function(e){
-          var tr = e.target && e.target.closest && e.target.closest('tr.returned-row');
-          if (!tr) return;
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFrom(tr); }
-        });
-      });
-    })();
-  </script>
 
   <script>
     // Populate Returned Item Details modal
@@ -4440,6 +4478,57 @@ try {
       </div>
     </div>
   </div>
+
+  <!-- Edit Reserved Serial Modal -->
+  <div class="modal fade" id="editResSerialModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edit Reserved Serial</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form method="POST" action="admin_borrow_center.php?action=edit_reservation_serial">
+          <div class="modal-body">
+            <input type="hidden" name="request_id" id="ersReqId" value="" />
+            <div class="mb-2"><strong>Request ID:</strong> <span id="ersReqDisp"></span></div>
+            <div class="mb-2"><strong>Item:</strong> <span id="ersItemDisp"></span></div>
+            <div class="mb-2"><strong>Current Serial:</strong> <span id="ersCurSerialDisp"></span></div>
+            <div class="input-group">
+              <span class="input-group-text">New Serial ID</span>
+              <input type="text" class="form-control" name="serial_no" id="ersSerial" placeholder="Enter Serial ID" required />
+            </div>
+            <div class="form-text mt-1">Works only for multi-unit models. Serial must belong to the same model; conflicts with other approved reservations are blocked.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Prefill Edit Reserved Serial modal
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        var mdl = document.getElementById('editResSerialModal');
+        if (!mdl) return;
+        mdl.addEventListener('show.bs.modal', function (event) {
+          var trg = event.relatedTarget;
+          if (!trg) return;
+          var req = trg.getAttribute('data-reqid') || '';
+          var item = trg.getAttribute('data-item') || '';
+          var cur = trg.getAttribute('data-serial') || '';
+          var reqSpan = document.getElementById('ersReqDisp'); if (reqSpan) reqSpan.textContent = req;
+          var itemSpan = document.getElementById('ersItemDisp'); if (itemSpan) itemSpan.textContent = item;
+          var curSpan = document.getElementById('ersCurSerialDisp'); if (curSpan) curSpan.textContent = cur || '-';
+          var reqIdField = document.getElementById('ersReqId'); if (reqIdField) reqIdField.value = req;
+          var serialField = document.getElementById('ersSerial'); if (serialField) { serialField.value = cur || ''; setTimeout(function(){ try{ serialField.focus(); serialField.select(); }catch(_){ } }, 50); }
+        });
+      });
+    })();
+  </script>
 
   <script>
     // Open Reservation Details from row click/keyboard (delegated)
