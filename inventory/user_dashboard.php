@@ -164,7 +164,7 @@ if (!$USED_MONGO) {
     <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(__DIR__.'/css/style.css'); ?>">
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d6efd" />
@@ -586,12 +586,13 @@ if (!$USED_MONGO) {
                           const rid = parseInt(rs.request_id||0,10)||0;
                           if (!rid) return;
                           const name = (rs.model_name||'').toString();
-                          const status = (rs.status||'').toString();
+                          const itemStatus = (rs.item_status||'').toString();
+                          const badgeCls = (itemStatus==='Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
                           const url = 'user_request.php?open_return_qr='+encodeURIComponent(rid)+'&model_name='+encodeURIComponent(name);
                           const action = '<a href="'+url+'" class="btn btn-sm btn-outline-primary open-qr-return"><i class="bi bi-qr-code-scan"></i> Return via QR</a>';
                           rows.unshift('<div class="list-group-item">'
-                            + '<div class="d-flex w-100 justify-content-between"><strong>Return Requested: #'+rid+' '+escapeHtml(name)+'</strong>'
-                            + '<span class="badge bg-danger">'+escapeHtml(status)+'</span></div>'
+                            + '<div class="d-flex w-100 justify-content-between"><strong>'+escapeHtml(name)+'</strong>'
+                            + '<span class="'+badgeCls+'">'+escapeHtml(itemStatus || 'In Use')+'</span></div>'
                             + '<div class="mt-1 text-end">'+action+'</div>'
                             + '</div>');
                       });
