@@ -1646,8 +1646,12 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             if (array_key_exists($itemName, $unitSumCache)) { $totalUnits = (int)$unitSumCache[$itemName]; }
             else {
               try {
+                $rx = '^' . preg_quote($itemName, '/') . '$';
                 $agg = $iiCol->aggregate([
-                  ['$match'=>['$or'=>[['model'=>$itemName],['item_name'=>$itemName]]]],
+                  ['$match'=>['$or'=>[
+                    ['model' => ['$regex' => $rx, '$options' => 'i']],
+                    ['item_name' => ['$regex' => $rx, '$options' => 'i']]
+                  ]]],
                   ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
                   ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
                 ])->toArray();
@@ -4251,8 +4255,8 @@ try {
       '<td>'+escapeHtml(r.item_name||'')+'</td>'+
       '<td class="text-end">'+
         '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Reservation Actions">'+
-          ''+(r && r.multi ? '<button type="button" class="btn btn-sm btn-outline-primary border border-dark rounded py-1 px-1 lh-1 fs-6" title="Edit Serial" aria-label="Edit Serial" data-bs-toggle="modal" data-bs-target="#editResSerialModal" data-reqid="'+parseInt(r.id||0,10)+'" data-item="'+escapeHtml(r.item_name||'')+'" data-serial="'+escapeHtml(String(r.reserved_serial_no||''))+'"><i class="bi bi-pencil-square"></i> Edit Serial</button>' : '')+''+
-          '<a href="admin_borrow_center.php?action=cancel_reservation&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-outline-danger border border-dark rounded py-1 px-1 lh-1 fs-6'+(r&&r.multi?' ms-2':'')+'" title="Cancel" aria-label="Cancel" onclick="return confirm(\'Cancel this reservation?\');"><i class="bi bi-x"></i> Cancel</a>'+
+          ''+(r && r.multi ? '<button type="button" class="btn btn-sm btn-outline-primary border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Edit Serial" aria-label="Edit Serial" data-bs-toggle="modal" data-bs-target="#editResSerialModal" data-reqid="'+parseInt(r.id||0,10)+'" data-item="'+escapeHtml(r.item_name||'')+'" data-serial="'+escapeHtml(String(r.reserved_serial_no||''))+'"><i class="bi bi-pencil-square"></i> Edit Serial</button>' : '')+''+
+          '<a href="admin_borrow_center.php?action=cancel_reservation&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-outline-danger border border-dark '+(r&&r.multi?'rounded-end':'rounded')+' py-1 px-1 lh-1 fs-6" title="Cancel" aria-label="Cancel" onclick="return confirm(\'Cancel this reservation?\');"><i class="bi bi-x"></i> Cancel</a>'+
         '</div>'+
       '</td>'+
     '</tr>'); }); }
