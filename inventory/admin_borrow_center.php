@@ -3868,7 +3868,9 @@ try {
                     <?php else: ?>
                       <?php foreach ($borrowables as $bm): ?>
                         <?php
-                          // Pre-check: hide 0/0 groups unless there are in-use items
+                          // Visibility rules:
+                          // - Active entries: show only if computed remaining (show) > 0
+                          // - Inactive (deleted) entries: show only if there are items currently in use
                           $c = (string)$bm['category']; $m = (string)$bm['model_name'];
                           $cs = $c; $ms = $m;
                           // Resolve quantity row (case-insensitive fallback like below)
@@ -3882,6 +3884,7 @@ try {
                               else { foreach ($qtyStats[$clp] as $km => $v) { if (mb_strtolower($km) === $mlp) { $rowPre = $v; break; } } }
                             }
                           }
+                          // Borrow limit (capacity)
                           $curLimitPre = 0;
                           if (isset($borrowLimitMap[$cs]) && isset($borrowLimitMap[$cs][$ms])) { $curLimitPre = (int)$borrowLimitMap[$cs][$ms]; }
                           else {
@@ -3892,9 +3895,28 @@ try {
                               else { foreach ($borrowLimitMap[$clp2] as $km2 => $v2) { if (mb_strtolower($km2) === $mlp2) { $curLimitPre = (int)$v2; break; } } }
                             }
                           }
+                          // Available now and total
+                          $availPre = $rowPre && isset($rowPre['available']) ? (int)$rowPre['available'] : 0;
                           $totalPre = $rowPre && isset($rowPre['total']) ? (int)$rowPre['total'] : 0;
+                          if ($availPre < 0) $availPre = 0;
                           if ($totalPre < 0) $totalPre = 0;
-                          // In-use count only (ignore holds/returns) for visibility rule
+                          // Compute consumed same as Quantity cell (active borrows + pending returns + held)
+                          $consumedPre = 0;
+                          if (isset($activeConsumed[$cs]) && isset($activeConsumed[$cs][$ms])) { $consumedPre += (int)$activeConsumed[$cs][$ms]; }
+                          if (isset($pendingReturned[$cs]) && isset($pendingReturned[$cs][$ms])) { $consumedPre += (int)$pendingReturned[$cs][$ms]; }
+                          if (isset($heldCounts[$cs]) && isset($heldCounts[$cs][$ms])) { $consumedPre += (int)$heldCounts[$cs][$ms]; }
+                          if ($consumedPre === 0) {
+                            $mlow = mb_strtolower($ms);
+                            $cl3 = null; foreach ($activeConsumed as $kc3 => $arr3) { if (mb_strtolower($kc3) === mb_strtolower($cs)) { $cl3 = $kc3; break; } }
+                            if ($cl3 !== null) { foreach (($activeConsumed[$cl3] ?? []) as $km3 => $v3) { if (mb_strtolower($km3) === $mlow) { $consumedPre += (int)$v3; break; } } }
+                            $cl4 = null; foreach ($pendingReturned as $kc4 => $arr4) { if (mb_strtolower($kc4) === mb_strtolower($cs)) { $cl4 = $kc4; break; } }
+                            if ($cl4 !== null) { foreach (($pendingReturned[$cl4] ?? []) as $km4 => $v4) { if (mb_strtolower($km4) === $mlow) { $consumedPre += (int)$v4; break; } } }
+                            $cl5 = null; foreach ($heldCounts as $kc5 => $arr5) { if (mb_strtolower($kc5) === mb_strtolower($cs)) { $cl5 = $kc5; break; } }
+                            if ($cl5 !== null) { foreach (($heldCounts[$cl5] ?? []) as $km5 => $v5) { if (mb_strtolower($km5) === $mlow) { $consumedPre += (int)$v5; break; } } }
+                          }
+                          // Remaining within borrowable capacity cannot exceed available
+                          $showPre = max(0, min($curLimitPre - $consumedPre, $availPre));
+                          // In-use count (active borrows only) for inactive visibility rule
                           $inUsePre = 0;
                           if (isset($activeConsumed[$cs]) && isset($activeConsumed[$cs][$ms])) { $inUsePre += (int)$activeConsumed[$cs][$ms]; }
                           else {
@@ -3902,7 +3924,14 @@ try {
                             foreach ($activeConsumed as $kc3 => $arr3) { if (mb_strtolower($kc3) === mb_strtolower($cs)) { $clp3 = $kc3; break; } }
                             if ($clp3 !== null) { foreach (($activeConsumed[$clp3] ?? []) as $km3 => $v3) { if (mb_strtolower($km3) === $mlp3) { $inUsePre += (int)$v3; break; } } }
                           }
-                          if ($totalPre === 0 && $inUsePre <= 0) { continue; }
+                          $isActive = ((int)$bm['active'] === 1);
+                          if ($isActive) {
+                            // Active: show only if there is remaining capacity and availability
+                            if ($showPre <= 0) { continue; }
+                          } else {
+                            // Inactive/Deleted: show only if there are items currently in use
+                            if ($inUsePre <= 0) { continue; }
+                          }
                         ?>
                         <tr>
                           <td><?php echo htmlspecialchars($bm['category']); ?></td>
