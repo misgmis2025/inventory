@@ -1137,6 +1137,24 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         }
       } catch (Throwable $_) { $conflict = false; }
       if ($conflict) { header('Location: admin_borrow_center.php?error=edit_serial_conflict#reservations-list'); exit(); }
+      // If the unit is currently borrowed, ensure its expected return precedes our reservation start with buffer
+      try {
+        $currBorrow = $ub->findOne(['model_id'=>$assignedMid,'status'=>'Borrowed'], ['projection'=>['id'=>1]]);
+      } catch (Throwable $_) { $currBorrow = null; }
+      if ($currBorrow) {
+        $al = null; try { $al = $ra->findOne(['borrow_id'=>(int)($currBorrow['id']??0)], ['projection'=>['request_id'=>1]]); } catch (Throwable $_) { $al = null; }
+        $endTs = null;
+        if ($al && isset($al['request_id'])) {
+          try {
+            $origReq = $er->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+            if ($origReq) {
+              $endStr = (string)($origReq['expected_return_at'] ?? ($origReq['reserved_to'] ?? ''));
+              if ($endStr !== '') { $endTs = strtotime($endStr); }
+            }
+          } catch (Throwable $_) { $endTs = null; }
+        }
+        if (!$endTs || !($endTs <= ($tsStart - $buf))) { header('Location: admin_borrow_center.php?error=edit_serial_inuse#reservations-list'); exit(); }
+      }
       // Save assignment
       $assignedSerial = (string)($unit['serial_no'] ?? '');
       $er->updateOne(['id'=>$id], ['$set'=>['reserved_model_id'=>$assignedMid, 'reserved_serial_no'=>$assignedSerial]]);
@@ -1395,7 +1413,7 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
 }
 
 // Early-handle JSON endpoints via MongoDB to avoid MySQL dependency
-if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservations_json') {
+if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservations_json' || $act === 'validate_reservation_serial') {
   // Apply a sane default limit for heavy lists to keep responses fast
   $reqLimit = isset($_GET['limit']) ? (int)$_GET['limit'] : 300;
   if ($reqLimit < 50) { $reqLimit = 50; }
@@ -1680,6 +1698,88 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
         }
       } catch (Throwable $_) { $rows = []; }
       echo json_encode(['reservations'=>$rows]);
+      exit();
+    } else if ($act === 'validate_reservation_serial') {
+      // Validate a serial for a given Approved reservation id
+      $id = isset($_GET['request_id']) ? (int)$_GET['request_id'] : 0;
+      $serial = isset($_GET['serial_no']) ? trim((string)$_GET['serial_no']) : '';
+      if ($id <= 0 || $serial === '') { echo json_encode(['ok'=>false,'reason'=>'Missing request or serial']); exit(); }
+      $erCol = $db->selectCollection('equipment_requests');
+      $iiCol = $db->selectCollection('inventory_items');
+      $ubCol = $db->selectCollection('user_borrows');
+      $allocCol = $db->selectCollection('request_allocations');
+      try { $reqDoc = $erCol->findOne(['id'=>$id]); } catch (Throwable $e) { $reqDoc = null; }
+      if (!$reqDoc) { echo json_encode(['ok'=>false,'reason'=>'Request not found']); exit(); }
+      if ((string)($reqDoc['status'] ?? '') !== 'Approved' || (string)($reqDoc['type'] ?? '') !== 'reservation') { echo json_encode(['ok'=>false,'reason'=>'Only approved reservations are editable']); exit(); }
+      $rf = (string)($reqDoc['reserved_from'] ?? '');
+      $rt = (string)($reqDoc['reserved_to'] ?? '');
+      $tsStart = $rf !== '' ? strtotime($rf) : null;
+      $tsEnd   = $rt !== '' ? strtotime($rt) : null;
+      if (!$tsStart || !$tsEnd || $tsEnd <= $tsStart) { echo json_encode(['ok'=>false,'reason'=>'Invalid reservation time']); exit(); }
+      $itemName = trim((string)($reqDoc['item_name'] ?? ''));
+      // Resolve desired model/category locally
+      $dm = $itemName; $dc = 'Uncategorized';
+      try {
+        $iiDoc = $iiCol->findOne(['$or' => [['model'=>$itemName], ['item_name'=>$itemName]]], ['projection'=>['category'=>1]]);
+        if ($iiDoc) { $dc = trim((string)($iiDoc['category'] ?? '')) !== '' ? (string)$iiDoc['category'] : 'Uncategorized'; }
+      } catch (Throwable $_) { $dc = 'Uncategorized'; }
+      // Multi-unit enforcement: compute total units
+      $totalUnits = 0;
+      if ($itemName !== '') {
+        try {
+          $rx = '^' . preg_quote($itemName, '/') . '$';
+          $agg = $iiCol->aggregate([
+            ['$match'=>['$or'=>[
+              ['model' => ['$regex' => $rx, '$options' => 'i']],
+              ['item_name' => ['$regex' => $rx, '$options' => 'i']]
+            ]]],
+            ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+            ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+          ])->toArray();
+          $totalUnits = (int)($agg[0]['sum'] ?? 0);
+        } catch (Throwable $_) { $totalUnits = 0; }
+      }
+      if ($totalUnits <= 1) { echo json_encode(['ok'=>false,'reason'=>'Single-unit model; cannot edit serial']); exit(); }
+      // Find unit by serial and verify it belongs to the same model/category
+      $unit = $iiCol->findOne(['serial_no'=>$serial], ['projection'=>['id'=>1,'status'=>1,'model'=>1,'item_name'=>1,'category'=>1]]);
+      if (!$unit) { echo json_encode(['ok'=>false,'reason'=>'Serial ID not found']); exit(); }
+      $um = (string)($unit['model'] ?? ($unit['item_name'] ?? ''));
+      $uc = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
+      $match = (strcasecmp(trim($um), trim($dm))===0) && (strcasecmp(trim($uc), trim($dc))===0);
+      if (!$match) { echo json_encode(['ok'=>false,'reason'=>'Serial belongs to a different model']); exit(); }
+      $assignedMid = (int)($unit['id'] ?? 0);
+      $buf = 5*60; $conflict = false; $reason = '';
+      // Conflict with other approved reservations on the same unit
+      try {
+        $curR = $erCol->find(['type'=>'reservation','status'=>'Approved','reserved_model_id'=>$assignedMid,'id'=>['$ne'=>$id]], ['projection'=>['reserved_from'=>1,'reserved_to'=>1,'id'=>1]]);
+        foreach ($curR as $row) {
+          $ofs = isset($row['reserved_from']) ? strtotime((string)$row['reserved_from']) : null;
+          $ote = isset($row['reserved_to']) ? strtotime((string)$row['reserved_to']) : null;
+          if (!$ofs || !$ote) { continue; }
+          $noOverlapWithBuffer = ($ote <= ($tsStart - $buf)) || ($tsEnd <= ($ofs - $buf));
+          if (!$noOverlapWithBuffer) { $conflict = true; $reason = 'Conflicts with another approved reservation'; break; }
+        }
+      } catch (Throwable $_) { }
+      if ($conflict) { echo json_encode(['ok'=>false,'reason'=>$reason]); exit(); }
+      // If currently borrowed, ensure expected return does not overlap
+      try { $ub = $ubCol->findOne(['model_id'=>$assignedMid,'status'=>'Borrowed'], ['projection'=>['id'=>1,'borrowed_at'=>1]]); } catch (Throwable $_) { $ub = null; }
+      if ($ub) {
+        $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
+        $endTs = null;
+        if ($al && isset($al['request_id'])) {
+          $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+          if ($orig) {
+            $endStr = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? ''));
+            if ($endStr !== '') { $endTs = strtotime($endStr); }
+          }
+        }
+        if (!$endTs) { echo json_encode(['ok'=>false,'reason'=>'Selected unit is in use; expected return unknown']); exit(); }
+        if (!($endTs <= ($tsStart - $buf))) { echo json_encode(['ok'=>false,'reason'=>'Selected unit is in use and returns too late']); exit(); }
+      }
+      // Status check (allow Available or In Use with safe return)
+      $st = (string)($unit['status'] ?? '');
+      if ($st !== '' && !in_array($st, ['Available','In Use'], true)) { echo json_encode(['ok'=>false,'reason'=>'Unit not available (status: '.$st.')']); exit(); }
+      echo json_encode(['ok'=>true]);
       exit();
     }
   } catch (Throwable $e) {
@@ -4502,10 +4602,11 @@ try {
               <input type="text" class="form-control" name="serial_no" id="ersSerial" placeholder="Enter Serial ID" required />
             </div>
             <div class="form-text mt-1">Works only for multi-unit models. Serial must belong to the same model; conflicts with other approved reservations are blocked.</div>
+            <div id="ersValMsg" class="form-text mt-1"></div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save</button>
+            <button type="submit" id="ersSaveBtn" class="btn btn-primary" disabled><i class="bi bi-save me-1"></i>Save</button>
           </div>
         </form>
       </div>
@@ -4529,7 +4630,43 @@ try {
           var curSpan = document.getElementById('ersCurSerialDisp'); if (curSpan) curSpan.textContent = cur || '-';
           var reqIdField = document.getElementById('ersReqId'); if (reqIdField) reqIdField.value = req;
           var serialField = document.getElementById('ersSerial'); if (serialField) { serialField.value = cur || ''; setTimeout(function(){ try{ serialField.focus(); serialField.select(); }catch(_){ } }, 50); }
+          try { if (window._ersQueueValidate) window._ersQueueValidate(); } catch(_) {}
         });
+      });
+    })();
+  </script>
+
+  <script>
+    (function(){
+      function setStatus(ok, msg){
+        var inp = document.getElementById('ersSerial');
+        var fb = document.getElementById('ersValMsg');
+        var btn = document.getElementById('ersSaveBtn');
+        if (fb) fb.textContent = msg ? String(msg) : '';
+        if (inp) { inp.classList.remove('is-valid','is-invalid'); }
+        if (btn) btn.disabled = true;
+        if (ok === true) { if (inp) inp.classList.add('is-valid'); if (btn) btn.disabled = false; }
+        else if (ok === false) { if (inp) inp.classList.add('is-invalid'); }
+      }
+      function validateNow(){
+        var inp = document.getElementById('ersSerial');
+        var rid = parseInt((document.getElementById('ersReqId')||{}).value||'0',10);
+        var v = (inp && inp.value) ? inp.value.trim() : '';
+        if (!v || !rid){ setStatus(false, v? 'Missing request' : 'Enter a serial ID'); return; }
+        setStatus(null, 'Checking...');
+        fetch('admin_borrow_center.php?action=validate_reservation_serial&request_id=' + encodeURIComponent(rid) + '&serial_no=' + encodeURIComponent(v), { headers: { 'Accept': 'application/json' } })
+          .then(function(r){ return r.json(); })
+          .then(function(j){ if (j && j.ok){ setStatus(true, 'Valid'); } else { setStatus(false, (j && j.reason) ? j.reason : 'Invalid'); } })
+          .catch(function(){ setStatus(false, 'Could not validate.'); });
+      }
+      var t = null;
+      function queue(){ if (t) clearTimeout(t); t = setTimeout(validateNow, 350); }
+      document.addEventListener('DOMContentLoaded', function(){
+        window._ersQueueValidate = queue;
+        var inp = document.getElementById('ersSerial');
+        var form = document.querySelector('#editResSerialModal form');
+        if (inp) { inp.addEventListener('input', queue); inp.addEventListener('blur', validateNow); }
+        if (form) { form.addEventListener('submit', function(e){ var btn = document.getElementById('ersSaveBtn'); if (btn && btn.disabled){ e.preventDefault(); e.stopPropagation(); return false; } }); }
       });
     })();
   </script>
