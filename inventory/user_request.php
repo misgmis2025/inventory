@@ -836,6 +836,7 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   } else {
     $availableMapLive = []; $catOptionsLive = [];
     if ($conn) {
+      $for = isset($_GET['for']) ? (string)$_GET['for'] : '';
       // Borrow limit map (active only)
       $borrowLimitMap = [];
       if ($bl = $conn->query("SELECT category, model_name, borrow_limit FROM borrowable_models WHERE active=1")) {
@@ -853,6 +854,22 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $cap = max(0, min((int)$limit, $avail));
         if ($cap > 0) { if (!isset($availableMapLive[$c])) { $availableMapLive[$c]=[]; $catOptionsLive[]=$c; } $availableMapLive[$c][mb_strtolower($m)]=$m; }
         $modelMaxMapLive[$m] = $cap;
+      }
+    }
+      // For reservation: include single-quantity models even if currently In Use (not Available)
+      if ($for === 'reservation') {
+        foreach ($borrowLimitMap as $c => $mods) {
+          foreach ($mods as $m => $limit) {
+            if (isset($availableMapLive[$c]) && isset($availableMapLive[$c][mb_strtolower($m)])) continue;
+            // Total units for this category+model
+            $sum = 0; if ($st = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?))")) { $st->bind_param('ss', $m, $c); $st->execute(); $st->bind_result($sum); $st->fetch(); $st->close(); }
+            if ((int)$sum <= 1) {
+              if (!isset($availableMapLive[$c])) { $availableMapLive[$c]=[]; $catOptionsLive[]=$c; }
+              $availableMapLive[$c][mb_strtolower($m)] = $m;
+              if (!isset($modelMaxMapLive[$m]) || (int)$modelMaxMapLive[$m] < 1) { $modelMaxMapLive[$m] = 1; }
+            }
+          }
+        }
       }
     }
     if (!empty($catOptionsLive)) { natcasesort($catOptionsLive); $catOptionsLive = array_values(array_unique($catOptionsLive)); }
@@ -1312,12 +1329,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cat = '';
     foreach ($availableMap as $c => $mods) { if (in_array($item_name, array_values($mods), true)) { $cat = $c; break; } }
     $isAllowed = ($cat !== '');
+    // Reservation override: allow single-quantity items even if currently in use (cap quantity to 1)
+    $reservationSingleOverride = false;
+    if (!$isAllowed && $req_type === 'reservation') {
+      try {
+        if ($USED_MONGO && $mongo_db) {
+          $iiCol = $mongo_db->selectCollection('inventory_items');
+          $bmCol = $mongo_db->selectCollection('borrowable_catalog');
+          $iiDoc = $iiCol->findOne(['$or' => [['model'=>$item_name], ['item_name'=>$item_name]]], ['sort'=>['id'=>-1], 'projection'=>['category'=>1,'model'=>1,'item_name'=>1,'quantity'=>1]]);
+          $catNorm = $iiDoc ? ((string)($iiDoc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
+          $isBorrowable = (int)$bmCol->countDocuments(['active'=>1,'model_name'=>$item_name,'category'=>$catNorm]) > 0;
+          if ($isBorrowable) {
+            // total units
+            $sum = 0; $agg = $iiCol->aggregate([
+              ['$match'=>['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]]],
+              ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+              ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+            ]); foreach ($agg as $ar){ $sum = (int)($ar->sum ?? 0); break; }
+            if ($sum <= 1) { $cat = $catNorm; $isAllowed = true; $reservationSingleOverride = true; }
+          }
+        } elseif ($conn) {
+          // Resolve category and ensure model is active in borrowable_models
+          $catNorm = 'Uncategorized'; if ($st = $conn->prepare("SELECT COALESCE(NULLIF(category,''),'Uncategorized') FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id DESC LIMIT 1")) { $st->bind_param('ss',$item_name,$item_name); $st->execute(); $st->bind_result($catNorm); $st->fetch(); $st->close(); }
+          $isBorrowable = false; if ($st2 = $conn->prepare("SELECT 1 FROM borrowable_models WHERE active=1 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?)) LIMIT 1")) { $st2->bind_param('ss',$item_name,$catNorm); $st2->execute(); $st2->store_result(); $isBorrowable = $st2->num_rows > 0; $st2->close(); }
+          if ($isBorrowable) {
+            $sum = 0; if ($st3 = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st3->bind_param('s',$item_name); $st3->execute(); $st3->bind_result($sum); $st3->fetch(); $st3->close(); }
+            if ((int)$sum <= 1) { $cat = $catNorm; $isAllowed = true; $reservationSingleOverride = true; }
+          }
+        }
+      } catch (Throwable $_) { }
+    }
     if (!$isAllowed) {
       $error = 'Selected item is not currently borrowable.';
     } else {
       $avail = (int)($availCounts[$cat][$item_name] ?? 0);
-      $maxReq = max(0, $avail);
-      if ($maxReq <= 0) {
+      $maxReq = $reservationSingleOverride ? 1 : max(0, $avail);
+      if (!$reservationSingleOverride && $maxReq <= 0) {
         $error = 'Selected item is not available at the moment.';
       } elseif ($quantity > $maxReq) {
         $error = 'Requested quantity exceeds the available maximum of ' . $maxReq . '.';
@@ -1342,7 +1389,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           } elseif (($end_time - $start_time) > (7 * 24 * 60 * 60)) {
             $error = 'Reservation cannot exceed 7 days.';
           } else {
-            // Check for overlapping reservations (only if we have MongoDB)
+            // Check for overlapping reservations and apply 5-min buffer rules
             if ($USED_MONGO && $mongo_db) {
               try {
                 $overlap = $mongo_db->equipment_requests->findOne([
@@ -1389,6 +1436,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Log error but don't block the request
                 error_log('Error checking reservation overlap: ' . $e->getMessage());
               }
+            } elseif ($conn) {
+              try {
+                // Overlap check in MySQL
+                $rf = date('Y-m-d H:i:s', $start_time);
+                $rt = date('Y-m-d H:i:s', $end_time);
+                $hasOverlap = false;
+                if ($st = $conn->prepare("SELECT 1 FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from < ? AND reserved_to > ? LIMIT 1")) {
+                  $st->bind_param('sss', $item_name, $rt, $rf);
+                  $st->execute(); $st->store_result(); $hasOverlap = $st->num_rows > 0; $st->close();
+                }
+                if ($hasOverlap) { $error = 'This item is already reserved for the selected time period.'; }
+                // If effectively single-quantity, enforce 5-min buffer after current expected return
+                if (!$error) {
+                  $sum = 0; if ($st2 = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st2->bind_param('s',$item_name); $st2->execute(); $st2->bind_result($sum); $st2->fetch(); $st2->close(); }
+                  if ((int)$sum <= 1) {
+                    // Resolve a unit id for this model
+                    $uid = 0; if ($st3 = $conn->prepare("SELECT id FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id ASC LIMIT 1")) { $st3->bind_param('ss',$item_name,$item_name); $st3->execute(); $st3->bind_result($uid); $st3->fetch(); $st3->close(); }
+                    if ($uid) {
+                      $expStr = null; if ($st4 = $conn->prepare("SELECT expected_return_at FROM user_borrows WHERE model_id=? AND status='Borrowed' LIMIT 1")) { $st4->bind_param('i',$uid); $st4->execute(); $st4->bind_result($expStr); $st4->fetch(); $st4->close(); }
+                      if ($expStr) { $exp = strtotime((string)$expStr); if ($exp && $start_time < ($exp + 5*60)) { $error = 'Reservation start must be at least 5 minutes after the current expected return time (' . date('M j, Y g:i A', $exp + 5*60) . ').'; } }
+                    }
+                  }
+                }
+              } catch (Throwable $_) { }
             }
           }
         } else {
@@ -1438,6 +1509,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Log error but don't block the request
                 error_log('Error checking upcoming reservations: ' . $e->getMessage());
               }
+            } elseif ($conn) {
+              try {
+                // total units
+                $sum = 0; if ($st = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st->bind_param('s',$item_name); $st->execute(); $st->bind_result($sum); $st->fetch(); $st->close(); }
+                if ((int)$sum <= 1) {
+                  // check earliest upcoming reservation that would conflict
+                  $upper = date('Y-m-d H:i:s', $return_time + 5*60);
+                  $rf = null; if ($st2 = $conn->prepare("SELECT MIN(reserved_from) FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from > NOW() AND reserved_from < ?")) { $st2->bind_param('ss',$item_name,$upper); $st2->execute(); $st2->bind_result($rf); $st2->fetch(); $st2->close(); }
+                  if ($rf) { $ts = strtotime((string)$rf); $cut = $ts ? ($ts - 5*60) : 0; if ($cut && $return_time > $cut) { $error = 'This item has an upcoming reservation. Please return by ' . date('M j, Y g:i A', $cut) . ' (5 minutes before the next reservation).'; } }
+                }
+              } catch (Throwable $_) { /* ignore */ }
             }
           }
         }
