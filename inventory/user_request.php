@@ -1468,42 +1468,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Check for overlapping reservations and apply 5-min buffer rules
             if ($USED_MONGO && $mongo_db) {
               try {
-                $overlap = $mongo_db->equipment_requests->findOne([
-                  'item_name' => $item_name,
-                  'status' => 'Approved',
-                  'type' => 'reservation',
-                  '$or' => [
-                    // Existing reservation starts during new reservation
-                    [
-                      'reserved_from' => ['$lt' => date('Y-m-d H:i:s', $end_time)],
-                      'reserved_to' => ['$gt' => date('Y-m-d H:i:s', $start_time)]
+                // total units for this model
+                $sum = 0; try {
+                  $agg = $mongo_db->inventory_items->aggregate([
+                    ['$match'=>['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]]],
+                    ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+                    ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+                  ]);
+                  foreach ($agg as $ar){ $sum = (int)($ar->sum ?? 0); break; }
+                } catch (Throwable $_) { $sum = 0; }
+
+                // Overlap with approved reservations applies only when effectively single-quantity
+                if ($sum <= 1) {
+                  $overlap = $mongo_db->equipment_requests->findOne([
+                    'item_name' => $item_name,
+                    'status' => 'Approved',
+                    'type' => 'reservation',
+                    '$or' => [
+                      [
+                        'reserved_from' => ['$lt' => date('Y-m-d H:i:s', $end_time)],
+                        'reserved_to' => ['$gt' => date('Y-m-d H:i:s', $start_time)]
+                      ]
                     ]
-                  ]
-                ]);
-                
-                if ($overlap) {
-                  $error = 'This item is already reserved for the selected time period.';
+                  ]);
+                  if ($overlap) {
+                    $error = 'This item is already reserved for the selected time period.';
+                  }
                 }
+
                 // If single-quantity and currently borrowed, require 5-min buffer after expected return
-                if (!$error) {
-                  // total units
-                  $sum = 0; try {
-                    $agg = $mongo_db->inventory_items->aggregate([
-                      ['$match'=>['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]]],
-                      ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
-                      ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
-                    ]);
-                    foreach ($agg as $ar){ $sum = (int)($ar->sum ?? 0); break; }
-                  } catch (Throwable $_) { $sum = 0; }
-                  if ($sum <= 1) {
-                    $unit = $mongo_db->inventory_items->findOne(['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]], ['sort'=>['id'=>1], 'projection'=>['id'=>1]]);
-                    if ($unit) {
-                      $ub = $mongo_db->user_borrows->findOne(['model_id'=>(int)($unit['id']??0), 'status'=>'Borrowed'], ['projection'=>['expected_return_at'=>1]]);
-                      if ($ub && isset($ub['expected_return_at'])) {
-                        $exp = strtotime((string)$ub['expected_return_at']);
-                        if ($exp && $start_time < ($exp + 5*60)) {
-                          $error = 'Reservation start must be at least 5 minutes after the current expected return time (' . date('M j, Y g:i A', $exp + 5*60) . ').';
-                        }
+                if (!$error && $sum <= 1) {
+                  $unit = $mongo_db->inventory_items->findOne(['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]], ['sort'=>['id'=>1], 'projection'=>['id'=>1]]);
+                  if ($unit) {
+                    $ub = $mongo_db->user_borrows->findOne(['model_id'=>(int)($unit['id']??0), 'status'=>'Borrowed'], ['projection'=>['expected_return_at'=>1]]);
+                    if ($ub && isset($ub['expected_return_at'])) {
+                      $exp = strtotime((string)$ub['expected_return_at']);
+                      if ($exp && $start_time < ($exp + 5*60)) {
+                        $error = 'Reservation start must be at least 5 minutes after the current expected return time (' . date('M j, Y g:i A', $exp + 5*60) . ').';
                       }
                     }
                   }
@@ -1514,19 +1515,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               }
             } elseif ($conn) {
               try {
-                // Overlap check in MySQL
+                // Prepare times and compute total units for this model
                 $rf = date('Y-m-d H:i:s', $start_time);
                 $rt = date('Y-m-d H:i:s', $end_time);
-                $hasOverlap = false;
-                if ($st = $conn->prepare("SELECT 1 FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from < ? AND reserved_to > ? LIMIT 1")) {
-                  $st->bind_param('sss', $item_name, $rt, $rf);
-                  $st->execute(); $st->store_result(); $hasOverlap = $st->num_rows > 0; $st->close();
-                }
-                if ($hasOverlap) { $error = 'This item is already reserved for the selected time period.'; }
-                // If effectively single-quantity, enforce 5-min buffer after current expected return
-                if (!$error) {
-                  $sum = 0; if ($st2 = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st2->bind_param('s',$item_name); $st2->execute(); $st2->bind_result($sum); $st2->fetch(); $st2->close(); }
-                  if ((int)$sum <= 1) {
+                $sum = 0; if ($st2 = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st2->bind_param('s',$item_name); $st2->execute(); $st2->bind_result($sum); $st2->fetch(); $st2->close(); }
+
+                // Overlap check applies only when effectively single-quantity
+                if ((int)$sum <= 1) {
+                  $hasOverlap = false;
+                  if ($st = $conn->prepare("SELECT 1 FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from < ? AND reserved_to > ? LIMIT 1")) {
+                    $st->bind_param('sss', $item_name, $rt, $rf);
+                    $st->execute(); $st->store_result(); $hasOverlap = $st->num_rows > 0; $st->close();
+                  }
+                  if ($hasOverlap) { $error = 'This item is already reserved for the selected time period.'; }
+
+                  // If single-quantity and currently borrowed, enforce 5-min buffer after current expected return
+                  if (!$error) {
                     // Resolve a unit id for this model
                     $uid = 0; if ($st3 = $conn->prepare("SELECT id FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id ASC LIMIT 1")) { $st3->bind_param('ss',$item_name,$item_name); $st3->execute(); $st3->bind_result($uid); $st3->fetch(); $st3->close(); }
                     if ($uid) {
