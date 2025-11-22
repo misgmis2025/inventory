@@ -741,7 +741,7 @@ if (!$USED_MONGO) {
                     // Replace returnship notices with aggregated overdue alert
                     fetch('user_request.php?action=my_overdue', { cache:'no-store' })
                       .then(r=>r.json())
-                      .then(o=>{ const c = (o && Array.isArray(o.overdue)) ? o.overdue.length : 0; if (c>0) addOrUpdateOverdueNotice(c); else removeOverdueNotice(); })
+                      .then(o=>{ try{ sessionStorage.setItem('overdue_prefetch', JSON.stringify({ overdue: Array.isArray(o.overdue)? o.overdue : [] })); }catch(_){ } const c = (o && Array.isArray(o.overdue)) ? o.overdue.length : 0; if (c>0) addOrUpdateOverdueNotice(c); else removeOverdueNotice(); })
                       .catch(()=>{});
                     if (ding) playBeep();
                     baseAlloc = idsA; baseLogs = idsL; baseReturnships = idsR;

@@ -4876,6 +4876,17 @@ if (!empty($my_requests)) {
           try {
             var tb=document.getElementById('myOverdueTbody');
             if(tb){
+              // Pre-render from sessionStorage if prefetched to speed up initial view
+              try {
+                var pf = sessionStorage.getItem('overdue_prefetch');
+                if (pf) {
+                  var parsed = JSON.parse(pf);
+                  if (parsed && parsed.overdue && Array.isArray(parsed.overdue) && parsed.overdue.length >= 0) {
+                    renderMyOverdue(parsed);
+                    window.__UR_SECTION_LOADED__['section-overdue'] = true;
+                  }
+                }
+              } catch(_){ }
               var showOnce = !window.__UR_SECTION_LOADING_SHOWN__['section-overdue'];
               var emptyNow = (tb.children.length === 0);
               if (showOnce && (emptyNow || !window.__UR_SECTION_LOADED__['section-overdue'])) {
@@ -5047,7 +5058,11 @@ if (!empty($my_requests)) {
             if (typeof baseReturnships !== 'undefined') { baseReturnships.forEach(oldId=>{ removeReturnshipNotice(oldId); }); }
             fetch('user_request.php?action=my_overdue', { cache:'no-store' })
               .then(r=>r.json())
-              .then(o=>{ const c = (o && Array.isArray(o.overdue)) ? o.overdue.length : 0; if (c>0) addOrUpdateOverdueNotice(c); else removeOverdueNotice(); })
+              .then(o=>{
+                try { sessionStorage.setItem('overdue_prefetch', JSON.stringify({ overdue: Array.isArray(o.overdue)? o.overdue : [] })); } catch(_){ }
+                const c = (o && Array.isArray(o.overdue)) ? o.overdue.length : 0;
+                if (c>0) addOrUpdateOverdueNotice(c); else removeOverdueNotice();
+              })
               .catch(()=>{});
             if (ding) playBeep();
             baseAlloc = idsA; baseLogs = idsL; baseDec = idsD; baseReturnships = idsR;
