@@ -314,16 +314,32 @@ if ($__act === 'user_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'ts' => (string)($l['created_at'] ?? ''),
         ];
       }
-      // Returnship requests initiated by admin for this user (pending/requested)
+      // Returnship requests initiated by admin for this user (pending/requested), include item status (In Use/Overdue)
       try {
         $rsCur = $rsCol->find(['username'=>$uname, 'status' => ['$in' => ['Pending','Requested']]], ['sort'=>['id'=>-1], 'limit'=>100]);
+        $raCol = $mongo_db->selectCollection('request_allocations');
         foreach ($rsCur as $rs) {
+          $rid = (int)($rs['request_id'] ?? 0);
+          $itemStatus = 'In Use';
+          if ($rid > 0) {
+            try {
+              $ra = $raCol->findOne(['request_id'=>$rid], ['projection'=>['borrow_id'=>1]]);
+              if ($ra && isset($ra['borrow_id'])) {
+                $ub = $ubCol->findOne(['id'=>(int)$ra['borrow_id']], ['projection'=>['expected_return_at'=>1,'status'=>1]]);
+                if ($ub) {
+                  $exp = isset($ub['expected_return_at']) ? strtotime((string)$ub['expected_return_at']) : null;
+                  if ($exp && time() > $exp) { $itemStatus = 'Overdue'; } else { $itemStatus = 'In Use'; }
+                }
+              }
+            } catch (Throwable $_j) { $itemStatus = 'In Use'; }
+          }
           $returnships[] = [
             'id' => (int)($rs['id'] ?? 0),
-            'request_id' => (int)($rs['request_id'] ?? 0),
+            'request_id' => $rid,
             'model_name' => (string)($rs['model_name'] ?? ''),
             'qr_serial_no' => (string)($rs['qr_serial_no'] ?? ''),
             'status' => (string)($rs['status'] ?? ''),
+            'item_status' => $itemStatus,
           ];
         }
       } catch (Throwable $_rs) {}
@@ -4760,13 +4776,14 @@ if (!empty($my_requests)) {
               returnships.forEach(function(rs){
                 const rid = parseInt(rs.request_id||0,10)||0;
                 const name = escapeHtml(String(rs.model_name||''));
-                const status = String(rs.status||'');
+                const ist = String(rs.item_status||'');
                 if (!rid) return;
                 // Action button opens the Return via QR modal
                 const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
+                const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
                 rows.unshift('<div class="list-group-item">'
-                  + '<div class="d-flex w-100 justify-content-between"><strong>Return Requested: #'+rid+' '+name+'</strong>'
-                  + '<span class="badge bg-danger">'+escapeHtml(status)+'</span></div>'
+                  + '<div class="d-flex w-100 justify-content-between"><strong>'+name+'</strong>'
+                  + '<span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
                   + '<div class="mt-1 text-end">'+action+'</div>'
                   + '</div>');
               });
