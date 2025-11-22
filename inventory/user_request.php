@@ -647,6 +647,47 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   exit;
 }
 
+// JSON: single quantity timing hint (cutoff before upcoming reservation)
+if ($__act === 'single_qty_hint' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  $modelIn = trim((string)($_GET['model'] ?? ''));
+  $sidIn = trim((string)($_GET['sid'] ?? ''));
+  try {
+    $model = $modelIn;
+    if ($USED_MONGO && $mongo_db) {
+      $ii = $mongo_db->selectCollection('inventory_items');
+      if ($model === '' && $sidIn !== '') {
+        $u = $ii->findOne(['serial_no'=>$sidIn], ['projection'=>['model'=>1,'item_name'=>1]]);
+        if ($u) { $model = (string)($u['model'] ?? ($u['item_name'] ?? '')); }
+      }
+      if ($model === '') { echo json_encode(['ok'=>false]); exit; }
+      // total units for this model
+      $agg = $ii->aggregate([
+        ['$match'=>['$or'=>[['model'=>$model],['item_name'=>$model]]]],
+        ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+        ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+      ]);
+      $sum = 0; foreach ($agg as $r){ $sum = (int)($r->sum ?? 0); break; }
+      $single = ($sum <= 1);
+      $er = $mongo_db->selectCollection('equipment_requests');
+      $up = $er->findOne(['item_name'=>$model,'type'=>'reservation','status'=>'Approved','reserved_from'=>['$gt'=>date('Y-m-d H:i:s')]], ['sort'=>['reserved_from'=>1], 'projection'=>['reserved_from'=>1]]);
+      if ($up) {
+        $rf = (string)($up['reserved_from'] ?? '');
+        $ts = strtotime($rf); $cutoff = $ts ? date('Y-m-d H:i:s', $ts - 5*60) : '';
+        echo json_encode(['ok'=>true,'single'=>$single,'hasUpcoming'=>true,'reserve_from'=>$rf,'cutoff'=>$cutoff]); exit;
+      }
+      echo json_encode(['ok'=>true,'single'=>$single,'hasUpcoming'=>false]); exit;
+    } elseif ($conn) {
+      if ($model === '') { echo json_encode(['ok'=>false]); exit; }
+      $sum = 0; if ($st = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st->bind_param('s',$model); $st->execute(); $st->bind_result($sum); $st->fetch(); $st->close(); }
+      $single = ((int)$sum <= 1);
+      $rf = null; if ($st2 = $conn->prepare("SELECT MIN(reserved_from) FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from > NOW()")) { $st2->bind_param('s',$model); $st2->execute(); $st2->bind_result($rf); $st2->fetch(); $st2->close(); }
+      if ($rf) { $ts = strtotime((string)$rf); $cutoff = $ts ? date('Y-m-d H:i:s', $ts - 5*60) : ''; echo json_encode(['ok'=>true,'single'=>$single,'hasUpcoming'=>true,'reserve_from'=>(string)$rf,'cutoff'=>$cutoff]); exit; }
+      echo json_encode(['ok'=>true,'single'=>$single,'hasUpcoming'=>false]); exit;
+    }
+  } catch (Throwable $_) { echo json_encode(['ok'=>false]); exit; }
+}
+
 // JSON: live catalog for categories, models, and availability
 if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
@@ -654,6 +695,33 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
       $ii = $mongo_db->selectCollection('inventory_items');
       $bm = $mongo_db->selectCollection('borrowable_catalog');
+      $for = isset($_GET['for']) ? (string)$_GET['for'] : '';
+      // Auto-cancel overdue single-quantity reservations when current borrow is late
+      try {
+        $erCol = $mongo_db->selectCollection('equipment_requests');
+        $ubCol = $mongo_db->selectCollection('user_borrows');
+        $nowStr = date('Y-m-d H:i:s');
+        $cur = $erCol->find(['type'=>'reservation','status'=>'Approved','reserved_from'=>['$lte'=>$nowStr]], ['projection'=>['id'=>1,'item_name'=>1]]);
+        foreach ($cur as $row) {
+          $mn = (string)($row['item_name'] ?? ''); if ($mn==='') continue;
+          $aggTu = $ii->aggregate([
+            ['$match'=>['$or'=>[['model'=>$mn],['item_name'=>$mn]]]],
+            ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+            ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+          ]);
+          $sum = 0; foreach ($aggTu as $r2){ $sum = (int)($r2->sum ?? 0); break; }
+          if ($sum <= 1) {
+            $unit = $ii->findOne(['$or'=>[['model'=>$mn],['item_name'=>$mn]]], ['sort'=>['id'=>1], 'projection'=>['id'=>1]]);
+            if ($unit) {
+              $bid = $ubCol->findOne(['model_id'=>(int)($unit['id'] ?? 0),'status'=>'Borrowed'], ['projection'=>['expected_return_at'=>1]]);
+              if ($bid) {
+                $exp = strtotime((string)($bid['expected_return_at'] ?? ''));
+                if ($exp && time() > $exp) { $erCol->updateOne(['id'=>(int)($row['id'] ?? 0), 'status'=>'Approved'], ['$set'=>['status'=>'Cancelled','cancelled_at'=>$nowStr,'cancelled_by'=>'system']]); }
+              }
+            }
+          }
+        }
+      } catch (Throwable $_) {}
       // Build borrow limit map for active models
       $borrowLimitMap = [];
       $bmCur = $bm->find(['active'=>1], ['projection'=>['model_name'=>1,'category'=>1,'borrow_limit'=>1]]);
@@ -724,6 +792,27 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           $modelMaxMapLive[$mod] = $cap;
         }
       }
+      // For reservation: include single-quantity models even if currently In Use (not Available)
+      if ($for === 'reservation') {
+        try {
+          foreach ($borrowLimitMap as $cat => $mods) {
+            foreach ($mods as $mod => $limit) {
+              if (isset($availableMapLive[$cat]) && isset($availableMapLive[$cat][mb_strtolower($mod)])) continue;
+              $aggTu = $ii->aggregate([
+                ['$match'=>['$or'=>[['model'=>$mod],['item_name'=>$mod]], 'category'=>$cat]],
+                ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+                ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+              ]);
+              $sum = 0; foreach ($aggTu as $rr){ $sum = (int)($rr->sum ?? 0); break; }
+              if ($sum <= 1) {
+                if (!isset($availableMapLive[$cat])) { $availableMapLive[$cat] = []; $catOptionsLive[] = $cat; }
+                $availableMapLive[$cat][mb_strtolower($mod)] = $mod;
+                if (!isset($modelMaxMapLive[$mod])) { $modelMaxMapLive[$mod] = 1; }
+              }
+            }
+          }
+        } catch (Throwable $_) {}
+      }
       if (!empty($catOptionsLive)) { natcasesort($catOptionsLive); $catOptionsLive = array_values(array_unique($catOptionsLive)); }
       echo json_encode(['categories'=>$catOptionsLive,'catModelMap'=>array_map(function($mods){ $vals=array_values($mods); natcasesort($vals); return array_values(array_unique($vals)); }, $availableMapLive),'modelMaxMap'=>$modelMaxMapLive]);
     } catch (Throwable $e) { echo json_encode(['categories'=>[], 'catModelMap'=>[], 'modelMaxMap'=>[]]); }
@@ -743,15 +832,15 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       $modelMaxMapLive = [];
       foreach ($borrowLimitMap as $c => $mods) {
         foreach ($mods as $m => $limit) {
-          $avail = (int)($availCountsLive[$c][$m] ?? 0);
-          $cap = max(0, min((int)$limit, $avail));
-          if ($cap > 0) { if (!isset($availableMapLive[$c])) { $availableMapLive[$c]=[]; $catOptionsLive[]=$c; } $availableMapLive[$c][mb_strtolower($m)]=$m; }
-          $modelMaxMapLive[$m] = $cap;
-        }
+        $avail = (int)($availCountsLive[$c][$m] ?? 0);
+        $cap = max(0, min((int)$limit, $avail));
+        if ($cap > 0) { if (!isset($availableMapLive[$c])) { $availableMapLive[$c]=[]; $catOptionsLive[]=$c; } $availableMapLive[$c][mb_strtolower($m)]=$m; }
+        $modelMaxMapLive[$m] = $cap;
       }
-      if (!empty($catOptionsLive)) { natcasesort($catOptionsLive); $catOptionsLive = array_values(array_unique($catOptionsLive)); }
     }
-    echo json_encode(['categories'=>$catOptionsLive,'catModelMap'=>array_map(function($mods){ $vals=array_values($mods); natcasesort($vals); return array_values(array_unique($vals)); }, $availableMapLive),'modelMaxMap'=>$modelMaxMapLive]);
+    if (!empty($catOptionsLive)) { natcasesort($catOptionsLive); $catOptionsLive = array_values(array_unique($catOptionsLive)); }
+  }
+  echo json_encode(['categories'=>$catOptionsLive,'catModelMap'=>array_map(function($mods){ $vals=array_values($mods); natcasesort($vals); return array_values(array_unique($vals)); }, $availableMapLive),'modelMaxMap'=>$modelMaxMapLive]);
   }
   exit;
 }
@@ -1255,6 +1344,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($overlap) {
                   $error = 'This item is already reserved for the selected time period.';
                 }
+                // If single-quantity and currently borrowed, require 5-min buffer after expected return
+                if (!$error) {
+                  // total units
+                  $sum = 0; try {
+                    $agg = $mongo_db->inventory_items->aggregate([
+                      ['$match'=>['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]]],
+                      ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+                      ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+                    ]);
+                    foreach ($agg as $ar){ $sum = (int)($ar->sum ?? 0); break; }
+                  } catch (Throwable $_) { $sum = 0; }
+                  if ($sum <= 1) {
+                    $unit = $mongo_db->inventory_items->findOne(['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]], ['sort'=>['id'=>1], 'projection'=>['id'=>1]]);
+                    if ($unit) {
+                      $ub = $mongo_db->user_borrows->findOne(['model_id'=>(int)($unit['id']??0), 'status'=>'Borrowed'], ['projection'=>['expected_return_at'=>1]]);
+                      if ($ub && isset($ub['expected_return_at'])) {
+                        $exp = strtotime((string)$ub['expected_return_at']);
+                        if ($exp && $start_time < ($exp + 5*60)) {
+                          $error = 'Reservation start must be at least 5 minutes after the current expected return time (' . date('M j, Y g:i A', $exp + 5*60) . ').';
+                        }
+                      }
+                    }
+                  }
+                }
               } catch (Throwable $e) {
                 // Log error but don't block the request
                 error_log('Error checking reservation overlap: ' . $e->getMessage());
@@ -1274,26 +1387,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           } elseif (($return_time - $current_time) > (24 * 60 * 60)) {
             $error = 'Immediate borrow cannot exceed 24 hours.';
           } else {
-            // Check for upcoming reservations
+            // Check for upcoming reservations (apply only when effectively single quantity)
             if ($USED_MONGO && $mongo_db) {
               try {
-                $upcoming_reservation = $mongo_db->equipment_requests->findOne([
-                  'item_name' => $item_name,
-                  'type' => 'reservation',
-                  'status' => 'Approved',
-                  'reserved_from' => [
-                    '$gt' => date('Y-m-d H:i:s'),
-                    '$lt' => date('Y-m-d H:i:s', $return_time + (5 * 60)) // 5 min buffer
-                  ]
-                ]);
-                
-                if ($upcoming_reservation) {
-                  $reserve_time = strtotime($upcoming_reservation['reserved_from']);
-                  $cutoff_time = $reserve_time - (5 * 60); // 5 min before reservation
-                  
-                  if ($return_time > $cutoff_time) {
-                    $error = 'This item has an upcoming reservation. Please return by ' . 
-                             date('M j, Y g:i A', $cutoff_time) . ' (5 minutes before the next reservation).';
+                // total units
+                $sum = 0; try {
+                  $agg = $mongo_db->inventory_items->aggregate([
+                    ['$match'=>['$or'=>[['model'=>$item_name],['item_name'=>$item_name]]]],
+                    ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+                    ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+                  ]);
+                  foreach ($agg as $ar){ $sum = (int)($ar->sum ?? 0); break; }
+                } catch (Throwable $_) { $sum = 0; }
+                if ($sum <= 1) {
+                  $upcoming_reservation = $mongo_db->equipment_requests->findOne([
+                    'item_name' => $item_name,
+                    'type' => 'reservation',
+                    'status' => 'Approved',
+                    'reserved_from' => [
+                      '$gt' => date('Y-m-d H:i:s'),
+                      '$lt' => date('Y-m-d H:i:s', $return_time + (5 * 60))
+                    ]
+                  ], ['sort'=>['reserved_from'=>1], 'projection'=>['reserved_from'=>1]]);
+                  if ($upcoming_reservation && isset($upcoming_reservation['reserved_from'])) {
+                    $reserve_time = strtotime((string)$upcoming_reservation['reserved_from']);
+                    $cutoff_time = $reserve_time - (5 * 60);
+                    if ($return_time > $cutoff_time) {
+                      $error = 'This item has an upcoming reservation. Please return by ' . date('M j, Y g:i A', $cutoff_time) . ' (5 minutes before the next reservation).';
+                    }
                   }
                 }
               } catch (Throwable $e) {
@@ -1809,6 +1930,7 @@ if (!empty($my_requests)) {
                   <input type="datetime-local" id="urExpectedReturn" class="form-control" />
                 </div>
               </div>
+              <div class="mt-1"><small id="urExpectedHint" class="text-danger d-none"></small></div>
 
               <div class="card mt-3 d-none" id="urInfoCard">
                 <div class="card-body">
@@ -2011,6 +2133,7 @@ if (!empty($my_requests)) {
                           <input type="datetime-local" id="expected_return_at" name="expected_return_at" class="form-control" required 
                                  min="<?php echo date('Y-m-d\TH:i'); ?>" />
                           <div class="form-text">Please select when you will return the item (max 24 hours from now)</div>
+                          <div id="immediateReserveHint" class="form-text text-danger d-none"></div>
                         </div>
                       </div>
                     </div>
@@ -2073,6 +2196,10 @@ if (!empty($my_requests)) {
                       document.getElementById('req_type').value = type;
                       // Reset validation
                       document.getElementById('formError').classList.add('d-none');
+                      // Refresh catalog for reservation mode so single-qty in-use items appear
+                      try { if (typeof refreshCatalog === 'function') setTimeout(refreshCatalog, 50); } catch(_){ }
+                      // Update immediate hint if needed
+                      try { if (typeof updateImmediateReserveHint === 'function') setTimeout(updateImmediateReserveHint, 80); } catch(_){ }
                     });
                   });
                 });
@@ -4063,7 +4190,9 @@ if (!empty($my_requests)) {
       if (inFlightCatalog) return; inFlightCatalog = true;
       const selCat = categorySelect ? categorySelect.value : '';
       const selModel = modelSelect ? modelSelect.value : '';
-      fetch('user_request.php?action=catalog')
+      const __getReqType = ()=>{ try{ var el=document.getElementById('req_type'); return (el && el.value) ? el.value : 'immediate'; }catch(_){ return 'immediate'; } };
+      const __catalogUrl = ()=>{ const mode = __getReqType(); return 'user_request.php?action=catalog' + (mode==='reservation' ? '&for=reservation' : ''); };
+      fetch(__catalogUrl())
         .then(r=>r.json())
         .then(d=>{
           if (!d) return;
@@ -4186,7 +4315,7 @@ if (!empty($my_requests)) {
           if (!returnPending && typ.toUpperCase() === 'QR' && parseInt(b.request_id||0,10) > 0) {
             const rid = parseInt(b.request_id||0,10);
             const bid = parseInt(b.borrow_id||0,10) || 0;
-            actions = '<button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#userQrReturnModal" data-reqid="'+rid+'" data-borrow_id="'+bid+'" data-model_name="'+escapeHtml(model)+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
+            actions = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-bs-toggle="modal" data-bs-target="#userQrReturnModal" data-reqid="'+rid+'" data-borrow_id="'+bid+'" data-model_name="'+escapeHtml(model)+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
           }
           rows.push('<tr class="borrowed-row" role="button" tabindex="0" data-bs-toggle="modal" data-bs-target="#userBorrowedDetailsModal"'+
             ' data-category="'+escapeHtml(String(cat))+'"'+
@@ -4393,6 +4522,7 @@ if (!empty($my_requests)) {
         if (document.visibilityState !== 'visible') return; 
         if (typeof __UR_POLLING_PAUSED__ !== 'undefined' && __UR_POLLING_PAUSED__) return;
         try { updateAvailHint(); } catch(_){ }
+        try { updateImmediateReserveHint(); } catch(_){ }
       }, 5000);
       // Keep categories/models live (less frequent)
       setInterval(()=>{ 
@@ -4893,6 +5023,14 @@ if (!empty($my_requests)) {
           if (expWrap) expWrap.classList.remove('d-none');
           if (borrowBtn){ borrowBtn.disabled = !(locInput && locInput.value.trim()); borrowBtn.onclick = function(){ submitBorrow(); }; }
           if (locInput){ locInput.oninput = function(){ if (borrowBtn) borrowBtn.disabled = !locInput.value.trim(); }; try{ locInput.focus(); }catch(_){ } }
+          // Show hint if single-quantity and reserved soon
+          (async function(){ try{
+            const hEl = document.getElementById('urExpectedHint'); if (!hEl) return; hEl.classList.add('d-none'); hEl.textContent='';
+            const q = (payload && payload.model) ? ('model='+encodeURIComponent(payload.model)) : (lastData && lastData.serial_no ? ('sid='+encodeURIComponent(lastData.serial_no)) : '');
+            if (!q) return; const r = await fetch('user_request.php?action=single_qty_hint&'+q, {cache:'no-store'});
+            const d = await r.json().catch(()=>null);
+            if (d && d.ok && d.single && d.hasUpcoming && d.cutoff){ const rf = d.reserve_from? new Date(String(d.reserve_from).replace(' ','T')).toLocaleString() : ''; const co = new Date(String(d.cutoff).replace(' ','T')).toLocaleString(); hEl.textContent = 'Reserved at '+rf+'. Set Expected Return no later than '+co+' to proceed.'; hEl.classList.remove('d-none'); }
+          }catch(_){ } })();
         } else {
           // Hide borrow controls
           if (locWrap) locWrap.classList.add('d-none');

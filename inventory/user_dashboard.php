@@ -588,7 +588,7 @@ if (!$USED_MONGO) {
                           const name = (rs.model_name||'').toString();
                           const status = (rs.status||'').toString();
                           const url = 'user_request.php?open_return_qr='+encodeURIComponent(rid)+'&model_name='+encodeURIComponent(name);
-                          const action = '<a href="'+url+'" class="btn btn-sm btn-outline-primary"><i class="bi bi-qr-code-scan"></i> Return via QR</a>';
+                          const action = '<a href="'+url+'" class="btn btn-sm btn-outline-primary open-qr-return"><i class="bi bi-qr-code-scan"></i> Return via QR</a>';
                           rows.unshift('<div class="list-group-item">'
                             + '<div class="d-flex w-100 justify-content-between"><strong>Return Requested: #'+rid+' '+escapeHtml(name)+'</strong>'
                             + '<span class="badge bg-danger">'+escapeHtml(status)+'</span></div>'

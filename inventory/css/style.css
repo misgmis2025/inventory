@@ -1222,3 +1222,11 @@ button[data-bs-target="#addItemModal"],
   body.allow-mobile #pb-row table td { padding: .35rem .45rem !important; }
   body.allow-mobile .segmented-actions .btn { padding: .2rem .35rem !important; font-size: .8rem !important; line-height: 1.1 !important; }
 }
+
+/* Compact size for Return via QR buttons */
+.btn.open-qr-return {
+  padding: 0.2rem 0.45rem !important;
+  font-size: 0.75rem !important;
+  line-height: 1.1 !important;
+  border-width: 1px !important;
+}
