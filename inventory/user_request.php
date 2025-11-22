@@ -2082,6 +2082,12 @@ if (!empty($my_requests)) {
                 <button type="button" class="btn btn-primary" id="urQrStartBtn"><i class="bi bi-camera-video"></i> Start Camera</button>
                 <button type="button" class="btn btn-outline-danger d-none" id="urQrStopBtn"><i class="bi bi-stop-circle"></i> Stop</button>
               </div>
+              <div class="d-flex align-items-center mt-3 gap-2" id="urReqTypeToggleWrap">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Request type">
+                  <button type="button" class="btn btn-outline-secondary active" id="urQrTypeImmediate" data-mode="immediate">Immediate</button>
+                  <button type="button" class="btn btn-outline-secondary" id="urQrTypeReservation" data-mode="reservation">Reservation</button>
+                </div>
+              </div>
               <div class="d-flex align-items-center mt-2 gap-2">
                 <button type="button" class="btn btn-success d-none" id="urQrRequestBtn">Borrow Item</button>
               </div>
@@ -2093,7 +2099,7 @@ if (!empty($my_requests)) {
                   <button type="button" class="btn btn-primary" id="urBorrowSubmit" disabled>Borrow Item</button>
                 </div>
                 <div class="col-12">
-                  <small class="text-muted">Location is required to borrow.</small>
+                  <small class="text-muted">Location is required.</small>
                 </div>
               </div>
 
@@ -2104,6 +2110,25 @@ if (!empty($my_requests)) {
                 </div>
               </div>
               <div class="mt-1"><small id="urExpectedHint" class="text-danger d-none"></small></div>
+
+              <div class="mt-2 row g-2 d-none" id="urReserveWrap">
+                <div class="col-12 col-md-6">
+                  <label class="form-label fw-bold d-flex align-items-center gap-2" for="urResFrom">Reservation Start <small id="urResStartHint" class="text-info"></small></label>
+                  <input type="datetime-local" id="urResFrom" class="form-control" />
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label fw-bold" for="urResTo">Reservation End</label>
+                  <input type="datetime-local" id="urResTo" class="form-control" />
+                </div>
+                <div class="col-12">
+                  <div class="row g-2">
+                    <div class="col-8"></div>
+                    <div class="col-4 d-grid">
+                      <button type="button" class="btn btn-primary" id="urReserveSubmit" disabled>Reserve Item</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div class="card mt-3 d-none" id="urInfoCard">
                 <div class="card-body">
@@ -5159,11 +5184,83 @@ if (!empty($my_requests)) {
     const locWrap = document.getElementById('urReqLocWrap');
     const locInput = document.getElementById('urReqLocation');
     const borrowBtn = document.getElementById('urBorrowSubmit');
+    const reserveWrap = document.getElementById('urReserveWrap');
+    const resFrom = document.getElementById('urResFrom');
+    const resTo = document.getElementById('urResTo');
+    const resHint = document.getElementById('urResStartHint');
+    const reserveBtn = document.getElementById('urReserveSubmit');
+    const tImmediate = document.getElementById('urQrTypeImmediate');
+    const tReservation = document.getElementById('urQrTypeReservation');
     const modal = document.getElementById('urQrScanModal');
     const readerEl = document.getElementById(readerId);
     const readerPlaceholder = readerEl ? readerEl.innerHTML : '';
 
-    let qr = null; let scanning = false; let starting = false; let lastData = null; let lastCamId = '';
+    let qr = null; let scanning = false; let starting = false; let lastData = null; let lastCamId = ''; let qrMode = 'immediate'; let qrEarliest = '';
+
+    function pad2(n){ return (n<10?('0'+n):n); }
+    function format12h(dt){ let h=dt.getHours(); const ampm=(h>=12?'PM':'AM'); let h12=h%12; if(h12===0) h12=12; return h12+':'+pad2(dt.getMinutes())+' '+ampm; }
+    function formatRel12h(dt){
+      const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+      const day=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate());
+      const diffDays=Math.round((day-today)/86400000);
+      const tStr=format12h(dt);
+      if(diffDays===0) return 'Will be available at: '+tStr;
+      if(diffDays===1) return 'Will be available tomorrow at '+tStr;
+      const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return 'Will be available at: '+months[dt.getMonth()]+' '+dt.getDate()+', '+dt.getFullYear()+' '+tStr;
+    }
+
+    function setReqTypeUI(mode){
+      qrMode=(mode==='reservation')?'reservation':'immediate';
+      if (tImmediate && tReservation){
+        if (qrMode==='immediate'){ tImmediate.classList.add('active'); tReservation.classList.remove('active'); }
+        else { tReservation.classList.add('active'); tImmediate.classList.remove('active'); }
+      }
+      const expWrap=document.getElementById('urExpectedWrap');
+      if (expWrap) expWrap.classList.toggle('d-none', qrMode!=='immediate');
+      if (reserveWrap) reserveWrap.classList.toggle('d-none', qrMode!=='reservation');
+      if (borrowBtn && borrowBtn.parentElement && borrowBtn.parentElement.parentElement) borrowBtn.parentElement.parentElement.classList.toggle('d-none', qrMode!=='immediate');
+      if (reserveBtn){
+        const grp=reserveBtn.closest('.row');
+        if (grp && grp.parentElement && grp.parentElement.parentElement){ grp.parentElement.parentElement.classList.toggle('d-none', qrMode!=='reservation'); }
+      }
+      if (qrMode==='reservation') updateReserveState();
+    }
+
+    async function fetchQrReservationStartHint(){
+      try {
+        if (!resHint) return; resHint.textContent=''; qrEarliest='';
+        if (!lastData || !lastData.data || !lastData.data.model) return;
+        const m=String(lastData.data.model||''); if (!m) return;
+        const r=await fetch('user_request.php?action=reservation_start_hint&model='+encodeURIComponent(m), {cache:'no-store'});
+        const d=await r.json().catch(()=>null);
+        const earliest=(d && d.earliest) ? String(d.earliest) : '';
+        qrEarliest=earliest;
+        if (earliest){
+          try{
+            const dt=new Date(earliest.replace(' ','T'));
+            if (!isNaN(dt)){
+              if (resFrom){ resFrom.min = dt.getFullYear()+'-'+pad2(dt.getMonth()+1)+'-'+pad2(dt.getDate())+'T'+pad2(dt.getHours())+':'+pad2(dt.getMinutes()); }
+              resHint.textContent = formatRel12h(dt);
+            } else { resHint.textContent = 'Will be available at: '+earliest; }
+          } catch(_){ resHint.textContent = 'Will be available at: '+earliest; }
+        }
+      } catch(_){ }
+    }
+
+    function updateReserveState(){
+      if (!reserveBtn) return;
+      const locOk = !!(locInput && locInput.value && locInput.value.trim());
+      let ok=false;
+      try{
+        const s = resFrom && resFrom.value ? new Date(resFrom.value) : null;
+        const e = resTo && resTo.value ? new Date(resTo.value) : null;
+        const now = new Date(); const max=new Date(); max.setDate(max.getDate()+7);
+        ok = !!(s && !isNaN(s) && e && !isNaN(e) && s>now && e>s && e<=max && ((e-s) <= 24*60*60*1000));
+        if (ok && qrEarliest){ const m=new Date(qrEarliest.replace(' ','T')); if (m && !isNaN(m) && s < m) ok=false; }
+      } catch(_){ ok=false; }
+      reserveBtn.disabled = !(locOk && ok);
+    }
 
     function setStatus(msg, cls){ if (!statusEl) return; statusEl.className = 'small ' + (cls||'text-muted'); statusEl.textContent = String(msg||''); }
 
@@ -5198,6 +5295,8 @@ if (!empty($my_requests)) {
       if (locWrap) locWrap.classList.add('d-none');
       if (locInput) locInput.value = '';
       if (borrowBtn) borrowBtn.disabled = true;
+      if (reserveWrap) reserveWrap.classList.add('d-none');
+      if (reserveBtn) reserveBtn.disabled = true;
       lastData = null;
       const isLocal = location.hostname==='localhost'||location.hostname==='127.0.0.1'||/^10\.|^192\.168\./.test(location.hostname);
       if(!window.isSecureContext && !isLocal){ setStatus('Camera access requires HTTPS or localhost.','text-danger'); starting=false; return; }
@@ -5281,24 +5380,36 @@ if (!empty($my_requests)) {
         lastData = { data: payload, vr };
         lastData.serial_no = serialScanned || '';
 
-        // Available and borrowable: show location, expected return, and borrow button
+        // Show details card (always show base info; enrich already done below)
+        // Decide default mode: if immediate allowed, default to immediate; else try reservation
+        if (locWrap) locWrap.classList.remove('d-none');
         if (vr && vr.allowed){
-          if (locWrap) locWrap.classList.remove('d-none');
-          const expWrap = document.getElementById('urExpectedWrap');
-          if (expWrap) expWrap.classList.remove('d-none');
+          setReqTypeUI('immediate');
+          const expWrap = document.getElementById('urExpectedWrap'); if (expWrap) expWrap.classList.remove('d-none');
           if (borrowBtn){ borrowBtn.disabled = !(locInput && locInput.value.trim()); borrowBtn.onclick = function(){ submitBorrow(); }; }
-          if (locInput){ locInput.oninput = function(){ if (borrowBtn) borrowBtn.disabled = !locInput.value.trim(); }; try{ locInput.focus(); }catch(_){ } }
-          // Show hint if single-quantity and reserved soon
+          if (locInput){ locInput.oninput = function(){ if (borrowBtn) borrowBtn.disabled = !locInput.value.trim(); if (reserveBtn) updateReserveState(); }; try{ locInput.focus(); }catch(_){ } }
+          // Show cutoff hint if item is single-quantity and has an upcoming reservation
           (async function(){ try{
             const hEl = document.getElementById('urExpectedHint'); if (!hEl) return; hEl.classList.add('d-none'); hEl.textContent='';
             const q = (payload && payload.model) ? ('model='+encodeURIComponent(payload.model)) : (lastData && lastData.serial_no ? ('sid='+encodeURIComponent(lastData.serial_no)) : '');
             if (!q) return; const r = await fetch('user_request.php?action=single_qty_hint&'+q, {cache:'no-store'});
             const d = await r.json().catch(()=>null);
-            if (d && d.ok && d.single && d.hasUpcoming && d.cutoff){ const rf = d.reserve_from? new Date(String(d.reserve_from).replace(' ','T')).toLocaleString() : ''; const co = new Date(String(d.cutoff).replace(' ','T')).toLocaleString(); hEl.textContent = 'Reserved at '+rf+'. Set Expected Return no later than '+co+' to proceed.'; hEl.classList.remove('d-none'); }
+            if (d && d.ok && d.single && d.hasUpcoming && d.cutoff){
+              const rf = d.reserve_from? new Date(String(d.reserve_from).replace(' ','T')) : null;
+              const co = new Date(String(d.cutoff).replace(' ','T'));
+              const pad=(n)=>n<10?('0'+n):n; const fmt=(dt)=>{ const h=dt.getHours(); const ap=h>=12?'PM':'AM'; let h12=h%12; if(h12===0) h12=12; return h12+':'+pad(dt.getMinutes())+' '+ap; };
+              const rfStr = rf ? fmt(rf) : '';
+              const coStr = fmt(co);
+              hEl.textContent = (rfStr? ('Reserved at '+rfStr+'. ') : '') + 'Set Expected Return no later than '+coStr+' to proceed.';
+              hEl.classList.remove('d-none');
+            }
           }catch(_){ } })();
         } else {
-          // Hide borrow controls
-          if (locWrap) locWrap.classList.add('d-none');
+          setReqTypeUI('reservation');
+          if (reserveWrap) reserveWrap.classList.remove('d-none');
+          if (reserveBtn){ reserveBtn.disabled = true; reserveBtn.onclick = function(){ submitReserve(); }; }
+          if (locInput){ locInput.oninput = function(){ updateReserveState(); }; try{ locInput.focus(); }catch(_){ } }
+          await fetchQrReservationStartHint();
         }
 
         // Show details card (always show base info; enrich with lookup)
@@ -5347,6 +5458,8 @@ if (!empty($my_requests)) {
           default: msg='Cannot borrow' + ((lastData && lastData.vr && lastData.vr.reason)?(': ' + lastData.vr.reason):'.'); cls='text-danger';
         }
         setStatus(msg, cls);
+        // If reservation mode visible, keep hint updated
+        if (qrMode === 'reservation') { try { await fetchQrReservationStartHint(); updateReserveState(); } catch(_){ } }
         // Start Camera button is now visible again; user can click it to rescan
       } catch(e){ setStatus('Invalid QR code data.','text-danger'); }
     }
@@ -5379,9 +5492,24 @@ if (!empty($my_requests)) {
 
     if (modal){
       modal.addEventListener('shown.bs.modal', ()=>{
-        populateCams(); setStatus('Select a camera and click Start Camera to scan.','text-muted'); lastData=null; starting=false; scanning=false; qr=null;
+        populateCams(); setStatus('Select a camera and click Start Camera to scan.','text-muted'); lastData=null; starting=false; scanning=false; qr=null; qrMode='immediate'; qrEarliest='';
         if (stopBtn) stopBtn.classList.add('d-none'); if (startBtn) startBtn.classList.remove('d-none');
-        try{ document.getElementById('urInfoCard').classList.add('d-none'); if (locWrap) locWrap.classList.add('d-none'); if (locInput) locInput.value=''; if (borrowBtn) borrowBtn.disabled=true; if (readerEl && readerPlaceholder!==''){ readerEl.innerHTML = readerPlaceholder; } }catch(_){ }
+        try{
+          document.getElementById('urInfoCard').classList.add('d-none');
+          if (locWrap) locWrap.classList.add('d-none');
+          if (locInput) locInput.value='';
+          if (borrowBtn) borrowBtn.disabled=true;
+          if (reserveWrap) reserveWrap.classList.add('d-none');
+          if (reserveBtn) reserveBtn.disabled=true;
+          if (readerEl && readerPlaceholder!==''){ readerEl.innerHTML = readerPlaceholder; }
+          setReqTypeUI('immediate');
+        }catch(_){ }
+        // Bind toggle buttons
+        if (tImmediate) tImmediate.onclick = ()=> setReqTypeUI('immediate');
+        if (tReservation) tReservation.onclick = async ()=> { setReqTypeUI('reservation'); await fetchQrReservationStartHint(); };
+        // React to reservation time changes
+        if (resFrom) resFrom.addEventListener('input', updateReserveState);
+        if (resTo) resTo.addEventListener('input', updateReserveState);
       });
       modal.addEventListener('hide.bs.modal', ()=>{ stopScan(); });
     }
