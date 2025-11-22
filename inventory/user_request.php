@@ -340,6 +340,7 @@ if ($__act === 'user_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
             'qr_serial_no' => (string)($rs['qr_serial_no'] ?? ''),
             'status' => (string)($rs['status'] ?? ''),
             'item_status' => $itemStatus,
+            'ts' => (string)($rs['verified_at'] ?? ($rs['created_at'] ?? '')),
           ];
         }
       } catch (Throwable $_rs) {}
@@ -4775,16 +4776,22 @@ if (!empty($my_requests)) {
               const returnships = Array.isArray(d.returnships) ? d.returnships : [];
               returnships.forEach(function(rs){
                 const rid = parseInt(rs.request_id||0,10)||0;
+                if (!rid) return;
                 const name = escapeHtml(String(rs.model_name||''));
                 const ist = String(rs.item_status||'');
-                if (!rid) return;
-                // Action button opens the Return via QR modal
-                const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
+                const ts = String(rs.ts||'');
+                const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
                 const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
+                const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
                 rows.unshift('<div class="list-group-item">'
-                  + '<div class="d-flex w-100 justify-content-between"><strong>'+name+'</strong>'
-                  + '<span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
-                  + '<div class="mt-1 text-end">'+action+'</div>'
+                  + '<div class="d-flex w-100 justify-content-between">'
+                  +   '<strong>#'+rid+' '+name+'</strong>'
+                  +   whenHtml
+                  + '</div>'
+                  + '<div class="d-flex justify-content-between align-items-center mt-1">'
+                  +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
+                  +   '<div>'+action+'</div>'
+                  + '</div>'
                   + '</div>');
               });
             })

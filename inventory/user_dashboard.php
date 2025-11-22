@@ -587,13 +587,20 @@ if (!$USED_MONGO) {
                           if (!rid) return;
                           const name = (rs.model_name||'').toString();
                           const itemStatus = (rs.item_status||'').toString();
+                          const when = (rs.ts||'').toString();
+                          const whenHtml = when ? ('<small class="text-muted">'+escapeHtml(when)+'</small>') : '';
                           const badgeCls = (itemStatus==='Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
                           const url = 'user_request.php?open_return_qr='+encodeURIComponent(rid)+'&model_name='+encodeURIComponent(name);
                           const action = '<a href="'+url+'" class="btn btn-sm btn-outline-primary open-qr-return"><i class="bi bi-qr-code-scan"></i> Return via QR</a>';
                           rows.unshift('<div class="list-group-item">'
-                            + '<div class="d-flex w-100 justify-content-between"><strong>'+escapeHtml(name)+'</strong>'
-                            + '<span class="'+badgeCls+'">'+escapeHtml(itemStatus || 'In Use')+'</span></div>'
-                            + '<div class="mt-1 text-end">'+action+'</div>'
+                            + '<div class="d-flex w-100 justify-content-between">'
+                            +   '<strong>#'+rid+' '+escapeHtml(name)+'</strong>'
+                            +   whenHtml
+                            + '</div>'
+                            + '<div class="d-flex justify-content-between align-items-center mt-1">'
+                            +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(itemStatus || 'In Use')+'</span></div>'
+                            +   '<div>'+action+'</div>'
+                            + '</div>'
                             + '</div>');
                       });
                   })
