@@ -62,7 +62,7 @@ if ($__act === 'reservation_start_hint' && $_SERVER['REQUEST_METHOD'] === 'GET')
         $activeRes = $er->findOne(['item_name'=>$modelIn, 'type'=>'reservation', 'status'=>'Approved', 'reserved_from'=>['$lte'=>$nowStr], 'reserved_to'=>['$gte'=>$nowStr]], ['sort'=>['reserved_to'=>-1], 'projection'=>['reserved_to'=>1]]);
         if ($activeRes && isset($activeRes['reserved_to'])) { $t = strtotime((string)$activeRes['reserved_to']); if ($t) $blockTs = max($blockTs, $t); }
       } catch (Throwable $_r) {}
-      $earliest = $blockTs ? date('Y-m-d H:i:s', $blockTs + 5*60) : '';
+      $earliest = $blockTs ? date('Y-m-d H:i', $blockTs + 5*60) : '';
       echo json_encode(['earliest'=>$earliest]); exit;
     } elseif ($conn) {
       // total units
@@ -77,7 +77,7 @@ if ($__act === 'reservation_start_hint' && $_SERVER['REQUEST_METHOD'] === 'GET')
       }
       $resStr = null; if ($st4 = $conn->prepare("SELECT MAX(reserved_to) FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from <= NOW() AND reserved_to >= NOW()")) { $st4->bind_param('s',$modelIn); $st4->execute(); $st4->bind_result($resStr); $st4->fetch(); $st4->close(); }
       if ($resStr) { $t = strtotime((string)$resStr); if ($t) $blockTs = max($blockTs, $t); }
-      $earliest = $blockTs ? date('Y-m-d H:i:s', $blockTs + 5*60) : '';
+      $earliest = $blockTs ? date('Y-m-d H:i', $blockTs + 5*60) : '';
       echo json_encode(['earliest'=>$earliest]); exit;
     }
   } catch (Throwable $_) { echo json_encode(['earliest'=>'']); }
@@ -4721,7 +4721,16 @@ if (!empty($my_requests)) {
               var hintEl = document.getElementById('reservedStartHint');
               if (reservationEarliestMin){
                 // Display local-friendly text
-                try { var dt = new Date(reservationEarliestMin.replace(' ','T')); hintEl.textContent = 'Earliest start: ' + (isNaN(dt)? reservationEarliestMin : dt.toLocaleString()); } catch(_){ hintEl.textContent = 'Earliest start: ' + reservationEarliestMin; }
+                try {
+                  var dt = new Date(reservationEarliestMin.replace(' ','T'));
+                  if (isNaN(dt)) {
+                    hintEl.textContent = 'Will be available at: ' + reservationEarliestMin.replace(/:\d{2}$/,'');
+                  } else {
+                    var pad = function(n){ return n<10 ? ('0'+n) : n; };
+                    var dStr = dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate())+' '+pad(dt.getHours())+':'+pad(dt.getMinutes());
+                    hintEl.textContent = 'Will be available at: ' + dStr;
+                  }
+                } catch(_){ hintEl.textContent = 'Will be available at: ' + reservationEarliestMin.replace(/:\d{2}$/,''); }
                 // Update min attribute
                 var sf = document.getElementById('reserved_from'); if (sf){ try { var dt2=new Date(reservationEarliestMin.replace(' ','T')); var pad=n=>n<10?('0'+n):n; var v = dt2.getFullYear()+'-'+pad(dt2.getMonth()+1)+'-'+pad(dt2.getDate())+'T'+pad(dt2.getHours())+':'+pad(dt2.getMinutes()); sf.min = v; } catch(_){ } }
               } else { hintEl.textContent=''; }
