@@ -93,13 +93,24 @@ try {
     foreach ($borrowLimitMap as $cat => $mods) {
       foreach ($mods as $mod => $limit) {
         $k = strtolower($cat).'|'.strtolower($mod);
-        if (!isset($set[$k])) continue; // ensure present in active list
-        $availNow = (int)($availCounts[$cat][$mod] ?? 0);
+        if (!isset($set[$k])) continue; // active only for main pass
         $cons = (int)($consumed[$cat][$mod] ?? 0);
+        $availNow = (int)($availCounts[$cat][$mod] ?? 0);
         $available = max(0, min(max(0, $limit - $cons), $availNow));
+        // Active: include only if there are currently available items
         if ($available > 0) {
           $items[] = [ 'model'=>$mod, 'item_name'=>$mod, 'category'=>$cat, 'available_qty'=>$available ];
         }
+        if (count($items) >= 300) break 2;
+      }
+    }
+    // Second pass: include deleted/inactive groups ONLY if they have in-use items
+    foreach ($consumed as $c => $mods) {
+      foreach ($mods as $m => $cnt) {
+        if ((int)$cnt <= 0) continue;
+        $key = strtolower($c).'|'.strtolower($m);
+        if (isset($set[$key])) continue; // skip active; already handled above
+        $items[] = [ 'model'=>$m, 'item_name'=>$m, 'category'=>$c, 'available_qty'=>0 ];
         if (count($items) >= 300) break 2;
       }
     }
