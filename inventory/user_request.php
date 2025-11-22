@@ -46,7 +46,7 @@ if ($__act === 'reservation_start_hint' && $_SERVER['REQUEST_METHOD'] === 'GET')
         ]);
         foreach ($agg as $r){ $sum = (int)($r->sum ?? 0); break; }
       } catch (Throwable $_) { $sum = 0; }
-      if ($sum > 1) { echo json_encode(['earliest'=>'']); exit; }
+      if ($sum > 1) { echo json_encode(['earliest'=>'', 'single'=>false, 'available_now'=>false]); exit; }
       // Resolve a unit id for this model
       $unit = $ii->findOne(['$or'=>[['model'=>$modelIn],['item_name'=>$modelIn]]], ['sort'=>['id'=>1], 'projection'=>['id'=>1]]);
       $blockTs = 0;
@@ -63,11 +63,12 @@ if ($__act === 'reservation_start_hint' && $_SERVER['REQUEST_METHOD'] === 'GET')
         if ($activeRes && isset($activeRes['reserved_to'])) { $t = strtotime((string)$activeRes['reserved_to']); if ($t) $blockTs = max($blockTs, $t); }
       } catch (Throwable $_r) {}
       $earliest = $blockTs ? date('Y-m-d H:i', $blockTs + 5*60) : '';
-      echo json_encode(['earliest'=>$earliest]); exit;
+      $availableNow = $blockTs ? false : true;
+      echo json_encode(['earliest'=>$earliest, 'single'=>true, 'available_now'=>$availableNow]); exit;
     } elseif ($conn) {
       // total units
       $sum = 0; if ($st = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st->bind_param('s',$modelIn); $st->execute(); $st->bind_result($sum); $st->fetch(); $st->close(); }
-      if ((int)$sum > 1) { echo json_encode(['earliest'=>'']); exit; }
+      if ((int)$sum > 1) { echo json_encode(['earliest'=>'', 'single'=>false, 'available_now'=>false]); exit; }
       // resolve unit id
       $uid = 0; if ($st2 = $conn->prepare("SELECT id FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id ASC LIMIT 1")) { $st2->bind_param('ss',$modelIn,$modelIn); $st2->execute(); $st2->bind_result($uid); $st2->fetch(); $st2->close(); }
       $blockTs = 0;
@@ -78,7 +79,8 @@ if ($__act === 'reservation_start_hint' && $_SERVER['REQUEST_METHOD'] === 'GET')
       $resStr = null; if ($st4 = $conn->prepare("SELECT MAX(reserved_to) FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from <= NOW() AND reserved_to >= NOW()")) { $st4->bind_param('s',$modelIn); $st4->execute(); $st4->bind_result($resStr); $st4->fetch(); $st4->close(); }
       if ($resStr) { $t = strtotime((string)$resStr); if ($t) $blockTs = max($blockTs, $t); }
       $earliest = $blockTs ? date('Y-m-d H:i', $blockTs + 5*60) : '';
-      echo json_encode(['earliest'=>$earliest]); exit;
+      $availableNow = $blockTs ? false : true;
+      echo json_encode(['earliest'=>$earliest, 'single'=>true, 'available_now'=>$availableNow]); exit;
     }
   } catch (Throwable $_) { echo json_encode(['earliest'=>'']); }
   exit;
@@ -4780,7 +4782,10 @@ if (!empty($my_requests)) {
                 } catch(_) { hintEl.textContent = 'Will be available at: ' + reservationEarliestMin; }
                 // Update min attribute
                 var sf = document.getElementById('reserved_from'); if (sf){ try { var dt2=new Date(reservationEarliestMin.replace(' ','T')); var pad=n=>n<10?('0'+n):n; var v = dt2.getFullYear()+'-'+pad(dt2.getMonth()+1)+'-'+pad(dt2.getDate())+'T'+pad(dt2.getHours())+':'+pad(dt2.getMinutes()); sf.min = v; } catch(_){ } }
-              } else { hintEl.textContent=''; }
+              } else {
+                if (d && d.single === true && d.available_now === true) { hintEl.textContent = 'Available now'; }
+                else { hintEl.textContent=''; }
+              }
               updateSubmitButton();
             }).catch(function(){ /*no-op*/ });
         } catch(_){ }
