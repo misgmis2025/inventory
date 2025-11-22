@@ -374,8 +374,18 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     foreach ($cur as $row) {
       $mid = (int)($row['model_id'] ?? 0); if ($mid<=0) continue;
       $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'status'=>1,'remarks'=>1]]);
+      // Auto-clean ghost whitelist entries where the inventory item no longer exists or is permanently retired
+      if (!$it) {
+        try { $buCol->deleteOne(['model_id'=>$mid]); } catch (Throwable $_cl) {}
+        continue;
+      }
+      $rawStatus = (string)($it['status'] ?? '');
+      if (in_array($rawStatus, ['Permanently Lost','Disposed'], true)) {
+        try { $buCol->deleteOne(['model_id'=>$mid]); } catch (Throwable $_cl2) {}
+        continue;
+      }
       // If reserved for an approved reservation, display Reserved instead of raw status
-      $dispStatus = $it ? (string)($it['status'] ?? '') : '';
+      $dispStatus = $rawStatus;
       try {
         $nowStr = date('Y-m-d H:i:s');
         $res = $erCol->findOne([
@@ -846,7 +856,7 @@ if (in_array($act, ['mark_returned','mark_lost','mark_maintenance'], true) && is
 
     if ($act==='mark_returned') {
       // Set item as Available and close borrow
-      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
+      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available','location'=>'MIS Office']]);
       $ub->updateOne(['id'=>$borrowId, 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
       // Ensure returned unit is whitelisted for borrowing
       try {
@@ -1176,7 +1186,7 @@ if (in_array($act, ['validate_model_id','approve_with','approve','validate_retur
       $borrow = $ub->findOne(['id' => ['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$mid]);
       if (!$borrow) { header('Location: admin_borrow_center.php?error=return_not_borrowed'); exit(); }
       // Process return
-      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
+      $ii->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available','location'=>'MIS Office']]);
       $ub->updateOne(['id'=>(int)($borrow['id'] ?? 0), 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
       // Ensure whitelisted
       try {
@@ -1290,7 +1300,11 @@ if (in_array($act, ['validate_model_id','approve_with','approve','validate_retur
       $borrow = $ub->findOne(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed', 'model_id'=>$midVerified]);
       if (!$borrow) { header('Location: admin_borrow_center.php?error=return_not_borrowed'); exit(); }
       // Process return
-      $ii->updateOne(['id'=>$midVerified], ['$set'=>['status'=>'Available']]);
+      // Update location based on user-provided return location if available; fallback to current item location or MIS Office
+      $locSet = '';
+      try { $locSet = trim((string)($rr['location'] ?? '')); } catch (Throwable $_l) { $locSet = ''; }
+      if ($locSet === '') { $locSet = (string)($unit['location'] ?? ''); if ($locSet === '') { $locSet = 'MIS Office'; } }
+      $ii->updateOne(['id'=>$midVerified], ['$set'=>['status'=>'Available','location'=>$locSet]]);
       $ub->updateOne(['id'=>(int)($borrow['id'] ?? 0), 'status'=>'Borrowed'], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
       // Ensure whitelisted
       try {
@@ -1799,9 +1813,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $newLimit = $curLimit + $inc;
             if ($newLimit > $total) { $newLimit = $total; }
             if ($newLimit < 0) { $newLimit = 0; }
+            $existingDoc = $bcCol->findOne(['model_name'=>$modelName,'category'=>$cat], ['projection'=>['active'=>1]]);
+            $keepActive = $existingDoc && isset($existingDoc['active']) ? (int)$existingDoc['active'] : 1;
             $bcCol->updateOne(
               ['model_name' => $modelName, 'category' => $cat],
-              ['$set' => ['model_name'=>$modelName,'category'=>$cat,'active'=>1,'borrow_limit'=>$newLimit,'created_at'=>date('Y-m-d H:i:s')]],
+              ['$set' => ['model_name'=>$modelName,'category'=>$cat,'active'=>$keepActive,'borrow_limit'=>$newLimit,'created_at'=>date('Y-m-d H:i:s')]],
               ['upsert' => true]
             );
             // Release up to the increment amount from returned_hold into Available
@@ -1833,6 +1849,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
               } catch (Throwable $eRel) { /* ignore release errors */ }
             }
+            // Ensure whitelist is topped up to match newLimit (even if inactive)
+            try {
+              $whCur = (int)$buCol->countDocuments(['model_name'=>$modelName,'category'=>$cat]);
+              $needWh = max(0, $newLimit - $whCur);
+              if ($needWh > 0) {
+                $existing = [];
+                foreach ($buCol->find(['model_name'=>$modelName,'category'=>$cat], ['projection'=>['model_id'=>1]]) as $rEx) { $existing[] = (int)($rEx['model_id'] ?? 0); }
+                $existing = array_values(array_unique(array_filter($existing)));
+                $queryW = [
+                  'status' => 'Available',
+                  'quantity' => ['$gt' => 0],
+                  '$or' => [ ['model'=>$modelName], ['item_name'=>$modelName] ],
+                  'category' => $cat,
+                  'id' => ['$nin' => $existing]
+                ];
+                $optsW = ['projection'=>['id'=>1], 'sort'=>['id'=>1], 'limit'=>$needWh*3];
+                $added = 0;
+                foreach ($itemsCol->find($queryW, $optsW) as $itW) {
+                  $midW = (int)($itW['id'] ?? 0); if ($midW<=0) continue; if (in_array($midW, $existing, true)) continue;
+                  try { $buCol->insertOne(['model_id'=>$midW,'model_name'=>$modelName,'category'=>$cat,'created_at'=>date('Y-m-d H:i:s')]); $added++; if ($added >= $needWh) break; } catch (Throwable $_i){ }
+                }
+              }
+            } catch (Throwable $_top){ }
           }
         } elseif ($cat !== '' && (!empty($models) || (isset($_POST['limits']) && is_array($_POST['limits'])))) {
           // Optional per-item limits coming from UI
@@ -1882,16 +1921,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               // Recompute whitelist count and sync borrow_limit
               $cnt = (int)$buCol->countDocuments(['model_name'=>$modelName,'category'=>$cat]);
               if ($cnt > $total) { $cnt = $total; }
+              $existingDoc = $bcCol->findOne(['model_name'=>$modelName,'category'=>$cat], ['projection'=>['active'=>1]]);
+              $keepActive = $existingDoc && isset($existingDoc['active']) ? (int)$existingDoc['active'] : 1;
               $bcCol->updateOne(
                 ['model_name'=>$modelName,'category'=>$cat],
-                ['$set'=>['model_name'=>$modelName,'category'=>$cat,'active'=>1,'borrow_limit'=>$cnt,'created_at'=>$now]],
+                ['$set'=>['model_name'=>$modelName,'category'=>$cat,'active'=>$keepActive,'borrow_limit'=>$cnt,'created_at'=>$now]],
                 ['upsert'=>true]
               );
             } else {
               // Legacy path: no explicit serials selected, keep increment behavior
+              $existingDoc = $bcCol->findOne(['model_name'=>$modelName,'category'=>$cat], ['projection'=>['active'=>1]]);
+              $keepActive = $existingDoc && isset($existingDoc['active']) ? (int)$existingDoc['active'] : 1;
               $bcCol->updateOne(
                 ['model_name'=>$modelName,'category'=>$cat],
-                ['$set'=>['model_name'=>$modelName,'category'=>$cat,'active'=>1,'borrow_limit'=>$newLimit,'created_at'=>date('Y-m-d H:i:s')]],
+                ['$set'=>['model_name'=>$modelName,'category'=>$cat,'active'=>$keepActive,'borrow_limit'=>$newLimit,'created_at'=>date('Y-m-d H:i:s')]],
                 ['upsert'=>true]
               );
               $toRelease = max(0, $newLimit - $curLimit);
@@ -1910,6 +1953,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   }
                 } catch (Throwable $eRel) { /* ignore release errors */ }
               }
+              // Top up whitelist to newLimit (even if inactive)
+              try {
+                $whCur = (int)$buCol->countDocuments(['model_name'=>$modelName,'category'=>$cat]);
+                $needWh = max(0, $newLimit - $whCur);
+                if ($needWh > 0) {
+                  $existing = [];
+                  foreach ($buCol->find(['model_name'=>$modelName,'category'=>$cat], ['projection'=>['model_id'=>1]]) as $rEx) { $existing[] = (int)($rEx['model_id'] ?? 0); }
+                  $existing = array_values(array_unique(array_filter($existing)));
+                  $queryW = [
+                    'status' => 'Available',
+                    'quantity' => ['$gt' => 0],
+                    '$or' => [ ['model'=>$modelName], ['item_name'=>$modelName] ],
+                    'category' => $cat,
+                    'id' => ['$nin' => $existing]
+                  ];
+                  $optsW = ['projection'=>['id'=>1], 'sort'=>['id'=>1], 'limit'=>$needWh*3];
+                  $added = 0;
+                  foreach ($itemsCol->find($queryW, $optsW) as $itW) {
+                    $midW = (int)($itW['id'] ?? 0); if ($midW<=0) continue; if (in_array($midW, $existing, true)) continue;
+                    try { $buCol->insertOne(['model_id'=>$midW,'model_name'=>$modelName,'category'=>$cat,'created_at'=>date('Y-m-d H:i:s')]); $added++; if ($added >= $needWh) break; } catch (Throwable $_i){ }
+                  }
+                }
+              } catch (Throwable $_top){ }
             }
           }
         }
@@ -1936,7 +2002,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $e) {}
     header('Location: admin_borrow_center.php?bm=toggled'); exit();
   } elseif ($do === 'delete_borrowable') {
-    // Mongo: delete borrowable entry
+    // Mongo: logically delete borrowable entry by setting borrow_limit=0 (preserve active flag)
     try {
       @require_once __DIR__ . '/../vendor/autoload.php';
       @require_once __DIR__ . '/db/mongo.php';
@@ -1945,7 +2011,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $cat = trim($_POST['category'] ?? '');
       $model = trim($_POST['model'] ?? '');
       if ($cat !== '' && $model !== '') {
-        $bmCol->deleteOne(['model_name'=>$model,'category'=>$cat]);
+        $bmCol->updateOne(['model_name'=>$model,'category'=>$cat], ['$set'=>['borrow_limit'=>0]], ['upsert'=>true]);
       }
     } catch (Throwable $e) {}
     header('Location: admin_borrow_center.php?bm=deleted'); exit();
@@ -3801,6 +3867,43 @@ try {
                       <tr><td colspan="5" class="text-center text-muted">No borrowable entries yet.</td></tr>
                     <?php else: ?>
                       <?php foreach ($borrowables as $bm): ?>
+                        <?php
+                          // Pre-check: hide 0/0 groups unless there are in-use items
+                          $c = (string)$bm['category']; $m = (string)$bm['model_name'];
+                          $cs = $c; $ms = $m;
+                          // Resolve quantity row (case-insensitive fallback like below)
+                          $rowPre = null;
+                          if (isset($qtyStats[$cs]) && isset($qtyStats[$cs][$ms])) { $rowPre = $qtyStats[$cs][$ms]; }
+                          else {
+                            $clp = null; $mlp = mb_strtolower($ms);
+                            foreach ($qtyStats as $kc => $arr) { if (mb_strtolower($kc) === mb_strtolower($cs)) { $clp = $kc; break; } }
+                            if ($clp !== null) {
+                              if (isset($qtyStats[$clp][$ms])) { $rowPre = $qtyStats[$clp][$ms]; }
+                              else { foreach ($qtyStats[$clp] as $km => $v) { if (mb_strtolower($km) === $mlp) { $rowPre = $v; break; } } }
+                            }
+                          }
+                          $curLimitPre = 0;
+                          if (isset($borrowLimitMap[$cs]) && isset($borrowLimitMap[$cs][$ms])) { $curLimitPre = (int)$borrowLimitMap[$cs][$ms]; }
+                          else {
+                            $clp2 = null; $mlp2 = mb_strtolower($ms);
+                            foreach ($borrowLimitMap as $kc2 => $arr2) { if (mb_strtolower($kc2) === mb_strtolower($cs)) { $clp2 = $kc2; break; } }
+                            if ($clp2 !== null) {
+                              if (isset($borrowLimitMap[$clp2][$ms])) { $curLimitPre = (int)$borrowLimitMap[$clp2][$ms]; }
+                              else { foreach ($borrowLimitMap[$clp2] as $km2 => $v2) { if (mb_strtolower($km2) === $mlp2) { $curLimitPre = (int)$v2; break; } } }
+                            }
+                          }
+                          $totalPre = $rowPre && isset($rowPre['total']) ? (int)$rowPre['total'] : 0;
+                          if ($totalPre < 0) $totalPre = 0;
+                          // In-use count only (ignore holds/returns) for visibility rule
+                          $inUsePre = 0;
+                          if (isset($activeConsumed[$cs]) && isset($activeConsumed[$cs][$ms])) { $inUsePre += (int)$activeConsumed[$cs][$ms]; }
+                          else {
+                            $clp3 = null; $mlp3 = mb_strtolower($ms);
+                            foreach ($activeConsumed as $kc3 => $arr3) { if (mb_strtolower($kc3) === mb_strtolower($cs)) { $clp3 = $kc3; break; } }
+                            if ($clp3 !== null) { foreach (($activeConsumed[$clp3] ?? []) as $km3 => $v3) { if (mb_strtolower($km3) === $mlp3) { $inUsePre += (int)$v3; break; } } }
+                          }
+                          if ($curLimitPre === 0 && $totalPre === 0 && $inUsePre <= 0) { continue; }
+                        ?>
                         <tr>
                           <td><?php echo htmlspecialchars($bm['category']); ?></td>
                           <td><?php echo htmlspecialchars($bm['model_name']); ?></td>
@@ -5129,10 +5232,17 @@ try {
           if (!items.length) { bodyEl.innerHTML = '<div class="text-muted">No whitelisted serials.</div>'; return; }
           const parts = ['<div class="d-flex flex-wrap gap-2">'];
           items.forEach(it=>{
-            const mid = parseInt(it.model_id||0,10)||0; const sn = String(it.serial_no||'');
+            const mid = parseInt(it.model_id||0,10)||0;
+            const sn = String(it.serial_no||'');
+            const st = String(it.status||'');
+            const blocked = /^(in use|reserved)$/i.test(st);
+            const disAttr = blocked ? ' disabled' : '';
+            const badgeCls = (st==='In Use') ? 'bg-primary' : (st==='Reserved' ? 'bg-info' : (st==='Available' ? 'bg-success' : 'bg-secondary'));
+            const esc = s=>String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
             parts.push('<label class="border rounded px-2 py-1 d-inline-flex align-items-center">'+
-              '<input type="checkbox" class="form-check-input me-2 bm-del-check" value="'+mid+'" />'+
-              '<span class="small">'+(sn?String(sn).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])):'(no serial)')+'</span>'+
+              '<input type="checkbox" class="form-check-input me-2 bm-del-check" value="'+mid+'"'+disAttr+' />'+
+              '<span class="small me-2">'+(sn?esc(sn):'(no serial)')+'</span>'+
+              (st?('<span class="badge '+badgeCls+'">'+esc(st)+'</span>'):'')+
             '</label>');
           });
           parts.push('</div>');
@@ -5147,7 +5257,7 @@ try {
         });
       });
       btnAll && btnAll.addEventListener('click', function(){
-        bodyEl.querySelectorAll('.bm-del-check').forEach(cb=>{ cb.checked = true; });
+        bodyEl.querySelectorAll('.bm-del-check:not(:disabled)').forEach(cb=>{ cb.checked = true; });
       });
       btnConfirm && btnConfirm.addEventListener('click', function(){
         const picks = Array.from(bodyEl.querySelectorAll('.bm-del-check:checked')).map(cb=>cb.value);
