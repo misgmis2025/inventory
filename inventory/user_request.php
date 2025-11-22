@@ -28,6 +28,62 @@ try {
   $USED_MONGO = true;
 } catch (Throwable $e) { $USED_MONGO = false; }
 
+// JSON: reservation_start_hint (earliest start time for reservation on single-quantity items)
+if ($__act === 'reservation_start_hint' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  $modelIn = trim((string)($_GET['model'] ?? ''));
+  try {
+    if ($modelIn === '') { echo json_encode(['earliest'=>'']); exit; }
+    $nowStr = date('Y-m-d H:i:s');
+    if ($USED_MONGO && $mongo_db) {
+      $ii = $mongo_db->selectCollection('inventory_items');
+      // total units for this model
+      $sum = 0; try {
+        $agg = $ii->aggregate([
+          ['$match'=>['$or'=>[['model'=>$modelIn],['item_name'=>$modelIn]]]],
+          ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+          ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+        ]);
+        foreach ($agg as $r){ $sum = (int)($r->sum ?? 0); break; }
+      } catch (Throwable $_) { $sum = 0; }
+      if ($sum > 1) { echo json_encode(['earliest'=>'']); exit; }
+      // Resolve a unit id for this model
+      $unit = $ii->findOne(['$or'=>[['model'=>$modelIn],['item_name'=>$modelIn]]], ['sort'=>['id'=>1], 'projection'=>['id'=>1]]);
+      $blockTs = 0;
+      if ($unit && isset($unit['id'])) {
+        try {
+          $ub = $mongo_db->selectCollection('user_borrows');
+          $borrow = $ub->findOne(['model_id'=>(int)$unit['id'], 'status'=>'Borrowed'], ['projection'=>['expected_return_at'=>1]]);
+          if ($borrow && isset($borrow['expected_return_at'])) { $t = strtotime((string)$borrow['expected_return_at']); if ($t) $blockTs = max($blockTs, $t); }
+        } catch (Throwable $_b) {}
+      }
+      try {
+        $er = $mongo_db->selectCollection('equipment_requests');
+        $activeRes = $er->findOne(['item_name'=>$modelIn, 'type'=>'reservation', 'status'=>'Approved', 'reserved_from'=>['$lte'=>$nowStr], 'reserved_to'=>['$gte'=>$nowStr]], ['sort'=>['reserved_to'=>-1], 'projection'=>['reserved_to'=>1]]);
+        if ($activeRes && isset($activeRes['reserved_to'])) { $t = strtotime((string)$activeRes['reserved_to']); if ($t) $blockTs = max($blockTs, $t); }
+      } catch (Throwable $_r) {}
+      $earliest = $blockTs ? date('Y-m-d H:i:s', $blockTs + 5*60) : '';
+      echo json_encode(['earliest'=>$earliest]); exit;
+    } elseif ($conn) {
+      // total units
+      $sum = 0; if ($st = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st->bind_param('s',$modelIn); $st->execute(); $st->bind_result($sum); $st->fetch(); $st->close(); }
+      if ((int)$sum > 1) { echo json_encode(['earliest'=>'']); exit; }
+      // resolve unit id
+      $uid = 0; if ($st2 = $conn->prepare("SELECT id FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id ASC LIMIT 1")) { $st2->bind_param('ss',$modelIn,$modelIn); $st2->execute(); $st2->bind_result($uid); $st2->fetch(); $st2->close(); }
+      $blockTs = 0;
+      if ($uid) {
+        $expStr = null; if ($st3 = $conn->prepare("SELECT expected_return_at FROM user_borrows WHERE model_id=? AND status='Borrowed' LIMIT 1")) { $st3->bind_param('i',$uid); $st3->execute(); $st3->bind_result($expStr); $st3->fetch(); $st3->close(); }
+        if ($expStr) { $t = strtotime((string)$expStr); if ($t) $blockTs = max($blockTs, $t); }
+      }
+      $resStr = null; if ($st4 = $conn->prepare("SELECT MAX(reserved_to) FROM equipment_requests WHERE type='reservation' AND status='Approved' AND LOWER(TRIM(item_name))=LOWER(TRIM(?)) AND reserved_from <= NOW() AND reserved_to >= NOW()")) { $st4->bind_param('s',$modelIn); $st4->execute(); $st4->bind_result($resStr); $st4->fetch(); $st4->close(); }
+      if ($resStr) { $t = strtotime((string)$resStr); if ($t) $blockTs = max($blockTs, $t); }
+      $earliest = $blockTs ? date('Y-m-d H:i:s', $blockTs + 5*60) : '';
+      echo json_encode(['earliest'=>$earliest]); exit;
+    }
+  } catch (Throwable $_) { echo json_encode(['earliest'=>'']); }
+  exit;
+}
+
 // JSON: my_overdue (active borrowed items past expected_return_at)
 if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
@@ -642,21 +698,13 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $limit = $bmDoc && isset($bmDoc['borrow_limit']) ? (int)$bmDoc['borrow_limit'] : 0;
 
         if ($for === 'reservation') {
-          // Reservation: include in-use units; exclude items not borrowable or lost/damaged
-          // Total units by model (sum of quantity across docs)
+          // Reservation: include in-use units; exclude items with status Lost/Under Maintenance
           $total = 0; $agg = $ii->aggregate([
-            ['$match'=>['$or'=>[['model'=>$mkey],['item_name'=>$mkey]], 'category'=>$category]],
+            ['$match'=>['$or'=>[['model'=>$mkey],['item_name'=>$mkey]], 'category'=>$category, 'status'=>['$nin'=>['Lost','Under Maintenance']]]],
             ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
             ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
           ]); foreach ($agg as $r){ $total = (int)($r->sum ?? 0); break; }
-          // Subtract units marked lost/damaged by latest logs
-          $ids = $ii->distinct('id', ['category'=>$category, '$or'=>[['model'=>$mkey],['item_name'=>$mkey]]]);
-          $ld = 0; try {
-            $ldCol = $mongo_db->selectCollection('lost_damaged_log');
-            $lostIds = $ldCol->distinct('model_id', ['model_id'=>['$in'=>array_map('intval',$ids)], 'action'=>['$in'=>['Lost','Under Maintenance']]]);
-            $ld = is_array($lostIds) ? count($lostIds) : 0;
-          } catch (Throwable $_) { $ld = 0; }
-          $base = max(0, $total - $ld);
+          $base = max(0, $total);
           $available = ($limit > 0) ? max(0, min($limit, $base)) : $base;
         } else {
           // Immediate: only currently Available units
@@ -676,10 +724,9 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       if ($st = $conn->prepare("SELECT COALESCE(NULLIF(model,''), item_name) AS m, COALESCE(NULLIF(category,''),'Uncategorized') AS c FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id DESC LIMIT 1")) { $st->bind_param('ss', $model, $model); $st->execute(); $st->bind_result($m,$c); if ($st->fetch()){ $model=(string)$m; $category=(string)$c; } $st->close(); }
       $limit = 0; if ($q2 = $conn->prepare("SELECT borrow_limit FROM borrowable_models WHERE active=1 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?))")) { $q2->bind_param('ss', $model, $category); $q2->execute(); $q2->bind_result($limit); $q2->fetch(); $q2->close(); }
       if ($for === 'reservation') {
-        // Reservation: include in-use; exclude lost/damaged
-        $sum = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?))")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($sum); $q->fetch(); $q->close(); }
-        $lost = 0; if ($q3 = $conn->prepare("SELECT COUNT(DISTINCT l.model_id) FROM lost_damaged_log l JOIN inventory_items ii ON ii.id = l.model_id WHERE (ii.model = ? OR ii.item_name = ?) AND l.action IN ('Lost','Under Maintenance')")) { $q3->bind_param('ss', $model, $model); $q3->execute(); $q3->bind_result($lost); $q3->fetch(); $q3->close(); }
-        $base = max(0, ((int)$sum - (int)$lost));
+        // Reservation: include in-use; exclude items with status Lost/Under Maintenance
+        $sum = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND (status <> 'Lost' AND status <> 'Under Maintenance')")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($sum); $q->fetch(); $q->close(); }
+        $base = max(0, (int)$sum);
         $available = ($limit > 0) ? max(0, min((int)$limit, $base)) : $base;
       } else {
         // Immediate: only currently Available units
@@ -2202,7 +2249,7 @@ if (!empty($my_requests)) {
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-              <form method="POST" id="borrowForm" class="compact-form" onsubmit="return validateForm()">
+              <form method="POST" id="borrowForm" class="compact-form">
                 <div class="mb-3">
                   <label class="form-label fw-bold d-block">Request Type</label>
                   <input type="hidden" name="req_type" id="req_type" value="immediate" />
@@ -2267,7 +2314,7 @@ if (!empty($my_requests)) {
                       
                       <div class="row g-3">
                         <div class="col-12">
-                          <label class="form-label fw-bold" for="reserved_from">Start Time <span class="text-danger">*</span></label>
+                          <label class="form-label fw-bold d-flex align-items-center gap-2" for="reserved_from">Start Time <span class="text-danger">*</span><small id="reservedStartHint" class="text-info"></small></label>
                           <input type="datetime-local" id="reserved_from" name="reserved_from" class="form-control" 
                                  min="<?php echo date('Y-m-d\TH:i'); ?>" />
                         </div>
@@ -2330,12 +2377,13 @@ if (!empty($my_requests)) {
                   });
                 });
                 
-                // Form validation
-                function validateForm() {
+                // Form validation helpers
+                let reservationEarliestMin = '';
+                function isFormValid(silent){
                   const form = document.getElementById('borrowForm');
                   const reqType = document.getElementById('req_type').value;
                   const errorEl = document.getElementById('formError');
-                  errorEl.classList.add('d-none');
+                  if (!silent) errorEl.classList.add('d-none');
                   
                   // Common validations
                   const location = form.elements['req_location']?.value.trim();
@@ -2344,22 +2392,22 @@ if (!empty($my_requests)) {
                   const quantity = parseInt(form.elements['quantity']?.value) || 0;
                   
                   if (!location) {
-                    showError('Please enter a location');
+                    if (!silent) showError('Please enter a location');
                     return false;
                   }
                   
                   if (!category) {
-                    showError('Please select a category');
+                    if (!silent) showError('Please select a category');
                     return false;
                   }
                   
                   if (!model) {
-                    showError('Please select a model');
+                    if (!silent) showError('Please select a model');
                     return false;
                   }
                   
                   if (quantity < 1) {
-                    showError('Please enter a valid quantity');
+                    if (!silent) showError('Please enter a valid quantity');
                     return false;
                   }
                   
@@ -2371,17 +2419,17 @@ if (!empty($my_requests)) {
                     maxReturnTime.setDate(maxReturnTime.getDate() + 1); // 24 hours max
                     
                     if (!returnTime || isNaN(returnTime.getTime())) {
-                      showError('Please enter a valid return time');
+                      if (!silent) showError('Please enter a valid return time');
                       return false;
                     }
                     
                     if (returnTime <= now) {
-                      showError('Return time must be in the future');
+                      if (!silent) showError('Return time must be in the future');
                       return false;
                     }
                     
                     if (returnTime > maxReturnTime) {
-                      showError('Immediate borrow cannot exceed 24 hours');
+                      if (!silent) showError('Immediate borrow cannot exceed 24 hours');
                       return false;
                     }
                   } else { // Reservation
@@ -2392,38 +2440,58 @@ if (!empty($my_requests)) {
                     maxReservationTime.setDate(maxReservationTime.getDate() + 7); // 7 days max
                     
                     if (!startTime || isNaN(startTime.getTime())) {
-                      showError('Please enter a valid start time');
+                      if (!silent) showError('Please enter a valid start time');
                       return false;
                     }
                     
                     if (!endTime || isNaN(endTime.getTime())) {
-                      showError('Please enter a valid end time');
+                      if (!silent) showError('Please enter a valid end time');
                       return false;
                     }
                     
                     if (startTime <= now) {
-                      showError('Reservation start time must be in the future');
+                      if (!silent) showError('Reservation start time must be in the future');
                       return false;
                     }
                     
                     if (endTime <= startTime) {
-                      showError('End time must be after start time');
+                      if (!silent) showError('End time must be after start time');
                       return false;
                     }
                     
                     if (endTime > maxReservationTime) {
-                      showError('Reservations can only be made up to 7 days in advance');
+                      if (!silent) showError('Reservations can only be made up to 7 days in advance');
                       return false;
                     }
                     
                     const durationHours = (endTime - startTime) / (1000 * 60 * 60);
                     if (durationHours > 24) {
-                      showError('Reservations cannot exceed 24 hours');
+                      if (!silent) showError('Reservations cannot exceed 24 hours');
                       return false;
                     }
+                    // Enforce earliest allowed start if we have a hint
+                    try {
+                      if (reservationEarliestMin) {
+                        const m = new Date(reservationEarliestMin.replace(' ', 'T'));
+                        if (m && !isNaN(m.getTime()) && startTime < m) {
+                          if (!silent) showError('Start time must be at least 5 minutes after the current expected return or reservation end.');
+                          return false;
+                        }
+                      }
+                    } catch(_){ }
                   }
                   
                   return true;
+                }
+                function validateForm(){ return isFormValid(false); }
+                function updateSubmitButton(){
+                  const form = document.getElementById('borrowForm');
+                  const btn = form ? form.querySelector('button[type="submit"]') : null;
+                  if (!btn) return;
+                  const ok = isFormValid(true);
+                  btn.disabled = !ok;
+                  if (ok) { btn.classList.add('btn-primary'); btn.classList.remove('btn-secondary','disabled'); }
+                  else { btn.classList.add('btn-secondary'); btn.classList.remove('btn-primary'); }
                 }
                 
                 function showError(message) {
@@ -2474,11 +2542,17 @@ if (!empty($my_requests)) {
                     var form = modalEl.querySelector('form');
                     var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
                     if (form) {
+                      // Disable/enable on input changes
+                      form.addEventListener('input', function(){ updateSubmitButton(); });
+                      form.addEventListener('change', function(){ updateSubmitButton(); });
+                      // Controlled submit to avoid stuck state
                       form.addEventListener('submit', function(e){
                         if (form.dataset.submitting === '1') { e.preventDefault(); return; }
+                        const ok = validateForm();
+                        if (!ok) { e.preventDefault(); updateSubmitButton(); return; }
                         form.dataset.submitting = '1';
                         if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('disabled'); submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Submitting...'; }
-                      }, { capture: true });
+                      });
                     }
                   } catch(_){ }
                 })();
@@ -4636,6 +4710,30 @@ if (!empty($my_requests)) {
         }
       } catch(_){ }
       updateModelEnabled(); updateAvailHint();
+      // Reservation earliest-start hint
+      function fetchReservationStartHint(){
+        try {
+          var typeEl = document.getElementById('req_type'); if (!typeEl || typeEl.value !== 'reservation') { reservationEarliestMin=''; document.getElementById('reservedStartHint').textContent=''; return; }
+          var modelEl = document.getElementById('model'); var m = modelEl && modelEl.value ? modelEl.value : ''; if (!m){ reservationEarliestMin=''; document.getElementById('reservedStartHint').textContent=''; return; }
+          fetch('user_request.php?action=reservation_start_hint&model=' + encodeURIComponent(m), { cache:'no-store' })
+            .then(r=>r.json()).then(function(d){
+              reservationEarliestMin = (d && d.earliest) ? String(d.earliest) : '';
+              var hintEl = document.getElementById('reservedStartHint');
+              if (reservationEarliestMin){
+                // Display local-friendly text
+                try { var dt = new Date(reservationEarliestMin.replace(' ','T')); hintEl.textContent = 'Earliest start: ' + (isNaN(dt)? reservationEarliestMin : dt.toLocaleString()); } catch(_){ hintEl.textContent = 'Earliest start: ' + reservationEarliestMin; }
+                // Update min attribute
+                var sf = document.getElementById('reserved_from'); if (sf){ try { var dt2=new Date(reservationEarliestMin.replace(' ','T')); var pad=n=>n<10?('0'+n):n; var v = dt2.getFullYear()+'-'+pad(dt2.getMonth()+1)+'-'+pad(dt2.getDate())+'T'+pad(dt2.getHours())+':'+pad(dt2.getMinutes()); sf.min = v; } catch(_){ } }
+              } else { hintEl.textContent=''; }
+              updateSubmitButton();
+            }).catch(function(){ /*no-op*/ });
+        } catch(_){ }
+      }
+      document.getElementById('model') && document.getElementById('model').addEventListener('change', function(){ fetchReservationStartHint(); });
+      document.getElementById('req_type') && document.getElementById('req_type').addEventListener('change', function(){ fetchReservationStartHint(); });
+      fetchReservationStartHint();
+      // Initialize button state
+      try { updateSubmitButton(); } catch(_){ }
       let inFlightReq = false;
       let inFlightBor = false;
       let inFlightHist = false;
