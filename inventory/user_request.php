@@ -625,6 +625,7 @@ if ($__act === 'my_history' && $_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
   $model = trim((string)($_GET['model'] ?? '')); $available = 0; $category = 'Uncategorized';
+  $for = isset($_GET['for']) ? (string)$_GET['for'] : '';
   if ($USED_MONGO && $mongo_db) {
     try {
       if ($model !== '') {
@@ -633,31 +634,58 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $doc = $ii->findOne(['$or'=>[['model'=>$model],['item_name'=>$model]]], ['sort'=>['id'=>-1], 'projection'=>['model'=>1,'item_name'=>1,'category'=>1]]);
         $mkey = $doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? $model)) : $model;
         $category = $doc ? ((string)($doc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
-        // Fast path: just count currently Available units for this model/category
-        $availNow = (int)$ii->countDocuments([
-          'status'=>'Available',
-          'quantity'=>['$gt'=>0],
-          '$or'=>[['model'=>$mkey],['item_name'=>$mkey]],
-          'category'=>$category
-        ]);
         // Borrow limit (cap)
         $bmDoc = $bm->findOne(
           ['active'=>1,'model_name'=>$mkey,'category'=>$category],
           ['projection'=>['borrow_limit'=>1], 'collation'=>['locale'=>'en','strength'=>2]]
         );
         $limit = $bmDoc && isset($bmDoc['borrow_limit']) ? (int)$bmDoc['borrow_limit'] : 0;
-        $available = ($limit > 0) ? max(0, min($limit, $availNow)) : max(0, $availNow);
+
+        if ($for === 'reservation') {
+          // Reservation: include in-use units; exclude items not borrowable or lost/damaged
+          // Total units by model (sum of quantity across docs)
+          $total = 0; $agg = $ii->aggregate([
+            ['$match'=>['$or'=>[['model'=>$mkey],['item_name'=>$mkey]], 'category'=>$category]],
+            ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
+            ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
+          ]); foreach ($agg as $r){ $total = (int)($r->sum ?? 0); break; }
+          // Subtract units marked lost/damaged by latest logs
+          $ids = $ii->distinct('id', ['category'=>$category, '$or'=>[['model'=>$mkey],['item_name'=>$mkey]]]);
+          $ld = 0; try {
+            $ldCol = $mongo_db->selectCollection('lost_damaged_log');
+            $lostIds = $ldCol->distinct('model_id', ['model_id'=>['$in'=>array_map('intval',$ids)], 'action'=>['$in'=>['Lost','Under Maintenance']]]);
+            $ld = is_array($lostIds) ? count($lostIds) : 0;
+          } catch (Throwable $_) { $ld = 0; }
+          $base = max(0, $total - $ld);
+          $available = ($limit > 0) ? max(0, min($limit, $base)) : $base;
+        } else {
+          // Immediate: only currently Available units
+          $availNow = (int)$ii->countDocuments([
+            'status'=>'Available',
+            'quantity'=>['$gt'=>0],
+            '$or'=>[['model'=>$mkey],['item_name'=>$mkey]],
+            'category'=>$category
+          ]);
+          $available = ($limit > 0) ? max(0, min($limit, $availNow)) : max(0, $availNow);
+        }
       }
     } catch (Throwable $e) { $available = 0; }
     echo json_encode(['available'=>(int)$available]);
   } else {
     if ($conn && $model !== '') {
       if ($st = $conn->prepare("SELECT COALESCE(NULLIF(model,''), item_name) AS m, COALESCE(NULLIF(category,''),'Uncategorized') AS c FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id DESC LIMIT 1")) { $st->bind_param('ss', $model, $model); $st->execute(); $st->bind_result($m,$c); if ($st->fetch()){ $model=(string)$m; $category=(string)$c; } $st->close(); }
-      // Raw available now
-      $availNow = 0; $limit = 0;
-      if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND status='Available' AND quantity>0")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($availNow); $q->fetch(); $q->close(); }
-      if ($q2 = $conn->prepare("SELECT borrow_limit FROM borrowable_models WHERE active=1 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?))")) { $q2->bind_param('ss', $model, $category); $q2->execute(); $q2->bind_result($limit); $q2->fetch(); $q2->close(); }
-      $available = max(0, min((int)$limit, (int)$availNow));
+      $limit = 0; if ($q2 = $conn->prepare("SELECT borrow_limit FROM borrowable_models WHERE active=1 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?))")) { $q2->bind_param('ss', $model, $category); $q2->execute(); $q2->bind_result($limit); $q2->fetch(); $q2->close(); }
+      if ($for === 'reservation') {
+        // Reservation: include in-use; exclude lost/damaged
+        $sum = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?))")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($sum); $q->fetch(); $q->close(); }
+        $lost = 0; if ($q3 = $conn->prepare("SELECT COUNT(DISTINCT l.model_id) FROM lost_damaged_log l JOIN inventory_items ii ON ii.id = l.model_id WHERE (ii.model = ? OR ii.item_name = ?) AND l.action IN ('Lost','Under Maintenance')")) { $q3->bind_param('ss', $model, $model); $q3->execute(); $q3->bind_result($lost); $q3->fetch(); $q3->close(); }
+        $base = max(0, ((int)$sum - (int)$lost));
+        $available = ($limit > 0) ? max(0, min((int)$limit, $base)) : $base;
+      } else {
+        // Immediate: only currently Available units
+        $availNow = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND status='Available' AND quantity>0")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($availNow); $q->fetch(); $q->close(); }
+        $available = max(0, min((int)$limit, (int)$availNow));
+      }
     }
     echo json_encode(['available'=>(int)$available]);
   }
@@ -4237,7 +4265,10 @@ if (!empty($my_requests)) {
       if (typeof __UR_POLLING_PAUSED__ !== 'undefined' && __UR_POLLING_PAUSED__) return;
       if (inFlightAvail && availAbort) { try { availAbort.abort(); } catch(_){ } }
       inFlightAvail = true; availAbort = new AbortController();
-      fetch('user_request.php?action=avail&model=' + encodeURIComponent(selModel), { signal: availAbort.signal, cache: 'no-store' })
+      var mode = 'immediate';
+      try { var tEl=document.getElementById('req_type'); mode = (tEl && tEl.value) ? String(tEl.value) : 'immediate'; } catch(_){ mode='immediate'; }
+      var url = 'user_request.php?action=avail&model=' + encodeURIComponent(selModel) + (mode==='reservation' ? '&for=reservation' : '');
+      fetch(url, { signal: availAbort.signal, cache: 'no-store' })
         .then(r=>r.ok?r.json():Promise.reject())
         .then(d=>{ const n = (d && typeof d.available==='number') ? d.available : 0; if (qtyAvailHint) qtyAvailHint.textContent = 'Available: ' + String(n); if (qtyInput){ const clamp = Math.max(1, n); qtyInput.max = String(clamp); if (parseInt(qtyInput.value||'1',10) > n){ qtyInput.value = String(clamp); } } })
         .catch(()=>{ /* silent */ })
