@@ -3902,7 +3902,7 @@ try {
                             foreach ($activeConsumed as $kc3 => $arr3) { if (mb_strtolower($kc3) === mb_strtolower($cs)) { $clp3 = $kc3; break; } }
                             if ($clp3 !== null) { foreach (($activeConsumed[$clp3] ?? []) as $km3 => $v3) { if (mb_strtolower($km3) === $mlp3) { $inUsePre += (int)$v3; break; } } }
                           }
-                          if ($curLimitPre === 0 && $totalPre === 0 && $inUsePre <= 0) { continue; }
+                          if ($totalPre === 0 && $inUsePre <= 0) { continue; }
                         ?>
                         <tr>
                           <td><?php echo htmlspecialchars($bm['category']); ?></td>
@@ -4587,7 +4587,10 @@ try {
         <div class="modal-body">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div><strong>Category:</strong> <span id="bmDelCat"></span> &nbsp; <strong>Model:</strong> <span id="bmDelModel"></span></div>
-            <div><button type="button" class="btn btn-sm btn-outline-secondary" id="bmDelSelectAll">Select All</button></div>
+            <div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="bmDelSelectAll">Select All</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="bmDelUnselectAll">Unselect All</button>
+            </div>
           </div>
           <div id="bmDeleteBody"><div class="text-muted">Loading whitelisted serials...</div></div>
         </div>
@@ -5221,6 +5224,7 @@ try {
       const catEl = document.getElementById('bmDelCat');
       const modelEl = document.getElementById('bmDelModel');
       const btnAll = document.getElementById('bmDelSelectAll');
+      const btnNone = document.getElementById('bmDelUnselectAll');
       const btnConfirm = document.getElementById('bmDeleteConfirmBtn');
       let curCat = '', curModel = '';
       async function loadWhitelisted(cat, model){
@@ -5258,6 +5262,9 @@ try {
       });
       btnAll && btnAll.addEventListener('click', function(){
         bodyEl.querySelectorAll('.bm-del-check:not(:disabled)').forEach(cb=>{ cb.checked = true; });
+      });
+      btnNone && btnNone.addEventListener('click', function(){
+        bodyEl.querySelectorAll('.bm-del-check:not(:disabled)').forEach(cb=>{ cb.checked = false; });
       });
       btnConfirm && btnConfirm.addEventListener('click', function(){
         const picks = Array.from(bodyEl.querySelectorAll('.bm-del-check:checked')).map(cb=>cb.value);
