@@ -1867,8 +1867,8 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             }
           } catch (Throwable $_) { }
           if ($conflict) { if ($status !== 'In Use') { $status = 'Reserved'; } $resFrom = $confFrom; $resTo = $confTo; $fits = false; }
-          // Only allow inventory statuses eligible for editing
-          if (!in_array($status, ['Available','In Use'], true)) { $fits = false; }
+          // Only allow inventory statuses eligible for editing (include Reserved if non-conflicting)
+          if (!in_array($status, ['Available','In Use','Reserved'], true)) { $fits = false; }
           // Only include units that fit the reservation window (eligible for editing)
           if (!$fits) { continue; }
           $items[] = [
@@ -1963,9 +1963,9 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
         if ($endTs <= time()) { echo json_encode(['ok'=>false,'reason'=>'Selected unit is overdue']); exit(); }
         if (!($endTs <= ($tsStart - $buf))) { echo json_encode(['ok'=>false,'reason'=>'Selected unit is in use and returns too late']); exit(); }
       }
-      // Status check (allow Available or In Use with safe return)
+      // Status check (allow Available, Reserved, or In Use with safe return)
       $st = (string)($unit['status'] ?? '');
-      if ($st !== '' && !in_array($st, ['Available','In Use'], true)) { echo json_encode(['ok'=>false,'reason'=>'Unit not available (status: '.$st.')']); exit(); }
+      if ($st !== '' && !in_array($st, ['Available','In Use','Reserved'], true)) { echo json_encode(['ok'=>false,'reason'=>'Unit not available (status: '.$st.')']); exit(); }
       echo json_encode(['ok'=>true]);
       exit();
     }
