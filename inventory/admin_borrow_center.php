@@ -1732,16 +1732,19 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           // current borrow check
           $ub = null; try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1]]); } catch (Throwable $_) { $ub = null; }
           if ($ub) {
-            $endTs = null; $al = null; try { $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]); } catch (Throwable $_) { $al = null; }
+            $endTs = null; $al = null; $hasKnownEnd = false;
+            try { $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]); } catch (Throwable $_) { $al = null; }
             if ($al && isset($al['request_id'])) {
               try {
                 $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
                 if ($orig) {
                   $endStr = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? ''));
-                  if ($endStr !== '') { $inUseEnd = $endStr; $t = strtotime($endStr); if ($t && $tsStart && !($t <= ($tsStart - $buf))) { $fits = false; } }
+                  if ($endStr !== '') { $inUseEnd = $endStr; $t = strtotime($endStr); $hasKnownEnd = (bool)$t; if ($t && $tsStart && !($t <= ($tsStart - $buf))) { $fits = false; } }
                 }
               } catch (Throwable $_) { }
             }
+            // If currently in use but expected return is unknown, do not list as eligible
+            if (!$hasKnownEnd) { $fits = false; }
             $status = 'In Use';
           }
           // reservation conflicts on this unit (exclude current request id)
@@ -1759,6 +1762,10 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             }
           } catch (Throwable $_) { }
           if ($conflict) { if ($status !== 'In Use') { $status = 'Reserved'; } $resFrom = $confFrom; $resTo = $confTo; $fits = false; }
+          // Only allow inventory statuses eligible for editing
+          if (!in_array($status, ['Available','In Use'], true)) { $fits = false; }
+          // Only include units that fit the reservation window (eligible for editing)
+          if (!$fits) { continue; }
           $items[] = [
             'model_id'=>$mid,
             'serial_no'=>$serial,
