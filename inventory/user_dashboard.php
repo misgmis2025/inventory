@@ -577,32 +577,20 @@ if (!$USED_MONGO) {
                           + '</a>');
                     }
                 });
-                // Fetch admin-initiated returnship requests and add to the top with action
-                fetch('user_request.php?action=user_notifications', { cache:'no-store' })
+                // Overdue summary at top
+                fetch('user_request.php?action=my_overdue', { cache:'no-store' })
                   .then(r=>r.json())
-                  .then(d=>{
-                      const returnships = Array.isArray(d.returnships) ? d.returnships : [];
-                      returnships.forEach(function(rs){
-                          const rid = parseInt(rs.request_id||0,10)||0;
-                          if (!rid) return;
-                          const name = (rs.model_name||'').toString();
-                          const itemStatus = (rs.item_status||'').toString();
-                          const when = (rs.ts||'').toString();
-                          const whenHtml = when ? ('<small class="text-muted">'+escapeHtml(when)+'</small>') : '';
-                          const badgeCls = (itemStatus==='Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
-                          const url = 'user_request.php?open_return_qr='+encodeURIComponent(rid)+'&model_name='+encodeURIComponent(name);
-                          const action = '<a href="'+url+'" class="btn btn-sm btn-outline-primary open-qr-return"><i class="bi bi-qr-code-scan"></i> Return via QR</a>';
-                          rows.unshift('<div class="list-group-item">'
-                            + '<div class="d-flex w-100 justify-content-between">'
-                            +   '<strong>#'+rid+' '+escapeHtml(name)+'</strong>'
-                            +   whenHtml
-                            + '</div>'
-                            + '<div class="d-flex justify-content-between align-items-center mt-1">'
-                            +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(itemStatus || 'In Use')+'</span></div>'
-                            +   '<div>'+action+'</div>'
-                            + '</div>'
-                            + '</div>');
-                      });
+                  .then(o=>{
+                      const list = (o && Array.isArray(o.overdue)) ? o.overdue : [];
+                      const oc = list.length;
+                      if (oc>0){
+                        const txt = (oc===1) ? 'You have an overdue item' : ('You have overdue items ('+oc+')');
+                        rows.unshift('<a href="user_request.php?view=overdue" class="list-group-item list-group-item-action">'
+                          + '<div class="d-flex w-100 justify-content-between">'
+                          +   '<strong>'+txt+'</strong>'
+                          + '</div>'
+                          + '</a>');
+                      }
                   })
                   .catch(()=>{})
                   .finally(()=>{

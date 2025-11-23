@@ -5135,8 +5135,21 @@ if (!empty($my_requests)) {
       }
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
       // Build full list (base requests + extras) in memory and return rows + metadata
-      function composeRows(baseList, dn){
+      function composeRows(baseList, dn, ovCount){
         let latest=0; let sigParts=[]; const combined=[];
+        // Overdue summary always at top when present
+        try{
+          const oc = parseInt(ovCount||0,10)||0;
+          if (oc>0){
+            const txt = (oc===1) ? 'You have an overdue item' : ('You have overdue items ('+oc+')');
+            const oh = '<a href="user_request.php?view=overdue" class="list-group-item list-group-item-action">'
+              + '<div class="d-flex w-100 justify-content-between">'
+              +   '<strong>'+txt+'</strong>'
+              + '</div>'
+              + '</a>';
+            combined.push({type:'overdue', id:0, ts: (Date.now()+1000000), html: oh});
+          }
+        }catch(_){ }
         (baseList||[]).forEach(function(r){
           const id = parseInt(r.id||0,10);
           const st = String(r.status||'');
@@ -5158,30 +5171,7 @@ if (!empty($my_requests)) {
           combined.push({type:'base', id, ts: tsn, html});
         });
         try{
-          const returnships = (dn && Array.isArray(dn.returnships)) ? dn.returnships : [];
           const decisions = (dn && Array.isArray(dn.decisions)) ? dn.decisions : [];
-          returnships.forEach(function(rs){
-            const rid = parseInt(rs.request_id||0,10)||0; if (!rid) return;
-            const name = escapeHtml(String(rs.model_name||''));
-            const ist = String(rs.item_status||'');
-            const ts = String(rs.ts||'');
-            let tsn = 0; try { const d = ts ? new Date(String(ts).replace(' ','T')) : null; if (d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } } catch(_){ }
-            if (tsn>latest) latest=tsn;
-            const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
-            const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
-            const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
-            const html = '<div class="list-group-item">'
-              + '<div class="d-flex w-100 justify-content-between">'
-              +   '<strong>#'+rid+' '+name+'</strong>'
-              +   whenHtml
-              + '</div>'
-              + '<div class="d-flex justify-content-between align-items-center mt-1">'
-              +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
-              +   '<div>'+action+'</div>'
-              + '</div>'
-              + '</div>';
-            combined.push({type:'extra', id: rid, ts: tsn, html});
-          });
           decisions.forEach(function(dc){
             const rid = parseInt(dc.id||0,10)||0; if (!rid) return;
             const msg = escapeHtml(String(dc.message||''));
@@ -5200,17 +5190,17 @@ if (!empty($my_requests)) {
           });
         }catch(_){ }
         combined.sort(function(a,b){
+          function w(t){ if (t==='overdue') return 2; if (t==='base') return 1; return 0; }
+          const wa = w(a.type||''); const wb = w(b.type||'');
+          if (wa !== wb) return wb - wa; // overdue first
           if (b.ts !== a.ts) return b.ts - a.ts;
-          const aw = (a.type === 'base') ? 1 : 0;
-          const bw = (b.type === 'base') ? 1 : 0;
-          if (aw !== bw) return aw - bw;
           return (b.id||0) - (a.id||0);
         });
         const rows = combined.map(function(x){ return x.html; });
         return { rows, latest, sig: sigParts.join(',') };
       }
       function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; 
-        const built = composeRows(items);
+        const built = composeRows(items, undefined, (window.__UR_OVCOUNT__||0));
         // Update dot state
         try {
           const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
@@ -5238,13 +5228,17 @@ if (!empty($my_requests)) {
         if (!isOpen) setLoadingList();
         Promise.all([
           fetch('user_request.php?action=my_requests_status', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
-          fetch('user_request.php?action=user_notifications', { cache:'no-store' }).then(r=>r.json()).catch(()=>({}))
+          fetch('user_request.php?action=user_notifications', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
+          fetch('user_request.php?action=my_overdue', { cache:'no-store' }).then(r=>r.json()).catch(()=>({}))
         ])
-        .then(([d, dn])=>{
+        .then(([d, dn, ov])=>{
           const raw = (d && Array.isArray(d.requests)) ? d.requests : [];
           const base = raw.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
           const picked = base;
-          const built = composeRows(picked, dn);
+          const ovList = (ov && Array.isArray(ov.overdue)) ? ov.overdue : [];
+          const ovCount = ovList.length;
+          window.__UR_OVCOUNT__ = ovCount;
+          const built = composeRows(picked, dn, ovCount);
           // Update dot state
           try {
             const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
