@@ -814,18 +814,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         (function(){
             var isAdmin = <?php echo json_encode($usertype === 'admin'); ?>;
             if (isAdmin) return;
+            return;
             let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=660; g.gain.setValueAtTime(0.0001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.15,audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.24);}catch(_){} }
             function ensureWrap(){
-              let w=document.getElementById('userPersistentWrap');
-              if(!w){
-                w=document.createElement('div');
-                w.id='userPersistentWrap';
-                w.style.position='fixed';
-                w.style.right='16px';
-                w.style.bottom='16px';
-                w.style.zIndex='1090';
-                w.style.display='flex';
-                w.style.flexDirection='column';
+                let w=document.getElementById('userPersistentWrap');
+                if(!w){
+                    w=document.createElement('div');
+                    w.id='userPersistentWrap';
+                    w.style.position='fixed';
+                    w.style.right='16px';
+                    w.style.bottom='16px';
+                    w.style.zIndex='1090';
+                    w.style.display='flex';
+                    w.style.flexDirection='column';
+                    w.style.gap='8px';
+                    w.style.pointerEvents='none';
+                    document.body.appendChild(w);
                 w.style.gap='8px';
                 w.style.pointerEvents='none';
                 document.body.appendChild(w);
