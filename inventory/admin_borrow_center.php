@@ -4613,6 +4613,24 @@ try {
     </div>
   </div>
 
+  <!-- Action Error Modal -->
+  <div class="modal fade" id="actionErrorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Action Failed</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="aemMessage"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Prefill Edit Reserved Serial modal
     (function(){
@@ -4632,6 +4650,47 @@ try {
           var serialField = document.getElementById('ersSerial'); if (serialField) { serialField.value = cur || ''; setTimeout(function(){ try{ serialField.focus(); serialField.select(); }catch(_){ } }, 50); }
           try { if (window._ersQueueValidate) window._ersQueueValidate(); } catch(_) {}
         });
+      });
+    })();
+  </script>
+
+  <script>
+    // Show a friendly error modal when redirected back with ?error=...
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        try {
+          var sp = new URLSearchParams(window.location.search);
+          var err = sp.get('error');
+          if (!err) return;
+          var msg = '';
+          if (err === 'edit_serial_conflict') {
+            msg = 'Cannot assign this serial. It conflicts with another approved reservation for the selected time window.';
+          } else if (err === 'edit_serial_inuse') {
+            msg = 'Cannot assign this serial. It is currently in use and returns too late for the reservation start (requires a 5-minute buffer).';
+          } else if (err === 'edit_serial_missing') {
+            msg = 'Missing request or serial.';
+          } else if (err === 'edit_serial_notapproved') {
+            msg = 'Only approved reservations can be edited.';
+          } else if (err === 'edit_serial_baditem') {
+            msg = 'Invalid item for this reservation.';
+          } else if (err === 'edit_serial_single') {
+            msg = 'Serial cannot be changed for single-unit models.';
+          } else if (err === 'edit_serial_notfound') {
+            msg = 'Serial ID not found.';
+          } else if (err === 'edit_serial_mismatch') {
+            msg = 'Serial belongs to a different model; please choose a matching unit.';
+          } else if (err === 'edit_serial_time') {
+            msg = 'Invalid reservation time.';
+          } else {
+            return;
+          }
+          var body = document.getElementById('aemMessage');
+          if (body) body.textContent = msg;
+          var mdl = document.getElementById('actionErrorModal');
+          if (mdl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(mdl).show();
+          }
+        } catch(_) { }
       });
     })();
   </script>
