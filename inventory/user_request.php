@@ -1462,8 +1462,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Reservation start time must be in the future.';
           } elseif ($end_time <= $start_time) {
             $error = 'Reservation end time must be after start time.';
-          } elseif (($end_time - $start_time) > (7 * 24 * 60 * 60)) {
-            $error = 'Reservation cannot exceed 7 days.';
           } else {
             // Check for overlapping reservations and apply 5-min buffer rules
             if ($USED_MONGO && $mongo_db) {
@@ -2353,7 +2351,7 @@ if (!empty($my_requests)) {
                           <label class="form-label fw-bold" for="reserved_to">End Time <span class="text-danger">*</span></label>
                           <input type="datetime-local" id="reserved_to" name="reserved_to" class="form-control" 
                                  min="<?php echo date('Y-m-d\TH:i', strtotime('+1 hour')); ?>" />
-                          <div class="form-text">Reservations can be made up to 7 days in advance</div>
+                          <div class="form-text">No fixed reservation duration limit (subject to admin approval)</div>
                         </div>
                       </div>
                     </div>
@@ -2467,8 +2465,6 @@ if (!empty($my_requests)) {
                     const startTime = new Date(form.elements['reserved_from'].value);
                     const endTime = new Date(form.elements['reserved_to'].value);
                     const now = new Date();
-                    const maxReservationTime = new Date(now);
-                    maxReservationTime.setDate(maxReservationTime.getDate() + 7); // 7 days max
                     
                     if (!startTime || isNaN(startTime.getTime())) {
                       if (!silent) showError('Please enter a valid start time');
@@ -2490,16 +2486,6 @@ if (!empty($my_requests)) {
                       return false;
                     }
                     
-                    if (endTime > maxReservationTime) {
-                      if (!silent) showError('Reservations can only be made up to 7 days in advance');
-                      return false;
-                    }
-                    
-                    const durationHours = (endTime - startTime) / (1000 * 60 * 60);
-                    if (durationHours > 24) {
-                      if (!silent) showError('Reservations cannot exceed 24 hours');
-                      return false;
-                    }
                     // Enforce earliest allowed start if we have a hint
                     try {
                       if (reservationEarliestMin) {
