@@ -5226,9 +5226,17 @@ if (!empty($my_requests)) {
           setTimeout(()=>{ try{ copyNotifToMobile(); openMobileModal(); }catch(_){ } }, 50);
         } else {
           dropdown.classList.toggle('show');
+          dropdown.style.display = dropdown.classList.contains('show') ? 'block' : '';
           dropdown.style.position = 'absolute';
-          dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
-          dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
+          try{
+            const rect = bellBtn.getBoundingClientRect();
+            const dRect = dropdown.getBoundingClientRect();
+            const top = rect.top + window.scrollY + bellBtn.offsetHeight + 6;
+            let left = rect.left + window.scrollX + rect.width - dRect.width;
+            if (left < 8) left = 8;
+            dropdown.style.top = top + 'px';
+            dropdown.style.left = left + 'px';
+          }catch(_){ }
           try{ dropdown.style.zIndex = '2000'; }catch(_){ }
           setLoadingList(); poll(true);
         }
@@ -5240,10 +5248,30 @@ if (!empty($my_requests)) {
         } catch(_){ }
       });
       // Close behaviors
-      document.addEventListener('click', function(){ dropdown.classList.remove('show'); });
+      document.addEventListener('click', function(ev){
+        const t = ev.target;
+        if (t && (t.closest('#userBellDropdown') || t.closest('#userBellBtn') || t.closest('#userBellWrap'))) return;
+        dropdown.classList.remove('show');
+        dropdown.style.display='';
+      });
       if (bellBackdrop) bellBackdrop.addEventListener('click', closeMobileModal);
       if (mobileCloseBtn) mobileCloseBtn.addEventListener('click', closeMobileModal);
-      document.addEventListener('keydown', function(ev){ if (ev.key==='Escape') closeMobileModal(); });
+      document.addEventListener('keydown', function(ev){ if (ev.key==='Escape'){ closeMobileModal(); dropdown.classList.remove('show'); dropdown.style.display=''; } });
+      function repositionBellDropdown(){
+        if (!dropdown.classList.contains('show')) return;
+        try{
+          dropdown.style.display='block';
+          const rect = bellBtn.getBoundingClientRect();
+          const dRect = dropdown.getBoundingClientRect();
+          const top = rect.top + window.scrollY + bellBtn.offsetHeight + 6;
+          let left = rect.left + window.scrollX + rect.width - dRect.width;
+          if (left < 8) left = 8;
+          dropdown.style.top = top + 'px';
+          dropdown.style.left = left + 'px';
+        }catch(_){ }
+      }
+      window.addEventListener('resize', repositionBellDropdown);
+      window.addEventListener('scroll', repositionBellDropdown, true);
       poll(false);
       setInterval(()=>{ if (document.visibilityState==='visible') poll(false); }, 1000);
       // Delegate click for Return via QR buttons inside notifications (desktop and mobile)
