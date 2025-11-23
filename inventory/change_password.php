@@ -251,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <i class="bi bi-bell" style="font-size:1.2rem;"></i>
                             <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="userBellDotCP"></span>
                         </button>
-                        <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdownCP" style="min-width: 320px; max-height: 360px; overflow:auto;">
+                        <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdownCP" style="min-width: 320px !important; max-width: 360px !important; width: auto !important; max-height: 360px; overflow:auto;">
                             <div class="px-3 py-2 border-bottom fw-bold small">Request Updates</div>
                             <div id="userNotifListCP" class="list-group list-group-flush small"></div>
                             <div class="text-center small text-muted py-2" id="userNotifEmptyCP">No updates yet.</div>
@@ -730,12 +730,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // User notification bell (non-admin) on Change Password page
         (function(){
             var isAdmin = <?php echo json_encode($usertype === 'admin'); ?>;
-            if (isAdmin) return;
             const bellBtn = document.getElementById('userBellBtnCP');
             const bellDot = document.getElementById('userBellDotCP');
             const dropdown = document.getElementById('userBellDropdownCP');
             const listEl = document.getElementById('userNotifListCP');
             const emptyEl = document.getElementById('userNotifEmptyCP');
+            const mList = document.getElementById('userNotifListMobileCP');
+            const mEmpty = document.getElementById('userNotifEmptyMobileCP');
             let latestTs = 0;
             let lastSig = '';
             let currentSig = '';
@@ -748,10 +749,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         dropdown.style.top = (bellBtn.getBoundingClientRect().bottom + 6) + 'px';
                         dropdown.style.left = 'auto';
                         dropdown.style.right = '12px';
+                        dropdown.style.maxWidth = '280px';
                     } else {
                         dropdown.style.position = 'absolute';
                         dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
                         dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
+                        dropdown.style.maxWidth = '360px';
                     }
                     if (bellDot) bellDot.classList.add('d-none');
                     try {
@@ -759,61 +762,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         localStorage.setItem('ud_notif_last_open', String(ts));
                         localStorage.setItem('ud_notif_sig_open', currentSig || '');
                     } catch(_){ }
+                    try{ poll(true); }catch(_){ }
                 });
                 document.addEventListener('click', function(){ dropdown.classList.remove('show'); });
             }
             function escapeHtml(s){ return String(s).replace(/[&<>\"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\\\"":"&quot;","'":"&#39;"}[m])); }
-            function renderList(items){
-                const rows=[];
-                latestTs = 0;
-                const sigParts = [];
-                (items||[]).forEach(function(r){
-                    const id = parseInt(r.id||0,10);
-                    const st = String(r.status||'');
-                    sigParts.push(id+'|'+st);
-                    if (["Approved","Rejected","Borrowed","Returned"].includes(st)){
-                        const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.created_at;
-                        const whenDate = when ? new Date(when) : null;
-                        const whenTxt = whenDate ? whenDate.toLocaleString() : '';
-                        if (whenDate) { const t = whenDate.getTime(); if (!isNaN(t) && t > latestTs) latestTs = t; }
-                        rows.push('<a href="user_request.php" class="list-group-item list-group-item-action">'
-                          + '<div class="d-flex w-100 justify-content-between">'
-                          +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
-                          +   '<small class="text-muted">'+whenTxt+'</small>'
-                          + '</div>'
-                          + '<div class="mb-0">Status: <span class="badge '+(st==='Approved'||st==='Borrowed'?'bg-success':'bg-danger')+'">'+escapeHtml(st)+'</span></div>'
-                          + '</a>');
-                    }
-                });
-                if (listEl) listEl.innerHTML = rows.join('');
-                const any = rows.length>0;
-                if (emptyEl) emptyEl.style.display = any ? 'none' : 'block';
-                try {
-                    const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
-                    sigParts.sort();
-                    const sig = sigParts.join(',');
-                    currentSig = sig;
-                    lastSig = localStorage.getItem('ud_notif_sig_open') || '';
-                    const changed = sig && sig !== lastSig;
-                    const showDot = any && (changed || latestTs > lastOpen);
-                    if (bellDot) bellDot.classList.toggle('d-none', !showDot);
-                } catch(_){ if (bellDot) bellDot.classList.toggle('d-none', !any); }
+            function composeRows(baseList, dn, ovCount, ovSet){
+                let latest=0; let sigParts=[]; const combined=[]; const ovset=(ovSet instanceof Set)?ovSet:new Set();
+                // Overdue summary first
+                try{
+                  const oc=parseInt(ovCount||0,10)||0; if(oc>0){ const txt=(oc===1)?'You have an overdue item':('You have overdue items ('+oc+')'); combined.push({type:'overdue', id:0, ts:(Date.now()+1000000), html:'<a href="user_request.php?view=overdue" class="list-group-item list-group-item-action"><div class="d-flex w-100 justify-content-between"><strong class="text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>'+txt+'</strong></div></a>'}); }
+                }catch(_){ }
+                (baseList||[]).forEach(function(r){ const id=parseInt(r.id||0,10); const st=String(r.status||''); sigParts.push(id+'|'+st); const when=r.approved_at||r.rejected_at||r.borrowed_at||r.returned_at||r.created_at; const whenTxt=when?String(when):''; let tsn=0; try{ const d=when?new Date(String(when).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; let disp=st, badge='bg-secondary'; const isOv=ovset.has(id); if(st==='Rejected'||st==='Cancelled'){ disp='Rejected'; badge='bg-danger'; } else if(st==='Returned'){ disp='Returned'; badge='bg-success'; } else if(st==='Approved'||st==='Borrowed'){ disp=isOv?'Overdue':'Approved'; badge=isOv?'bg-warning text-dark':'bg-success'; } const html='<a href="user_request.php" class="list-group-item list-group-item-action"><div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong><small class="text-muted">'+whenTxt+'</small></div><div class="mb-0">Status: <span class="badge '+badge+'">'+escapeHtml(disp||'')+'</span></div></a>'; combined.push({type:'base', id, ts:tsn, html}); });
+                try{ const decisions=(dn&&Array.isArray(dn.decisions))?dn.decisions:[]; decisions.forEach(function(dc){ const rid=parseInt(dc.id||0,10)||0; if(!rid) return; const msg=escapeHtml(String(dc.message||'')); const ts=String(dc.ts||''); let tsn=0; try{ const d=ts?new Date(String(ts).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; const whenHtml=ts?('<small class="text-muted">'+escapeHtml(ts)+'</small>'):''; const html='<div class="list-group-item"><div class="d-flex w-100 justify-content-between"><strong>#'+rid+' Decision</strong>'+whenHtml+'</div><div class="mb-0">'+msg+'</div></div>'; combined.push({type:'extra', id:rid, ts:tsn, html}); }); }catch(_){ }
+                combined.sort(function(a,b){ if((a.type==='overdue')!==(b.type==='overdue')) return (a.type==='overdue')?-1:1; if(b.ts!==a.ts) return b.ts-a.ts; return (b.id||0)-(a.id||0); });
+                return { rows: combined.map(x=>x.html), latest, sig: sigParts.join(',') };
             }
-            let fetching=false;
-            function poll(){
-                if (fetching) return; fetching=true;
-                fetch('user_request.php?action=my_requests_status')
-                  .then(r=>r.json())
-                  .then(d=>{
-                    const list = (d && Array.isArray(d.requests)) ? d.requests : [];
-                    const updates = list.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
-                    renderList(updates);
-                  })
-                  .catch(()=>{})
-                  .finally(()=>{ fetching=false; });
+            let fetching=false; let lastHtml='';
+            function poll(force){
+                if (fetching && !force) return; fetching=true;
+                Promise.all([
+                    fetch('user_request.php?action=my_requests_status', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
+                    fetch('user_request.php?action=user_notifications', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
+                    fetch('user_request.php?action=my_overdue', { cache:'no-store' }).then(r=>r.json()).catch(()=>({}))
+                ])
+                .then(([d,dn,ov])=>{
+                    const raw=(d&&Array.isArray(d.requests))?d.requests:[];
+                    const base=raw.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
+                    const ovList=(ov&&Array.isArray(ov.overdue))?ov.overdue:[]; const ovSet=new Set(ovList.map(o=>parseInt(o.request_id||0,10)).filter(n=>n>0)); const ovCount=ovList.length;
+                    const built=composeRows(base, dn, ovCount, ovSet);
+                    try{
+                        const lastOpen=parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
+                        currentSig=built.sig; lastSig=localStorage.getItem('ud_notif_sig_open')||'';
+                        const changed=!!(built.sig && built.sig!==lastSig);
+                        const any=built.rows.length>0;
+                        if (bellDot) bellDot.classList.toggle('d-none', !(any && (changed || (built.latest>0 && built.latest>lastOpen))));
+                    }catch(_){ }
+                    const html=built.rows.join('');
+                    if (listEl && html!==lastHtml){ listEl.innerHTML=html; lastHtml=html; }
+                    if (emptyEl) emptyEl.style.display=(html && html.trim()!=='')?'none':'block';
+                })
+                .catch(()=>{})
+                .finally(()=>{ fetching=false; });
             }
-            poll();
-            setInterval(()=>{ if (document.visibilityState==='visible') poll(); }, 2000);
+            poll(false);
+            setInterval(()=>{ if (document.visibilityState==='visible') poll(false); }, 1000);
         })();
         </script>
         <script>

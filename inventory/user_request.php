@@ -5135,8 +5135,8 @@ if (!empty($my_requests)) {
       }
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
       // Build full list (base requests + extras) in memory and return rows + metadata
-      function composeRows(baseList, dn, ovCount){
-        let latest=0; let sigParts=[]; const combined=[];
+      function composeRows(baseList, dn, ovCount, ovSet){
+        let latest=0; let sigParts=[]; const combined=[]; const ovset = (ovSet instanceof Set) ? ovSet : (window.__UR_OVSET__ instanceof Set ? window.__UR_OVSET__ : new Set());
         // Overdue summary always at top when present
         try{
           const oc = parseInt(ovCount||0,10)||0;
@@ -5158,15 +5158,22 @@ if (!empty($my_requests)) {
           const whenTxt = when ? String(when) : '';
           let tsn = 0; try { const d = when ? new Date(String(when).replace(' ','T')) : null; if (d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } } catch(_){ }
           if (tsn>latest) latest=tsn;
+          // Status mapping
+          let dispStatus = st;
           let badgeCls='bg-secondary';
-          if (st==='Approved' || st==='Borrowed') badgeCls='bg-success';
-          else if (st==='Rejected' || st==='Cancelled') badgeCls='bg-danger';
+          const isOverdue = (()=>{ try{ return ovset.has(id); }catch(_){ return false; } })();
+          if (st==='Rejected' || st==='Cancelled') { dispStatus='Rejected'; badgeCls='bg-danger'; }
+          else if (st==='Returned') { dispStatus='Returned'; badgeCls='bg-success'; }
+          else if (st==='Approved' || st==='Borrowed') {
+            if (isOverdue) { dispStatus='Overdue'; badgeCls='bg-warning text-dark'; }
+            else { dispStatus='Approved'; badgeCls='bg-success'; }
+          }
           const html = '<a href="user_request.php" class="list-group-item list-group-item-action">'
             + '<div class="d-flex w-100 justify-content-between">'
             +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
             +   '<small class="text-muted">'+whenTxt+'</small>'
             + '</div>'
-            + '<div class="mb-0">Status: <span class="badge '+badgeCls+'">'+escapeHtml(st||'')+'</span></div>'
+            + '<div class="mb-0">Status: <span class="badge '+badgeCls+'">'+escapeHtml(dispStatus||'')+'</span></div>'
             + '</a>';
           combined.push({type:'base', id, ts: tsn, html});
         });
@@ -5190,9 +5197,8 @@ if (!empty($my_requests)) {
           });
         }catch(_){ }
         combined.sort(function(a,b){
-          function w(t){ if (t==='overdue') return 2; if (t==='base') return 1; return 0; }
-          const wa = w(a.type||''); const wb = w(b.type||'');
-          if (wa !== wb) return wb - wa; // overdue first
+          // Overdue summary first, then strictly by timestamp (newest to oldest), ignoring type
+          if ((a.type==='overdue') !== (b.type==='overdue')) return (a.type==='overdue') ? -1 : 1;
           if (b.ts !== a.ts) return b.ts - a.ts;
           return (b.id||0) - (a.id||0);
         });
@@ -5200,7 +5206,7 @@ if (!empty($my_requests)) {
         return { rows, latest, sig: sigParts.join(',') };
       }
       function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; 
-        const built = composeRows(items, undefined, (window.__UR_OVCOUNT__||0));
+        const built = composeRows(items, undefined, (window.__UR_OVCOUNT__||0), (window.__UR_OVSET__||new Set()));
         // Update dot state
         try {
           const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
@@ -5220,11 +5226,8 @@ if (!empty($my_requests)) {
       }
       let lastHtml = '';
       function poll(force){
-        // If UI is open, skip background updates to avoid visible switching
         const isOpen = (dropdown && dropdown.classList && dropdown.classList.contains('show')) || (bellModal && bellModal.style && bellModal.style.display === 'flex');
-        if (isOpen && !force) return;
         if (fetching && !force) return; fetching=true;
-        const silent = false;
         if (!isOpen) setLoadingList();
         Promise.all([
           fetch('user_request.php?action=my_requests_status', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
@@ -5236,9 +5239,10 @@ if (!empty($my_requests)) {
           const base = raw.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
           const picked = base;
           const ovList = (ov && Array.isArray(ov.overdue)) ? ov.overdue : [];
+          const ovSet = new Set(ovList.map(o=> parseInt(o.request_id||0,10)).filter(n=>n>0));
           const ovCount = ovList.length;
-          window.__UR_OVCOUNT__ = ovCount;
-          const built = composeRows(picked, dn, ovCount);
+          window.__UR_OVCOUNT__ = ovCount; window.__UR_OVSET__ = ovSet;
+          const built = composeRows(picked, dn, ovCount, ovSet);
           // Update dot state
           try {
             const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
@@ -5256,7 +5260,7 @@ if (!empty($my_requests)) {
           try{ repositionBellDropdown(); }catch(_){ }
           try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
         })
-        .catch(()=>{ try{ if (!isOpen){ emptyEl.style.display='block'; if (listEl) listEl.innerHTML=''; lastHtml=''; } }catch(_){ } })
+        .catch(()=>{ })
         .finally(()=>{ fetching=false; });
       }
       bellBtn.addEventListener('click', function(e){
@@ -5276,7 +5280,7 @@ if (!empty($my_requests)) {
           dropdown.style.transform = 'none';
           dropdown.style.margin = '0';
           try{ dropdown.style.zIndex = '4000'; }catch(_){ }
-          // Do not overwrite current content with Loading... while open; fetch in background
+          setLoadingList();
           poll(true);
         }
         if (bellDot) bellDot.classList.add('d-none');
