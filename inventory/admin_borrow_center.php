@@ -1968,8 +1968,6 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
       if ($st !== '' && !in_array($st, ['Available','In Use','Reserved'], true)) { echo json_encode(['ok'=>false,'reason'=>'Unit not available (status: '.$st.')']); exit(); }
       echo json_encode(['ok'=>true]);
       exit();
-    } catch (Throwable $e) {
-      echo json_encode(['error' => 'mongo_unavailable']);
     }
   } catch (Throwable $e) {
     echo json_encode(['error' => 'mongo_unavailable']);
