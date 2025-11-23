@@ -2243,11 +2243,11 @@ if (!empty($my_requests)) {
             <i class="bi bi-pencil-square me-1"></i> Submit Request
           </button>
           <div class="position-relative me-2" id="userBellWrap">
-            <button class="btn btn-light position-relative" id="userBellBtn" title="Notifications">
+            <button type="button" class="btn btn-light position-relative" id="userBellBtn" title="Notifications">
               <i class="bi bi-bell" style="font-size:1.2rem;"></i>
               <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="userBellDot"></span>
             </button>
-            <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdown" style="min-width: 320px; max-height: 360px; overflow:auto;">
+            <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdown" style="min-width: 320px !important; max-width: 360px !important; width: auto !important; max-height: 360px; overflow:auto;">
               <div class="px-3 py-2 border-bottom fw-bold small">Request Updates</div>
               <div id="userNotifList" class="list-group list-group-flush small"></div>
               <div class="text-center small text-muted py-2" id="userNotifEmpty">No updates yet.</div>
@@ -5108,6 +5108,7 @@ if (!empty($my_requests)) {
       const dropdown = document.getElementById('userBellDropdown');
       const listEl = document.getElementById('userNotifList');
       const emptyEl = document.getElementById('userNotifEmpty');
+      const bellWrap = document.getElementById('userBellWrap');
       // Mobile modal elements
       const bellModal = document.getElementById('userBellModal');
       const bellBackdrop = document.getElementById('userBellBackdrop');
@@ -5130,19 +5131,19 @@ if (!empty($my_requests)) {
         const id = parseInt(r.id||0,10);
         const st = String(r.status||'');
         sigParts.push(id+'|'+st);
-        if (["Approved","Rejected","Borrowed","Returned","Cancelled"].includes(st)){
-          const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.created_at;
-          // Show server string directly; also compute latestTs using a safe Date parse for dot visibility
-          const whenTxt = when ? String(when) : '';
-          try { const whenDate = when ? new Date(String(when).replace(' ','T')) : null; if (whenDate){ const t=whenDate.getTime(); if(!isNaN(t) && t>latestTs) latestTs=t; } } catch(_){ }
-          rows.push('<a href="user_request.php" class="list-group-item list-group-item-action">'
-            + '<div class="d-flex w-100 justify-content-between">'
-            +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
-            +   '<small class="text-muted">'+whenTxt+'</small>'
-            + '</div>'
-            + '<div class="mb-0">Status: <span class="badge '+(st==='Approved'||st==='Borrowed'?'bg-success':'bg-danger')+'">'+escapeHtml(st)+'</span></div>'
-            + '</a>');
-        }
+        const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.cancelled_at || r.created_at || r.created_at_display;
+        const whenTxt = when ? String(when) : '';
+        try { const whenDate = when ? new Date(String(when).replace(' ','T')) : null; if (whenDate){ const t=whenDate.getTime(); if(!isNaN(t) && t>latestTs) latestTs=t; } } catch(_){ }
+        let badgeCls='bg-secondary';
+        if (st==='Approved' || st==='Borrowed') badgeCls='bg-success';
+        else if (st==='Rejected' || st==='Cancelled') badgeCls='bg-danger';
+        rows.push('<a href="user_request.php" class="list-group-item list-group-item-action">'
+          + '<div class="d-flex w-100 justify-content-between">'
+          +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
+          +   '<small class="text-muted">'+whenTxt+'</small>'
+          + '</div>'
+          + '<div class="mb-0">Status: <span class="badge '+badgeCls+'">'+escapeHtml(st||'')+'</span></div>'
+          + '</a>');
       });
       // First, render whatever we already have immediately
       listEl.innerHTML = rows.join('');
@@ -5150,6 +5151,7 @@ if (!empty($my_requests)) {
       emptyEl.style.display = any ? 'none' : 'block';
       // If mobile modal is open, sync content right away
       try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
+      try{ repositionBellDropdown(); }catch(_){ }
       // Then, augment with returnship + decision notices without delaying initial render
       try {
         fetch('user_request.php?action=user_notifications', { cache: 'no-store' })
@@ -5192,6 +5194,7 @@ if (!empty($my_requests)) {
             });
             if (extra.length){ rows = extra.concat(rows); listEl.innerHTML = rows.join(''); }
             any = rows.length>0; emptyEl.style.display = any ? 'none' : 'block';
+            try{ repositionBellDropdown(); }catch(_){ }
             // Keep mobile modal in sync if open
             try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
           })
@@ -5208,14 +5211,15 @@ if (!empty($my_requests)) {
   }
       function poll(force){
         if (fetching && !force) return; fetching=true; setLoadingList();
-        fetch('user_request.php?action=my_requests_status')
+        fetch('user_request.php?action=my_requests_status', { cache:'no-store' })
           .then(r=>r.json())
           .then(d=>{
             const list = (d && Array.isArray(d.requests)) ? d.requests : [];
             const updates = list.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
-            renderList(updates);
+            // Show all items if there are no updates yet to avoid an empty list experience
+            renderList(updates.length ? updates : list);
           })
-          .catch(()=>{})
+          .catch(()=>{ try{ emptyEl.style.display='block'; if (listEl) listEl.innerHTML=''; }catch(_){ } })
           .finally(()=>{ fetching=false; });
       }
       bellBtn.addEventListener('click', function(e){
@@ -5227,17 +5231,14 @@ if (!empty($my_requests)) {
         } else {
           dropdown.classList.toggle('show');
           dropdown.style.display = dropdown.classList.contains('show') ? 'block' : '';
+          // Anchor under the bell wrapper to avoid viewport reflow
           dropdown.style.position = 'absolute';
-          try{
-            const rect = bellBtn.getBoundingClientRect();
-            const dRect = dropdown.getBoundingClientRect();
-            const top = rect.top + window.scrollY + bellBtn.offsetHeight + 6;
-            let left = rect.left + window.scrollX + rect.width - dRect.width;
-            if (left < 8) left = 8;
-            dropdown.style.top = top + 'px';
-            dropdown.style.left = left + 'px';
-          }catch(_){ }
-          try{ dropdown.style.zIndex = '2000'; }catch(_){ }
+          dropdown.style.left = 'auto';
+          dropdown.style.right = '0px';
+          dropdown.style.top = (bellBtn.offsetHeight + 6) + 'px';
+          dropdown.style.transform = 'none';
+          dropdown.style.margin = '0';
+          try{ dropdown.style.zIndex = '4000'; }catch(_){ }
           setLoadingList(); poll(true);
         }
         if (bellDot) bellDot.classList.add('d-none');
@@ -5261,13 +5262,12 @@ if (!empty($my_requests)) {
         if (!dropdown.classList.contains('show')) return;
         try{
           dropdown.style.display='block';
-          const rect = bellBtn.getBoundingClientRect();
-          const dRect = dropdown.getBoundingClientRect();
-          const top = rect.top + window.scrollY + bellBtn.offsetHeight + 6;
-          let left = rect.left + window.scrollX + rect.width - dRect.width;
-          if (left < 8) left = 8;
-          dropdown.style.top = top + 'px';
-          dropdown.style.left = left + 'px';
+          dropdown.style.position='absolute';
+          dropdown.style.left='auto';
+          dropdown.style.right='0px';
+          dropdown.style.top = (bellBtn.offsetHeight + 6) + 'px';
+          dropdown.style.transform='none';
+          dropdown.style.margin='0';
         }catch(_){ }
       }
       window.addEventListener('resize', repositionBellDropdown);
