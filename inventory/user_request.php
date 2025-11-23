@@ -4739,20 +4739,12 @@ if (!empty($my_requests)) {
           });
         })();
         // No fallback cycling; clicking the button should only open the dropdown
-        // Default view on load: honor URL ?view=overdue, else last selection, else Recent
+        // Default view on load: honor URL ?view=overdue; otherwise always default to My Recent Requests
         (function(){
           try {
             var v = (new URL(window.location.href)).searchParams.get('view');
             v = v ? String(v).toLowerCase() : '';
             if (v === 'overdue') { showSection('section-overdue', 'Overdue Items'); return; }
-          } catch(_){ }
-          try {
-            var saved = localStorage.getItem('ur_last_section') || '';
-            if (['section-recent','section-borrowed','section-overdue','section-history'].indexOf(saved) >= 0){
-              var label = saved==='section-recent'?'My Recent Requests': (saved==='section-borrowed'?'My Borrowed': (saved==='section-overdue'?'Overdue Items':'Borrow History'));
-              showSection(saved, label);
-              return;
-            }
           } catch(_){ }
           showSection('section-recent', 'My Recent Requests');
         })();
