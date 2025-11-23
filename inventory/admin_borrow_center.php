@@ -1153,7 +1153,9 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
             }
           } catch (Throwable $_) { $endTs = null; }
         }
-        if (!$endTs || !($endTs <= ($tsStart - $buf))) { header('Location: admin_borrow_center.php?error=edit_serial_inuse#reservations-list'); exit(); }
+        if (!$endTs) { header('Location: admin_borrow_center.php?error=edit_serial_inuse#reservations-list'); exit(); }
+        if ($endTs <= time()) { header('Location: admin_borrow_center.php?error=edit_serial_overdue#reservations-list'); exit(); }
+        if (!($endTs <= ($tsStart - $buf))) { header('Location: admin_borrow_center.php?error=edit_serial_inuse#reservations-list'); exit(); }
       }
       // Save assignment
       $assignedSerial = (string)($unit['serial_no'] ?? '');
@@ -1739,7 +1741,15 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
                 $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
                 if ($orig) {
                   $endStr = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? ''));
-                  if ($endStr !== '') { $inUseEnd = $endStr; $t = strtotime($endStr); $hasKnownEnd = (bool)$t; if ($t && $tsStart && !($t <= ($tsStart - $buf))) { $fits = false; } }
+                  if ($endStr !== '') {
+                    $inUseEnd = $endStr;
+                    $t = strtotime($endStr);
+                    $hasKnownEnd = (bool)$t;
+                    // Exclude overdue items
+                    if ($t && $t <= time()) { $fits = false; }
+                    // Enforce 5-min buffer relative to reservation start
+                    if ($t && $tsStart && !($t <= ($tsStart - $buf))) { $fits = false; }
+                  }
                 }
               } catch (Throwable $_) { }
             }
@@ -1855,6 +1865,7 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           }
         }
         if (!$endTs) { echo json_encode(['ok'=>false,'reason'=>'Selected unit is in use; expected return unknown']); exit(); }
+        if ($endTs <= time()) { echo json_encode(['ok'=>false,'reason'=>'Selected unit is overdue']); exit(); }
         if (!($endTs <= ($tsStart - $buf))) { echo json_encode(['ok'=>false,'reason'=>'Selected unit is in use and returns too late']); exit(); }
       }
       // Status check (allow Available or In Use with safe return)
@@ -4767,6 +4778,8 @@ try {
             msg = 'Cannot assign this serial. It conflicts with another approved reservation for the selected time window.';
           } else if (err === 'edit_serial_inuse') {
             msg = 'Cannot assign this serial. It is currently in use and returns too late for the reservation start (requires a 5-minute buffer).';
+          } else if (err === 'edit_serial_overdue') {
+            msg = 'Cannot assign this serial. It is currently overdue and its return time is unknown.';
           } else if (err === 'edit_serial_missing') {
             msg = 'Missing request or serial.';
           } else if (err === 'edit_serial_notapproved') {
