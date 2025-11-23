@@ -555,121 +555,98 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             }
 
             let toastWrap = document.getElementById('adminToastWrap');
-            if (!toastWrap) {
-                toastWrap = document.createElement('div');
-                toastWrap.id = 'adminToastWrap';
-                toastWrap.style.position = 'fixed';
-                toastWrap.style.right = '16px';
-                toastWrap.style.bottom = '16px';
-                toastWrap.style.zIndex = '1080';
-                document.body.appendChild(toastWrap);
-            }
-            function showToast(msg){
-                const el = document.createElement('div');
-                el.className = 'alert alert-info shadow-sm border-0';
-                el.style.minWidth = '280px';
-                el.style.maxWidth = '360px';
-                el.innerHTML = '<i class="bi bi-bell me-2"></i>' + String(msg||'');
-                toastWrap.appendChild(el);
-                setTimeout(()=>{ try { el.remove(); } catch(_){} }, 5000);
-            }
-
-            let audioCtx = null;
-            function playBeep(){
-                try {
-                    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    const o = audioCtx.createOscillator();
-                    const g = audioCtx.createGain();
-                    o.type = 'sine'; o.frequency.value = 880;
-                    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-                    g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime + 0.02);
-                    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.22);
-                    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.25);
-                } catch(_){}
-            }
+            if (!toastWrap) { toastWrap=document.createElement('div'); toastWrap.id='adminToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080'; document.body.appendChild(toastWrap); }
+            function showToast(msg){ const el=document.createElement('div'); el.className='alert alert-info shadow-sm border-0'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); setTimeout(()=>{ try{ el.remove(); }catch(_){ } }, 5000); }
+            let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){}}
+            function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
 
             let baselineIds = new Set();
             let initialized = false;
             let fetching = false;
-            function renderList(items){
+            function renderCombined(pending, recent){
                 const rows = [];
                 latestTs = 0;
-                (items||[]).forEach(function(r){
+                (pending||[]).forEach(function(r){
                     const id = parseInt(r.id||0,10);
                     const user = String(r.username||'');
                     const nm = String(r.item_name||'');
                     const qty = parseInt(r.quantity||1,10);
-                    const whenRaw = String(r.created_at||'');
-                    // Normalize to ISO-like for reliable parsing across browsers
-                    const whenDate = whenRaw ? new Date(whenRaw.replace(' ', 'T')) : null;
-                    const whenTxt = whenDate ? whenDate.toLocaleString() : '';
-                    if (whenDate) { const t = whenDate.getTime(); if (!isNaN(t) && t > latestTs) latestTs = t; }
-                    rows.push(
-                        '<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
-                        + '<div class="d-flex w-100 justify-content-between">'
-                        +   '<strong>#'+id+'</strong>'
-                        +   '<small class="text-muted">'+whenTxt+'</small>'
-                        + '</div>'
-                        + '<div class="mb-0">'+escapeHtml(user)+' requests '+escapeHtml(nm)+' <span class="badge bg-secondary">x'+qty+'</span></div>'
-                        + '</a>'
-                    );
+                    const whenTxt = String(r.created_at||'');
+                    rows.push('<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
+                      + '<div class="d-flex w-100 justify-content-between">'
+                      +   '<strong>#'+id+'</strong>'
+                      +   '<small class="text-muted">'+escapeHtml(whenTxt)+'</small>'
+                      + '</div>'
+                      + '<div class="mb-0">'+escapeHtml(user)+' requests '+escapeHtml(nm)+' <span class="badge bg-secondary">x'+qty+'</span></div>'
+                      + '</a>');
                 });
+                if ((recent||[]).length){
+                  rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary" id="admClearAllBtn">Clear All</button></div></div>');
+                  (recent||[]).forEach(function(r){
+                    const id = parseInt(r.id||0,10);
+                    const nm = String(r.item_name||'');
+                    const st = String(r.status||'');
+                    const whenTxt = String(r.processed_at||'');
+                    const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
+                    rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
+                      + '<div class="me-2">'
+                      +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(whenTxt)+'</small></div>'
+                      +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
+                      + '</div>'
+                      + '<div><button type="button" class="btn btn-sm btn-outline-secondary adm-clear-one" data-id="'+id+'">Clear</button></div>'
+                      + '</div>');
+                  });
+                }
                 listEl.innerHTML = rows.join('');
                 emptyEl.style.display = rows.length ? 'none' : '';
             }
-            function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+            document.addEventListener('click', function(ev){
+                const one = ev.target && ev.target.closest && ev.target.closest('.adm-clear-one');
+                if (one){
+                    const rid = parseInt(one.getAttribute('data-id')||'0',10)||0;
+                    if (!rid) return;
+                    const fd = new FormData(); fd.append('request_id', String(rid));
+                    fetch('admin_borrow_center.php?action=admin_notif_clear', { method:'POST', body: fd })
+                      .then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{});
+                    return;
+                }
+                if (ev.target && ev.target.id === 'admClearAllBtn'){
+                    const fd = new FormData(); fd.append('limit','300');
+                    fetch('admin_borrow_center.php?action=admin_notif_clear_all', { method:'POST', body: fd })
+                      .then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{});
+                }
+            });
 
             function poll(){
                 if (fetching) return; fetching = true;
-                fetch('admin_borrow_center.php?action=pending_json')
-                    .then(r=>r.json())
-                    .then(d=>{
-                        const items = (d && Array.isArray(d.pending)) ? d.pending : [];
-                        renderList(items);
-                        // Show red dot whenever there are any pending requests
-                        try {
-                            const showDot = items.length > 0;
-                            if (bellDot) bellDot.classList.toggle('d-none', !showDot);
-                        } catch(_){ if (bellDot) bellDot.classList.toggle('d-none', items.length===0); }
-                        try {
-                            const navLink = document.querySelector('a[href="admin_borrow_center.php"]');
-                            if (navLink) {
-                                let dot = navLink.querySelector('.nav-borrow-dot');
-                                const shouldShow = items.length > 0;
-                                if (shouldShow) {
-                                    if (!dot) {
-                                        dot = document.createElement('span');
-                                        dot.className = 'nav-borrow-dot ms-2 d-inline-block rounded-circle';
-                                        dot.style.width = '8px';
-                                        dot.style.height = '8px';
-                                        dot.style.backgroundColor = '#dc3545';
-                                        dot.style.verticalAlign = 'middle';
-                                        dot.style.display = 'inline-block';
-                                        navLink.appendChild(dot);
-                                    } else {
-                                        dot.style.display = 'inline-block';
-                                    }
-                                } else if (dot) {
-                                    dot.style.display = 'none';
-                                }
-                            }
-                        } catch(_){}
-                        const currIds = new Set(items.map(it=>parseInt(it.id||0,10)));
-                        if (!initialized) {
-                            baselineIds = currIds;
-                            initialized = true;
-                        } else {
-                            let hasNew = false;
-                            currIds.forEach(id=>{ if (!baselineIds.has(id)) { hasNew = true; } });
-                            if (hasNew) {
-                                items.forEach(it=>{ if (!baselineIds.has(parseInt(it.id||0,10))) { showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } });
-                                playBeep();
-                            }
-                            baselineIds = currIds;
-                        }
-                    })
-                    .catch(()=>{})
-                    .finally(()=>{ fetching = false; });
+                fetch('admin_borrow_center.php?action=admin_notifications')
+                  .then(r=>r.json())
+                  .then(d=>{
+                    const pending = (d && Array.isArray(d.pending)) ? d.pending : [];
+                    const recent = (d && Array.isArray(d.recent)) ? d.recent : [];
+                    renderCombined(pending, recent);
+                    try { const showDot = pending.length > 0; if (bellDot) bellDot.classList.toggle('d-none', !showDot); } catch(_){ if (bellDot) bellDot.classList.toggle('d-none', pending.length===0); }
+                    try {
+                      const navLink = document.querySelector('a[href="admin_borrow_center.php"]');
+                      if (navLink) {
+                        let dot = navLink.querySelector('.nav-borrow-dot');
+                        const shouldShow = pending.length > 0;
+                        if (shouldShow) {
+                          if (!dot) { dot = document.createElement('span'); dot.className = 'nav-borrow-dot ms-2 d-inline-block rounded-circle'; dot.style.width='8px'; dot.style.height='8px'; dot.style.backgroundColor='#dc3545'; dot.style.verticalAlign='middle'; dot.style.display='inline-block'; navLink.appendChild(dot); }
+                          else { dot.style.display = 'inline-block'; }
+                        } else if (dot) { dot.style.display = 'none'; }
+                      }
+                    } catch(_){ }
+                    const currIds = new Set(pending.map(it=>parseInt(it.id||0,10)));
+                    if (!initialized) { baselineIds = currIds; initialized = true; }
+                    else {
+                      let hasNew = false; currIds.forEach(id=>{ if(!baselineIds.has(id)) hasNew = true; });
+                      if (hasNew) { pending.forEach(it=>{ const id=parseInt(it.id||0,10); if(!baselineIds.has(id)){ showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } }); playBeep(); }
+                      baselineIds = currIds;
+                    }
+                  })
+                  .catch(()=>{})
+                  .finally(()=>{ fetching = false; });
             }
             poll();
             setInterval(()=>{ if (document.visibilityState === 'visible') poll(); }, 2000);

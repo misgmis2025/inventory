@@ -1968,12 +1968,143 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
       if ($st !== '' && !in_array($st, ['Available','In Use','Reserved'], true)) { echo json_encode(['ok'=>false,'reason'=>'Unit not available (status: '.$st.')']); exit(); }
       echo json_encode(['ok'=>true]);
       exit();
+    } catch (Throwable $e) {
+      echo json_encode(['error' => 'mongo_unavailable']);
     }
   } catch (Throwable $e) {
     echo json_encode(['error' => 'mongo_unavailable']);
   }
 }
-  // JSON endpoints handled above via Mongo
+// JSON endpoints handled above via Mongo
+
+// Admin notifications: combined pending + processed (Approved/Rejected) with per-admin clears
+if ($act === 'admin_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $uCol = $db->selectCollection('users');
+    $clears = $db->selectCollection('admin_notif_clears');
+    $admin = (string)($_SESSION['username'] ?? '');
+    $limit = isset($_GET['limit']) ? max(50, min((int)$_GET['limit'], 500)) : 200;
+
+    // Pending
+    $pending = [];
+    try {
+      $rq = $er->find(['status' => 'Pending'], ['sort' => ['created_at' => 1, 'id' => 1], 'limit' => $limit]);
+      foreach ($rq as $doc) {
+        $uname = (string)($doc['username'] ?? '');
+        $sid = '';
+        $ufull = $uname;
+        if ($uname !== '') {
+          try {
+            $ud = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]);
+            if ($ud) {
+              if (isset($ud['school_id'])) { $sid = (string)$ud['school_id']; }
+              if (isset($ud['full_name']) && trim((string)$ud['full_name'])!=='') { $ufull = (string)$ud['full_name']; }
+              elseif (isset($ud['first_name']) || isset($ud['last_name'])) { $ufull = trim((string)($ud['first_name']??'').' '.(string)($ud['last_name']??'')); }
+              elseif (isset($ud['name']) && trim((string)$ud['name'])!=='') { $ufull = (string)$ud['name']; }
+            }
+          } catch (Throwable $_) { $sid=''; $ufull=$uname; }
+        }
+        $pending[] = [
+          'id' => (int)($doc['id'] ?? 0),
+          'username' => $uname,
+          'user_full_name' => $ufull,
+          'school_id' => $sid,
+          'item_name' => (string)($doc['item_name'] ?? ''),
+          'quantity' => (int)($doc['quantity'] ?? 1),
+          'status' => (string)($doc['status'] ?? ''),
+          'created_at' => (string)($doc['created_at'] ?? ''),
+          'type' => (string)($doc['type'] ?? ''),
+        ];
+      }
+    } catch (Throwable $_p) { $pending = []; }
+
+    // Processed (Approved/Rejected), excluding per-admin cleared
+    $recent = [];
+    try {
+      $idsCleared = [];
+      if ($admin !== '') {
+        foreach ($clears->find(['admin'=>$admin], ['projection'=>['request_id'=>1]]) as $c) {
+          $idsCleared[(int)($c['request_id'] ?? 0)] = true;
+        }
+      }
+      $cur = $er->find(['status' => ['$in' => ['Approved','Rejected']]], ['sort'=>['updated_at'=>-1,'approved_at'=>-1,'rejected_at'=>-1,'id'=>-1], 'limit' => $limit]);
+      foreach ($cur as $row) {
+        $rid = (int)($row['id'] ?? 0); if ($rid <= 0) continue;
+        if ($admin !== '' && isset($idsCleared[$rid])) continue;
+        $st = (string)($row['status'] ?? '');
+        $pby = $st==='Approved' ? (string)($row['approved_by'] ?? '') : (string)($row['rejected_by'] ?? '');
+        $pat = $st==='Approved' ? (string)($row['approved_at'] ?? '') : (string)($row['rejected_at'] ?? '');
+        $uname = (string)($row['username'] ?? '');
+        $ufull = $uname;
+        try { $ud = $uCol->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($ud && isset($ud['full_name']) && trim((string)$ud['full_name'])!=='') { $ufull = (string)$ud['full_name']; } } catch (Throwable $_u) { $ufull=$uname; }
+        $recent[] = [
+          'id' => $rid,
+          'username' => $uname,
+          'user_full_name' => $ufull,
+          'item_name' => (string)($row['item_name'] ?? ''),
+          'quantity' => (int)($row['quantity'] ?? 1),
+          'status' => $st,
+          'processed_by' => $pby,
+          'processed_at' => $pat,
+        ];
+      }
+    } catch (Throwable $_r) { $recent = []; }
+
+    echo json_encode(['ok'=>true, 'pending'=>$pending, 'recent'=>$recent]);
+  } catch (Throwable $e) {
+    echo json_encode(['ok'=>false, 'pending'=>[], 'recent'=>[]]);
+  }
+  exit();
+}
+
+// Admin: clear a processed notification (per-admin)
+if ($act === 'admin_notif_clear' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $clears = $db->selectCollection('admin_notif_clears');
+    $admin = (string)($_SESSION['username'] ?? '');
+    $rid = isset($_POST['request_id']) ? (int)$_POST['request_id'] : 0;
+    if ($admin === '' || $rid <= 0) { echo json_encode(['ok'=>false,'reason'=>'bad_input']); exit(); }
+    $doc = $er->findOne(['id'=>$rid], ['projection'=>['status'=>1]]);
+    if (!$doc) { echo json_encode(['ok'=>false,'reason'=>'not_found']); exit(); }
+    $st = (string)($doc['status'] ?? '');
+    if ($st === 'Pending') { echo json_encode(['ok'=>false,'reason'=>'not_processed']); exit(); }
+    $clears->updateOne(['admin'=>$admin,'request_id'=>$rid], ['$set'=>['admin'=>$admin,'request_id'=>$rid,'cleared_at'=>date('Y-m-d H:i:s')]], ['upsert'=>true]);
+    echo json_encode(['ok'=>true]);
+  } catch (Throwable $e) { echo json_encode(['ok'=>false]); }
+  exit();
+}
+
+// Admin: clear all processed notifications (per-admin)
+if ($act === 'admin_notif_clear_all' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $clears = $db->selectCollection('admin_notif_clears');
+    $admin = (string)($_SESSION['username'] ?? '');
+    if ($admin === '') { echo json_encode(['ok'=>false]); exit(); }
+    $limit = isset($_POST['limit']) ? max(50, min((int)$_POST['limit'], 500)) : 300;
+    $cur = $er->find(['status' => ['$in' => ['Approved','Rejected']]], ['sort'=>['updated_at'=>-1,'id'=>-1], 'limit'=>$limit]);
+    foreach ($cur as $row) {
+      $rid = (int)($row['id'] ?? 0); if ($rid <= 0) continue;
+      $clears->updateOne(['admin'=>$admin,'request_id'=>$rid], ['$set'=>['admin'=>$admin,'request_id'=>$rid,'cleared_at'=>date('Y-m-d H:i:s')]], ['upsert'=>true]);
+    }
+    echo json_encode(['ok'=>true]);
+  } catch (Throwable $e) { echo json_encode(['ok'=>false]); }
+  exit();
+}
 
 // Build borrowable catalog and counters via Mongo first
 $ABC_MONGO_FILLED = false;

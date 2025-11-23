@@ -2358,61 +2358,82 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 		let baselineIds = new Set();
 		let initialized = false;
 		let fetching = false;
-		function renderList(items){
+		function renderCombined(pending, recent){
 			const rows = [];
-			(items||[]).forEach(function(r){
+			(pending||[]).forEach(function(r){
 				const id = parseInt(r.id||0,10);
 				const user = String(r.username||'');
 				const nm = String(r.item_name||'');
 				const qty = parseInt(r.quantity||1,10);
-				const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
-				rows.push(
-					'<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
+				const when = String(r.created_at||'');
+				rows.push('<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
 					+ '<div class="d-flex w-100 justify-content-between">'
 					+   '<strong>#'+id+'</strong>'
-					+   '<small class="text-muted">'+when+'</small>'
+					+   '<small class="text-muted">'+escapeHtml(when)+'</small>'
 					+ '</div>'
 					+ '<div class="mb-0">'+escapeHtml(user)+' requests '+escapeHtml(nm)+' <span class="badge bg-secondary">x'+qty+'</span></div>'
-					+ '</a>'
-				);
+					+ '</a>');
 			});
+			if ((recent||[]).length){
+				rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary" id="admClearAllBtn">Clear All</button></div></div>');
+				(recent||[]).forEach(function(r){
+					const id = parseInt(r.id||0,10);
+					const nm = String(r.item_name||'');
+					const st = String(r.status||'');
+					const when = String(r.processed_at||'');
+					const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
+					rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
+					  + '<div class="me-2">'
+					  +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(when)+'</small></div>'
+					  +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
+					  + '</div>'
+					  + '<div><button type="button" class="btn btn-sm btn-outline-secondary adm-clear-one" data-id="'+id+'">Clear</button></div>'
+					  + '</div>');
+				});
+			}
 			if (listEl) listEl.innerHTML = rows.join('');
-			if (emptyEl) emptyEl.style.display = 'none';
+			if (emptyEl) emptyEl.style.display = rows.length ? 'none' : '';
 		}
+		document.addEventListener('click', function(ev){
+			const one = ev.target && ev.target.closest && ev.target.closest('.adm-clear-one');
+			if (one){ const rid = parseInt(one.getAttribute('data-id')||'0',10)||0; if (!rid) return; const fd = new FormData(); fd.append('request_id', String(rid)); fetch('admin_borrow_center.php?action=admin_notif_clear', { method:'POST', body: fd }).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); return; }
+			if (ev.target && ev.target.id === 'admClearAllBtn'){ const fd=new FormData(); fd.append('limit','300'); fetch('admin_borrow_center.php?action=admin_notif_clear_all', { method:'POST', body: fd }).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); }
+		});
 		function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
 
 		function poll(){
 			if (fetching) return; fetching = true;
-			fetch('admin_borrow_center.php?action=pending_json')
+			fetch('admin_borrow_center.php?action=admin_notifications')
 				.then(r=>r.json())
 				.then(d=>{
-					const items = (d && Array.isArray(d.pending)) ? d.pending : [];
-					if (bellDot) bellDot.classList.toggle('d-none', items.length===0);
-					                    try {
-                        const navLink = document.querySelector('a[href="admin_borrow_center.php"]');
-                        if (navLink) {
-                            let dot = navLink.querySelector('.nav-borrow-dot');
-                            const shouldShow = items.length > 0;
-                            if (shouldShow) {
-                                if (!dot) {
-                                    dot = document.createElement('span');
-                                    dot.className = 'nav-borrow-dot ms-2 d-inline-block rounded-circle';
-                                    dot.style.width = '8px';
-                                    dot.style.height = '8px';
-                                    dot.style.backgroundColor = '#dc3545';
-                                    dot.style.verticalAlign = 'middle';
-                                    dot.style.display = 'inline-block';
-                                    navLink.appendChild(dot);
-                                } else {
-                                    dot.style.display = 'inline-block';
-                                }
-                            } else if (dot) {
-                                dot.style.display = 'none';
-                            }
-                        }
-                    } catch(_){}
-					renderList(items);
-					const currIds = new Set(items.map(it=>parseInt(it.id||0,10)));
+					const pending = (d && Array.isArray(d.pending)) ? d.pending : [];
+					const recent = (d && Array.isArray(d.recent)) ? d.recent : [];
+					if (bellDot) bellDot.classList.toggle('d-none', pending.length===0);
+					try {
+						const navLink = document.querySelector('a[href="admin_borrow_center.php"]');
+						if (navLink) {
+							let dot = navLink.querySelector('.nav-borrow-dot');
+							const shouldShow = pending.length > 0;
+							if (shouldShow) {
+								if (!dot) {
+									dot = document.createElement('span');
+									dot.className = 'nav-borrow-dot ms-2 d-inline-block rounded-circle';
+									dot.style.width = '8px';
+									dot.style.height = '8px';
+									dot.style.backgroundColor = '#dc3545';
+									dot.style.verticalAlign = 'middle';
+									dot.style.display = 'inline-block';
+									navLink.appendChild(dot);
+								} else {
+									dot.style.display = 'inline-block';
+								}
+							} else if (dot) {
+								dot.style.display = 'none';
+							}
+						}
+					} catch(_){}
+					renderCombined(pending, recent);
+					const currIds = new Set(pending.map(it=>parseInt(it.id||0,10)));
 					if (!initialized) {
 						baselineIds = currIds;
 						initialized = true;
@@ -2420,7 +2441,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 						let hasNew = false;
 						currIds.forEach(id=>{ if (!baselineIds.has(id)) { hasNew = true; } });
 						if (hasNew) {
-							items.forEach(it=>{ if (!baselineIds.has(parseInt(it.id||0,10))) { showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } });
+							pending.forEach(it=>{ const id=parseInt(it.id||0,10); if(!baselineIds.has(id)){ showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } });
 							playBeep();
 						}
 						baselineIds = currIds;

@@ -693,28 +693,39 @@ if (!$USED_MONGO) {
                 } catch(_){ }
                 return wrap;
             }
-            function addOrUpdateOverdueNotice(cnt){
+            function addOrUpdateOverdueNotices(items){
                 const wrap = ensurePersistentWrap();
-                const elId = 'ov-alert';
-                let el = document.getElementById(elId);
-                const n = parseInt(cnt||0,10);
-                const html = '<i class="bi bi-exclamation-octagon me-2"></i>' + (n===1 ? 'You have an overdue item. Click to view.' : ('You have an overdue items ('+ n +') Click to view.'));
-                if (!el){
-                    el = document.createElement('div'); el.id = elId;
-                    el.className = 'alert alert-danger shadow-sm border-0';
-                    el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.cursor='pointer';
-                    el.style.margin='0'; el.style.lineHeight='1.25'; el.style.borderRadius='8px';
-                    el.style.pointerEvents='auto';
-                    el.innerHTML = html;
-                    try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } } catch(_){ }
-                    el.addEventListener('click', function(){ window.location.href = 'user_request.php?view=overdue'; });
-                    wrap.appendChild(el);
-                } else {
-                    el.innerHTML = html;
-                    try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
-                }
+                const present = new Set();
+                function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+                (Array.isArray(items)?items:[]).forEach(function(it){
+                    const rid = parseInt(it.request_id||0,10)||0;
+                    const bid = parseInt(it.borrow_id||0,10)||0;
+                    const key = rid ? ('ov-alert-'+rid) : (bid ? ('ov-alert-b'+bid) : '');
+                    if (!key) return;
+                    present.add(key);
+                    let el = document.getElementById(key);
+                    const name = String(it.model||'');
+                    const days = parseInt(it.overdue_days||0,10)||0;
+                    const html = '<i class="bi bi-exclamation-octagon me-2"></i>' + (name? (esc(name)+' ') : '') + 'Overdue '+String(days)+'d. Click to view.';
+                    if (!el){
+                        el = document.createElement('div');
+                        el.id = key;
+                        el.className = 'alert alert-danger shadow-sm border-0';
+                        el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.cursor='pointer';
+                        el.style.margin='0'; el.style.lineHeight='1.25'; el.style.borderRadius='8px';
+                        el.style.pointerEvents='auto';
+                        el.innerHTML = html;
+                        try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } } catch(_){ }
+                        el.addEventListener('click', function(){ window.location.href = 'user_request.php?view=overdue'; });
+                        wrap.appendChild(el);
+                        try{ playBeep(); }catch(_){ }
+                    } else {
+                        el.innerHTML = html;
+                        try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
+                    }
+                });
+                try { wrap.querySelectorAll('[id^="ov-alert-"]').forEach(function(node){ if (!present.has(node.id)) { try{ node.remove(); }catch(_){ node.style.display='none'; } } }); } catch(_){ }
             }
-            function removeOverdueNotice(){ const el=document.getElementById('ov-alert'); if (el){ try{ el.remove(); }catch(_){ el.style.display='none'; } } }
             function notifPoll(){
                 fetch('user_request.php?action=user_notifications')
                   .then(r=>r.json())
@@ -738,10 +749,10 @@ if (!$USED_MONGO) {
                         const id = parseInt(l.log_id||0,10);
                         if (!baseLogs.has(id)) { ding = true; const act = String(l.action||''); const label = (act==='Under Maintenance')?'damaged':'lost'; showToastCustom('The '+String(l.model_id||'')+' '+String(l.model_name||'')+' was marked as '+label, 'alert-danger'); }
                     });
-                    // Replace returnship notices with aggregated overdue alert
+                    // Overdue stacked notices (non-removable until resolved)
                     fetch('user_request.php?action=my_overdue', { cache:'no-store' })
                       .then(r=>r.json())
-                      .then(o=>{ try{ sessionStorage.setItem('overdue_prefetch', JSON.stringify({ overdue: Array.isArray(o.overdue)? o.overdue : [] })); }catch(_){ } const c = (o && Array.isArray(o.overdue)) ? o.overdue.length : 0; if (c>0) addOrUpdateOverdueNotice(c); else removeOverdueNotice(); })
+                      .then(o=>{ const list = (o && Array.isArray(o.overdue)) ? o.overdue : []; try{ sessionStorage.setItem('overdue_prefetch', JSON.stringify({ overdue: list })); }catch(_){ } addOrUpdateOverdueNotices(list); })
                       .catch(()=>{});
                     if (ding) playBeep();
                     baseAlloc = idsA; baseLogs = idsL; baseReturnships = idsR;

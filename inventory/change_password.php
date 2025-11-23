@@ -324,51 +324,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const bellDot=document.getElementById('adminBellDot');
             const dropdown=document.getElementById('adminBellDropdown');
             const listEl=document.getElementById('adminNotifList');
+            const emptyEl=document.getElementById('adminNotifEmpty');
             let latestTs=0;
             if(bellBtn&&dropdown){ bellBtn.addEventListener('click',function(e){ e.stopPropagation(); dropdown.classList.toggle('show'); if (window.innerWidth <= 768) { dropdown.style.position='fixed'; dropdown.style.top=(bellBtn.getBoundingClientRect().bottom + 6)+'px'; dropdown.style.left='auto'; dropdown.style.right='12px'; } else { dropdown.style.position='absolute'; dropdown.style.top=(bellBtn.offsetTop+bellBtn.offsetHeight+6)+'px'; dropdown.style.left=(bellBtn.offsetLeft-(dropdown.offsetWidth-bellBtn.offsetWidth))+'px'; } if (bellDot) bellDot.classList.add('d-none'); try{ const nowTs = latestTs || Date.now(); localStorage.setItem('admin_notif_last_open', String(nowTs)); }catch(_){ } }); document.addEventListener('click',()=>dropdown.classList.remove('show')); }
             let toastWrap=document.getElementById('adminToastWrap'); if(!toastWrap){ toastWrap=document.createElement('div'); toastWrap.id='adminToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080'; document.body.appendChild(toastWrap);} function showToast(msg){ const el=document.createElement('div'); el.className='alert alert-info shadow-sm border-0'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); setTimeout(()=>{ try{ el.remove(); }catch(_){ } },5000); }
-            let audioCtx=null; function playBeep(){ try{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2,audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){}}
+            let audioCtx=null; function playBeep(){ try{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2,audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){} }
             function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
             let baseline=new Set(); let initialized=false; let fetching=false;
-            function renderList(items){
-                const rows=[]; latestTs=0;
-                (items||[]).forEach(r=>{
+            function renderCombined(pending, recent){
+                const rows=[];
+                (pending||[]).forEach(r=>{
                     const id=parseInt(r.id||0,10);
-                    const whenRaw=String(r.created_at||'');
-                    // Normalize space-separated timestamp to ISO for reliable parsing
-                    const whenDate = whenRaw ? new Date(whenRaw.replace(' ', 'T')) : null;
-                    const whenTxt = whenDate ? whenDate.toLocaleString() : '';
+                    const when=String(r.created_at||'');
                     const qty=parseInt(r.quantity||1,10);
-                    if (whenDate){ const t=whenDate.getTime(); if(!isNaN(t) && t>latestTs) latestTs=t; }
-                    rows.push(
-                        '<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
-                      +   '<div class="d-flex w-100 justify-content-between">'
-                      +     '<strong>#'+id+'</strong>'
-                      +     '<small class="text-muted">'+whenTxt+'</small>'
-                      +   '</div>'
-                      +   '<div class="mb-0">'+escapeHtml(String(r.username||''))+' requests '+escapeHtml(String(r.item_name||''))+' <span class="badge bg-secondary">x'+qty+'</span></div>'
-                      + '</a>'
-                    );
+                    rows.push('<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
+                      + '<div class="d-flex w-100 justify-content-between">'
+                      +   '<strong>#'+id+'</strong>'
+                      +   '<small class="text-muted">'+escapeHtml(when)+'</small>'
+                      + '</div>'
+                      + '<div class="mb-0">'+escapeHtml(String(r.username||''))+' requests '+escapeHtml(String(r.item_name||''))+' <span class="badge bg-secondary">x'+qty+'</span></div>'
+                      + '</a>');
                 });
-                if (listEl) listEl.innerHTML=rows.join('');
+                if ((recent||[]).length){
+                  rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary" id="admClearAllBtn">Clear All</button></div></div>');
+                  (recent||[]).forEach(r=>{
+                    const id=parseInt(r.id||0,10);
+                    const nm=String(r.item_name||'');
+                    const st=String(r.status||'');
+                    const when=String(r.processed_at||'');
+                    const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
+                    rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
+                      + '<div class="me-2">'
+                      +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(when)+'</small></div>'
+                      +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
+                      + '</div>'
+                      + '<div><button type="button" class="btn btn-sm btn-outline-secondary adm-clear-one" data-id="'+id+'">Clear</button></div>'
+                      + '</div>');
+                  });
+                }
+                if (listEl) listEl.innerHTML=rows.join(''); if (emptyEl) emptyEl.style.display=rows.length?'none':'block';
             }
+            document.addEventListener('click', function(ev){
+              const one = ev.target && ev.target.closest && ev.target.closest('.adm-clear-one');
+              if (one){ const rid=parseInt(one.getAttribute('data-id')||'0',10)||0; if(!rid) return; const fd=new FormData(); fd.append('request_id', String(rid)); fetch('admin_borrow_center.php?action=admin_notif_clear',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); return; }
+              if (ev.target && ev.target.id === 'admClearAllBtn'){ const fd=new FormData(); fd.append('limit','300'); fetch('admin_borrow_center.php?action=admin_notif_clear_all',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); }
+            });
             function poll(){
                 if(fetching) return; fetching=true;
-                fetch('admin_borrow_center.php?action=pending_json')
+                fetch('admin_borrow_center.php?action=admin_notifications')
                   .then(r=>r.json())
                   .then(d=>{
-                    const items=(d&&Array.isArray(d.pending))? d.pending: [];
-                    renderList(items);
+                    const pending=(d&&Array.isArray(d.pending))? d.pending: [];
+                    const recent=(d&&Array.isArray(d.recent))? d.recent: [];
+                    renderCombined(pending, recent);
                     try{
-                        // Show red dot whenever there are any pending requests
-                        const showDot = items.length > 0;
+                        const showDot = pending.length > 0;
                         if (bellDot) bellDot.classList.toggle('d-none', !showDot);
-                    }catch(_){ if (bellDot) bellDot.classList.toggle('d-none', items.length===0); }
+                    }catch(_){ if (bellDot) bellDot.classList.toggle('d-none', pending.length===0); }
                     try{
                         const navLink=document.querySelector('a[href="admin_borrow_center.php"]');
                         if(navLink){
                             let dot=navLink.querySelector('.nav-borrow-dot');
-                            const shouldShow = items.length>0;
+                            const shouldShow = pending.length>0;
                             if (shouldShow){
                                 if(!dot){
                                     dot=document.createElement('span');
@@ -383,11 +400,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             } else if (dot){ dot.style.display='none'; }
                         }
                     }catch(_){ }
-                    const curr=new Set(items.map(it=>parseInt(it.id||0,10)));
+                    const curr=new Set(pending.map(it=>parseInt(it.id||0,10)));
                     if(!initialized){ baseline=curr; initialized=true; }
                     else {
                         let hasNew=false;
-                        items.forEach(it=>{ const id=parseInt(it.id||0,10); if(!baseline.has(id)){ hasNew=true; showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } });
+                        pending.forEach(it=>{ const id=parseInt(it.id||0,10); if(!baseline.has(id)){ hasNew=true; showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } });
                         if(hasNew) playBeep();
                         baseline=curr;
                     }
@@ -517,6 +534,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             let baseAlloc = new Set();
             let baseLogs = new Set();
             let initNotifs = false;
+            function ensurePersistentWrap(){
+                let wrap = document.getElementById('userPersistentWrap');
+                if (!wrap){
+                    wrap = document.createElement('div');
+                    wrap.id = 'userPersistentWrap';
+                    wrap.style.position = 'fixed';
+                    wrap.style.right = '16px';
+                    wrap.style.bottom = '16px';
+                    wrap.style.left = '';
+                    wrap.style.zIndex = '1090';
+                    wrap.style.display = 'flex';
+                    wrap.style.flexDirection = 'column';
+                    wrap.style.gap = '8px';
+                    wrap.style.pointerEvents = 'none';
+                    document.body.appendChild(wrap);
+                }
+                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='8px'; if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='64px'; } } } catch(_){ }
+                return wrap;
+            }
+            function addOrUpdateOverdueNotices(items){
+                const wrap = ensurePersistentWrap();
+                const present = new Set();
+                let dingNew = false;
+                function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+                (Array.isArray(items)?items:[]).forEach(function(it){
+                    const rid = parseInt(it.request_id||0,10)||0;
+                    const bid = parseInt(it.borrow_id||0,10)||0;
+                    const key = rid ? ('ov-alert-'+rid) : (bid ? ('ov-alert-b'+bid) : '');
+                    if (!key) return;
+                    present.add(key);
+                    let el = document.getElementById(key);
+                    const name = String(it.model||'');
+                    const days = parseInt(it.overdue_days||0,10)||0;
+                    const html = '<i class="bi bi-exclamation-octagon me-2"></i>' + (name? (esc(name)+' ') : '') + 'Overdue '+String(days)+'d. Click to view.';
+                    if (!el){
+                        el = document.createElement('div');
+                        el.id = key;
+                        el.className = 'alert alert-danger shadow-sm border-0';
+                        el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.cursor='pointer';
+                        el.style.margin='0'; el.style.lineHeight='1.25'; el.style.borderRadius='8px';
+                        el.style.pointerEvents='auto';
+                        el.innerHTML = html;
+                        try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='150px'; el.style.maxWidth='180px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } } catch(_){ }
+                        el.addEventListener('click', function(){ window.location.href = 'user_request.php?view=overdue'; });
+                        wrap.appendChild(el);
+                        dingNew = true;
+                    } else {
+                        el.innerHTML = html;
+                        try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='150px'; el.style.maxWidth='180px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
+                    }
+                });
+                try { wrap.querySelectorAll('[id^="ov-alert-"]').forEach(function(node){ if (!present.has(node.id)) { try{ node.remove(); }catch(_){ node.style.display='none'; } } }); } catch(_){ }
+                if (dingNew) playBeep();
+            }
             function notifPoll(){
                 fetch('user_request.php?action=user_notifications')
                   .then(r=>r.json())
@@ -543,6 +614,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             showToastCustom('The '+String(l.model_id||'')+' '+String(l.model_name||'')+' was marked as '+label, 'alert-danger');
                         }
                     });
+                    fetch('user_request.php?action=my_overdue', { cache:'no-store' })
+                      .then(r=>r.json())
+                      .then(o=>{ const list = (o && Array.isArray(o.overdue)) ? o.overdue : []; try{ sessionStorage.setItem('overdue_prefetch', JSON.stringify({ overdue: list })); }catch(_){ } addOrUpdateOverdueNotices(list); })
+                      .catch(()=>{});
                     if (ding) playBeep();
                     baseAlloc = idsA; baseLogs = idsL;
                   })
