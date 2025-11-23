@@ -649,7 +649,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                   .finally(()=>{ fetching = false; });
             }
             poll();
-            setInterval(()=>{ if (document.visibilityState === 'visible') poll(); }, 2000);
+            setInterval(()=>{ if (document.visibilityState === 'visible') poll(); }, 1000);
         })();
 
         function toggleSidebar() {
@@ -839,7 +839,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 .catch(function(){})
                 .finally(function(){ feeding=false; });
             }
-            pollVerif(); setInterval(function(){ if (document.visibilityState==='visible') pollVerif(); }, 2000);
+            pollVerif(); setInterval(function(){ if (document.visibilityState==='visible') pollVerif(); }, 1000);
           } catch(_e){}
         });
       })();

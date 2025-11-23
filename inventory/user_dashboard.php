@@ -757,7 +757,7 @@ if (!$USED_MONGO) {
                   .catch(()=>{});
             }
             notifPoll();
-            setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 2000);
+            setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 1000);
         })();
 
         // Request to Borrow red dot (based on My Borrowed) for dashboard page
@@ -800,7 +800,7 @@ if (!$USED_MONGO) {
                   .finally(()=>{ fetchingBorrow = false; });
             }
             pollBorrow();
-            setInterval(()=>{ if (document.visibilityState==='visible') pollBorrow(); }, 3000);
+            setInterval(()=>{ if (document.visibilityState==='visible') pollBorrow(); }, 1000);
         })();
 
         

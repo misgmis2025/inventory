@@ -2451,7 +2451,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 				.finally(()=>{ fetching = false; });
 		}
 		poll();
-		setInterval(()=>{ if (document.visibilityState === 'visible') poll(); }, 2000);
+		setInterval(()=>{ if (document.visibilityState === 'visible') poll(); }, 1000);
 	})();
 	</script>
 

@@ -412,7 +412,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   .catch(()=>{})
                   .finally(()=>{ fetching=false; });
             }
-            poll(); setInterval(()=>{ if(document.visibilityState==='visible') poll(); }, 2000);
+            poll(); setInterval(()=>{ if(document.visibilityState==='visible') poll(); }, 1000);
         })();
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar-wrapper');
@@ -481,7 +481,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   .finally(()=>{ fetchingBorrow = false; });
             }
             pollBorrow();
-            setInterval(()=>{ if (document.visibilityState==='visible') pollBorrow(); }, 2000);
+            setInterval(()=>{ if (document.visibilityState==='visible') pollBorrow(); }, 1000);
         })();
         // User approval/lost-damaged popups (non-admin)
         (function(){
@@ -618,7 +618,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             // Run after DOM is ready to ensure container exists
             document.addEventListener('DOMContentLoaded', function(){ notifPoll(); });
-            setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 2000);
+            setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 1000);
         })();
         (function(){
             const current = document.getElementById('current_password');

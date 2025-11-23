@@ -5093,7 +5093,7 @@ if (!empty($my_requests)) {
           .catch(()=>{});
       }
       notifPoll();
-      setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 10000);
+      setInterval(()=>{ if (document.visibilityState==='visible') notifPoll(); }, 1000);
     })();
   </script>
   <script>
@@ -5123,16 +5123,18 @@ if (!empty($my_requests)) {
       let latestTs = 0;
       let lastSig = '';
       let currentSig = '';
+      function setLoadingList(){ try{ if (listEl) listEl.innerHTML = '<div class="text-center text-muted py-2">Loading...</div>'; if (emptyEl) emptyEl.style.display = 'none'; }catch(_){ } }
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
-      function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; const rows=[]; latestTs=0; const sigParts=[];
+      function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; let rows=[]; latestTs=0; const sigParts=[];
       (items||[]).forEach(function(r){
         const id = parseInt(r.id||0,10);
         const st = String(r.status||'');
         sigParts.push(id+'|'+st);
         if (["Approved","Rejected","Borrowed","Returned","Cancelled"].includes(st)){
           const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.created_at;
-          // Show server string directly in 12-hour-like display, avoid browser timezone shifting
+          // Show server string directly; also compute latestTs using a safe Date parse for dot visibility
           const whenTxt = when ? String(when) : '';
+          try { const whenDate = when ? new Date(String(when).replace(' ','T')) : null; if (whenDate){ const t=whenDate.getTime(); if(!isNaN(t) && t>latestTs) latestTs=t; } } catch(_){ }
           rows.push('<a href="user_request.php" class="list-group-item list-group-item-action">'
             + '<div class="d-flex w-100 justify-content-between">'
             +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
@@ -5142,25 +5144,29 @@ if (!empty($my_requests)) {
             + '</a>');
         }
       });
-      // Append returnship requests (Pending/Requested) so users can act via QR directly, then decisions
+      // First, render whatever we already have immediately
+      listEl.innerHTML = rows.join('');
+      let any = rows.length>0;
+      emptyEl.style.display = any ? 'none' : 'block';
+      // If mobile modal is open, sync content right away
+      try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
+      // Then, augment with returnship + decision notices without delaying initial render
       try {
-        // Fetch returnship notifications and extend the list
-        // We keep this synchronous-looking by using fetch with then and updating after base rows
         fetch('user_request.php?action=user_notifications', { cache: 'no-store' })
           .then(r=>r.json())
           .then(d=>{
             const returnships = Array.isArray(d.returnships) ? d.returnships : [];
             const decisions = Array.isArray(d.decisions) ? d.decisions : [];
+            const extra=[];
             returnships.forEach(function(rs){
-              const rid = parseInt(rs.request_id||0,10)||0;
-              if (!rid) return;
+              const rid = parseInt(rs.request_id||0,10)||0; if (!rid) return;
               const name = escapeHtml(String(rs.model_name||''));
               const ist = String(rs.item_status||'');
               const ts = String(rs.ts||'');
               const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
               const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
               const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
-              rows.unshift('<div class="list-group-item">'
+              extra.push('<div class="list-group-item">'
                 + '<div class="d-flex w-100 justify-content-between">'
                 +   '<strong>#'+rid+' '+name+'</strong>'
                 +   whenHtml
@@ -5171,13 +5177,12 @@ if (!empty($my_requests)) {
                 + '</div>'
                 + '</div>');
             });
-            // Show decisions (auto-assign edits and auto-cancels)
             decisions.forEach(function(dc){
               const rid = parseInt(dc.id||0,10)||0; if (!rid) return;
               const msg = escapeHtml(String(dc.message||''));
               const ts = String(dc.ts||'');
               const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
-              rows.unshift('<div class="list-group-item">'
+              extra.push('<div class="list-group-item">'
                 + '<div class="d-flex w-100 justify-content-between">'
                 +   '<strong>#'+rid+' Decision</strong>'
                 +   whenHtml
@@ -5185,29 +5190,24 @@ if (!empty($my_requests)) {
                 + '<div class="mb-0">'+msg+'</div>'
                 + '</div>');
             });
+            if (extra.length){ rows = extra.concat(rows); listEl.innerHTML = rows.join(''); }
+            any = rows.length>0; emptyEl.style.display = any ? 'none' : 'block';
+            // Keep mobile modal in sync if open
+            try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
           })
-          .catch(()=>{})
-          .finally(()=>{
-            listEl.innerHTML = rows.join('');
-            const any = rows.length>0;
-            emptyEl.style.display = any ? 'none' : 'block';
-          });
-      } catch(_) {
-        listEl.innerHTML = rows.join('');
-        const any = rows.length>0;
-        emptyEl.style.display = any ? 'none' : 'block';
-      }
+          .catch(()=>{});
+      } catch(_){ }
+      // Dot toggle based on whether we have any unseen items since last open
+      try {
+        const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
+        const sig = sigParts.join(','); currentSig = sig; lastSig = localStorage.getItem('ud_notif_sig_open') || '';
+        const changed = !!(sig && sig !== lastSig);
+        const showDot = any && (changed || (latestTs>0 && latestTs > lastOpen));
+        if (bellDot) bellDot.classList.toggle('d-none', !showDot);
+      } catch(_){ if (bellDot) bellDot.classList.toggle('d-none', !any); }
   }
-        try {
-          const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
-          const sig = sigParts.join(','); currentSig = sig; lastSig = localStorage.getItem('ud_notif_sig_open') || '';
-          const changed = sig && sig !== lastSig;
-          const showDot = any && (changed || latestTs > lastOpen);
-          if (bellDot) bellDot.classList.toggle('d-none', !showDot);
-        } catch(_){ if (bellDot) bellDot.classList.toggle('d-none', !any); }
-      }
-      function poll(){
-        if (fetching) return; fetching=true;
+      function poll(force){
+        if (fetching && !force) return; fetching=true; setLoadingList();
         fetch('user_request.php?action=my_requests_status')
           .then(r=>r.json())
           .then(d=>{
@@ -5220,15 +5220,17 @@ if (!empty($my_requests)) {
       }
       bellBtn.addEventListener('click', function(e){
         e.stopPropagation();
-        // On mobile, open centered modal instead of dropdown
+        // On mobile, open centered modal after immediate fetch; on desktop, open dropdown and fetch
         if (isMobile()){
-          e.preventDefault();
-          openMobileModal();
+          e.preventDefault(); setLoadingList(); poll(true);
+          setTimeout(()=>{ try{ copyNotifToMobile(); openMobileModal(); }catch(_){ } }, 50);
         } else {
           dropdown.classList.toggle('show');
           dropdown.style.position = 'absolute';
           dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
           dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
+          try{ dropdown.style.zIndex = '2000'; }catch(_){ }
+          setLoadingList(); poll(true);
         }
         if (bellDot) bellDot.classList.add('d-none');
         try {
@@ -5242,8 +5244,8 @@ if (!empty($my_requests)) {
       if (bellBackdrop) bellBackdrop.addEventListener('click', closeMobileModal);
       if (mobileCloseBtn) mobileCloseBtn.addEventListener('click', closeMobileModal);
       document.addEventListener('keydown', function(ev){ if (ev.key==='Escape') closeMobileModal(); });
-      poll();
-      setInterval(()=>{ if (document.visibilityState==='visible') poll(); }, 2000);
+      poll(false);
+      setInterval(()=>{ if (document.visibilityState==='visible') poll(false); }, 1000);
       // Delegate click for Return via QR buttons inside notifications (desktop and mobile)
       function triggerReturnModal(rid, bid, name){
         try{
