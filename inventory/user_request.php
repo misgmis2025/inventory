@@ -5144,7 +5144,7 @@ if (!empty($my_requests)) {
             const txt = (oc===1) ? 'You have an overdue item' : ('You have overdue items ('+oc+')');
             const oh = '<a href="user_request.php?view=overdue" class="list-group-item list-group-item-action">'
               + '<div class="d-flex w-100 justify-content-between">'
-              +   '<strong>'+txt+'</strong>'
+              +   '<strong class="text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>'+txt+'</strong>'
               + '</div>'
               + '</a>';
             combined.push({type:'overdue', id:0, ts: (Date.now()+1000000), html: oh});
