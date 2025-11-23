@@ -1157,9 +1157,15 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         if ($endTs <= time()) { header('Location: admin_borrow_center.php?error=edit_serial_overdue#reservations-list'); exit(); }
         if (!($endTs <= ($tsStart - $buf))) { header('Location: admin_borrow_center.php?error=edit_serial_inuse#reservations-list'); exit(); }
       }
-      // Save assignment
+      // Save assignment and record edit note for user notification
       $assignedSerial = (string)($unit['serial_no'] ?? '');
-      $er->updateOne(['id'=>$id], ['$set'=>['reserved_model_id'=>$assignedMid, 'reserved_serial_no'=>$assignedSerial]]);
+      $locStr = (string)($unit['location'] ?? '');
+      $er->updateOne(['id'=>$id], ['$set'=>[
+        'reserved_model_id'=>$assignedMid,
+        'reserved_serial_no'=>$assignedSerial,
+        'edited_at'=>$now,
+        'edit_note'=>'Edited to ' . $assignedSerial . ($locStr!=='' ? (' @ ' . $locStr) : '')
+      ]]);
       header('Location: admin_borrow_center.php?edit_serial=1#reservations-list'); exit();
     }
 
@@ -1602,6 +1608,95 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
       $ubCol = $db->selectCollection('user_borrows');
       $allocCol = $db->selectCollection('request_allocations');
       $nowStr = date('Y-m-d H:i:s');
+      // Preflight reassignment/cancellation for upcoming reservations tied to a specific serial
+      try {
+        $upcoming = $erCol->find([
+          'type' => 'reservation',
+          'status' => 'Approved',
+          'reserved_from' => ['$gt' => $nowStr],
+          'reserved_model_id' => ['$exists' => true, '$ne' => 0]
+        ], ['projection'=>['id'=>1,'username'=>1,'item_name'=>1,'reserved_from'=>1,'reserved_to'=>1,'reserved_model_id'=>1]]);
+        foreach ($upcoming as $rsv) {
+          $rid = (int)($rsv['id'] ?? 0); if ($rid <= 0) continue;
+          $itemName = (string)($rsv['item_name'] ?? ''); if ($itemName==='') continue;
+          $rf = (string)($rsv['reserved_from'] ?? ''); $rt = (string)($rsv['reserved_to'] ?? '');
+          $tsStart = $rf!=='' ? strtotime($rf) : null; $tsEnd = $rt!=='' ? strtotime($rt) : null; if (!$tsStart || !$tsEnd) continue;
+          $mid = (int)($rsv['reserved_model_id'] ?? 0); if ($mid <= 0) continue;
+          $buf = 5*60;
+          // Check if current unit will be available in time
+          $mustReassign = false; $endTs = null; $hasKnownEnd = false;
+          try {
+            $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1]]);
+            if ($ub) {
+              $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
+              if ($al && isset($al['request_id'])) {
+                $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+                if ($orig) {
+                  $endStr = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? ''));
+                  if ($endStr !== '') { $endTs = strtotime($endStr); $hasKnownEnd = (bool)$endTs; }
+                }
+              }
+              if (!$hasKnownEnd) { $mustReassign = true; }
+              elseif ($endTs && $endTs <= time()) { $mustReassign = true; }
+              elseif (!($endTs <= ($tsStart - $buf))) { $mustReassign = true; }
+            }
+          } catch (Throwable $_) { /* ignore */ }
+          if (!$mustReassign) { continue; }
+          // Try to find an alternative unit: prefer Available, else In Use that returns before start with buffer; avoid overlapping reservations
+          $found = null; $foundSerial = ''; $foundLoc = '';
+          try {
+            // Helper to test conflicts on a candidate unit id
+            $conflicts = function($candId) use ($erCol,$rid,$tsStart,$tsEnd,$buf){
+              try {
+                $curR = $erCol->find(['type'=>'reservation','status'=>'Approved','reserved_model_id'=>$candId,'id'=>['$ne'=>$rid]], ['projection'=>['reserved_from'=>1,'reserved_to'=>1]]);
+                foreach ($curR as $row) {
+                  $ofs = isset($row['reserved_from']) ? strtotime((string)$row['reserved_from']) : null;
+                  $ote = isset($row['reserved_to']) ? strtotime((string)$row['reserved_to']) : null;
+                  if (!$ofs || !$ote) continue;
+                  $noOverlapWithBuffer = ($ote <= ($tsStart - $buf)) || ($tsEnd <= ($ofs - $buf));
+                  if (!$noOverlapWithBuffer) return true;
+                }
+              } catch (Throwable $_c) { }
+              return false;
+            };
+            // Available candidates first
+            $candCur = $iiCol->find(['status'=>'Available', '$or'=>[['model'=>$itemName],['item_name'=>$itemName]], 'id'=>['$ne'=>$mid]], ['projection'=>['id'=>1,'serial_no'=>1,'location'=>1]]);
+            foreach ($candCur as $u) {
+              $cid = (int)($u['id'] ?? 0); if ($cid<=0) continue; if ($conflicts($cid)) continue;
+              $found = $cid; $foundSerial = (string)($u['serial_no'] ?? ''); $foundLoc = (string)($u['location'] ?? ''); break;
+            }
+            if (!$found) {
+              // Consider units currently In Use that will be free in time
+              $cand2 = $iiCol->find(['status'=>['$in'=>['In Use','Reserved']], '$or'=>[['model'=>$itemName],['item_name'=>$itemName]], 'id'=>['$ne'=>$mid]], ['projection'=>['id'=>1,'serial_no'=>1,'location'=>1]]);
+              foreach ($cand2 as $u2) {
+                $cid = (int)($u2['id'] ?? 0); if ($cid<=0) continue; if ($conflicts($cid)) continue;
+                $ub2 = $ubCol->findOne(['model_id'=>$cid,'status'=>'Borrowed'], ['projection'=>['id'=>1]]);
+                if (!$ub2) { $found = $cid; $foundSerial = (string)($u2['serial_no'] ?? ''); $foundLoc = (string)($u2['location'] ?? ''); break; }
+                $al2 = $allocCol->findOne(['borrow_id'=>(int)($ub2['id']??0)], ['projection'=>['request_id'=>1]]);
+                $ok=false; if ($al2 && isset($al2['request_id'])) {
+                  $orig2 = $erCol->findOne(['id'=>(int)$al2['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+                  if ($orig2) { $end2Str = (string)($orig2['expected_return_at'] ?? ($orig2['reserved_to'] ?? '')); $t2 = $end2Str!=='' ? strtotime($end2Str) : null; if ($t2 && $t2 > time() && ($t2 <= ($tsStart - $buf))) { $ok=true; } }
+                }
+                if ($ok) { $found = $cid; $foundSerial = (string)($u2['serial_no'] ?? ''); $foundLoc = (string)($u2['location'] ?? ''); break; }
+              }
+            }
+          } catch (Throwable $_f) { $found = null; }
+          if ($found) {
+            // Persist reassignment
+            $erCol->updateOne(['id'=>$rid], ['$set'=>[
+              'reserved_model_id'=>$found,
+              'reserved_serial_no'=>$foundSerial,
+              'edited_at'=>$nowStr,
+              'edit_note'=>'Auto-assigned to ' . $foundSerial . ' @ ' . $foundLoc
+            ]]);
+          } else {
+            // Auto-cancel
+            $erCol->updateOne(['id'=>$rid,'status'=>'Approved'], ['$set'=>[
+              'status'=>'Cancelled', 'cancelled_at'=>$nowStr, 'cancelled_by'=>'system', 'cancelled_reason'=>'Auto-cancelled: reserved unit overdue/unavailable'
+            ]]);
+          }
+        }
+      } catch (Throwable $_pre) { /* ignore preflight */ }
       try {
         // Fetch all approved reservations and check due using strtotime to avoid string comparison issues
         $cur = $erCol->find(['type'=>'reservation','status'=>'Approved']);

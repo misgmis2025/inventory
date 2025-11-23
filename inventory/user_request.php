@@ -342,6 +342,7 @@ if ($__act === 'user_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       $rsCol = $mongo_db->selectCollection('returnship_requests');
       $approvals = [];
       $returnships = [];
+      $decisions = [];
       $allocs = $allocCol->find([], ['sort'=>['id'=>-1], 'limit'=>300]);
       foreach ($allocs as $al) {
         $reqId = (int)($al['request_id'] ?? 0); $bid = (int)($al['borrow_id'] ?? 0);
@@ -403,7 +404,27 @@ if ($__act === 'user_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         }
       } catch (Throwable $_rs) {}
 
-      echo json_encode(['approvals'=>$approvals,'lostDamaged'=>$lostDamaged,'returnships'=>$returnships]);
+      // Decisions: auto-assign and auto-cancel notifications
+      try {
+        $erUser = $erCol->find(['username'=>$uname, 'type'=>'reservation'], ['sort'=>['id'=>-1], 'limit'=>200]);
+        foreach ($erUser as $erx) {
+          $rid = (int)($erx['id'] ?? 0); if ($rid<=0) continue;
+          $st = (string)($erx['status'] ?? '');
+          // Auto-cancelled
+          if ($st === 'Cancelled') {
+            $msg = 'Your reservation #'.$rid.' was auto-cancelled: ' . ((string)($erx['cancelled_reason'] ?? 'Unavailable'));
+            $decisions[] = [ 'id'=>$rid, 'status'=>'Cancelled', 'message'=>$msg, 'ts'=>(string)($erx['cancelled_at'] ?? ($erx['updated_at'] ?? '')) ];
+          }
+          // Auto-assigned serial edits under Approved
+          if ($st === 'Approved' && isset($erx['edited_at']) && trim((string)$erx['edited_at'])!=='') {
+            $serial = (string)($erx['reserved_serial_no'] ?? '');
+            $note = (string)($erx['edit_note'] ?? '');
+            $msg = $note !== '' ? ('Reservation #'.$rid.' updated: '.$note) : ('Reservation #'.$rid.' auto-assigned to ['.$serial.']');
+            $decisions[] = [ 'id'=>$rid, 'status'=>'Edited', 'message'=>$msg, 'ts'=>(string)$erx['edited_at'] ];
+          }
+        }
+      } catch (Throwable $_d) { /* ignore */ }
+      echo json_encode(['approvals'=>$approvals,'lostDamaged'=>$lostDamaged,'returnships'=>$returnships,'decisions'=>$decisions]);
     } catch (Throwable $e) { echo json_encode(['approvals'=>[], 'lostDamaged'=>[]]); }
   } else {
     $approvals = []; $lostDamaged = [];
@@ -993,8 +1014,13 @@ if ($__act === 'my_requests_status' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'rejected_reason' => (string)($r['rejected_reason'] ?? ''),
           'cancelled_at' => (string)($r['cancelled_at'] ?? ''),
           'cancelled_by' => (string)($r['cancelled_by'] ?? ''),
+          'cancelled_reason' => (string)($r['cancelled_reason'] ?? ''),
           'borrowed_at' => (string)($r['borrowed_at'] ?? ''),
           'returned_at' => (string)($r['returned_at'] ?? ''),
+          'reserved_model_id' => (int)($r['reserved_model_id'] ?? 0),
+          'reserved_serial_no' => (string)($r['reserved_serial_no'] ?? ''),
+          'edited_at' => (string)($r['edited_at'] ?? ''),
+          'edit_note' => (string)($r['edit_note'] ?? ''),
         ];
         $list[] = $row; $ids[] = $row['id'];
       }
@@ -5040,6 +5066,8 @@ if (!empty($my_requests)) {
             let ding = false;
             approvals.forEach(a=>{ const id=parseInt(a.alloc_id||0,10); if(!baseAlloc.has(id)){ ding=true; showToastCustom('The ID.'+String(a.model_id||'')+' ('+String(a.model_name||'')+') has been approved', 'alert-success'); } });
             logs.forEach(l=>{ const id=parseInt(l.log_id||0,10); if(!baseLogs.has(id)){ ding=true; const act=String(l.action||''); const label=(act==='Under Maintenance')?'damaged':'lost'; showToastCustom('The ID.'+String(l.model_id||'')+' ('+String(l.model_name||'')+') was marked as '+label, 'alert-danger'); } });
+            // Decision toasts (auto-assign / auto-cancel)
+            decisions.forEach(dc=>{ const key=(parseInt(dc.id||0,10)+'|'+String(dc.status||'')); if(!baseDec.has(key)){ ding=true; showToastCustom(String(dc.message||'Reservation updated'), dc.status==='Cancelled'?'alert-danger':'alert-info'); } });
             const pendingSet = new Set();
             if (typeof baseReturnships !== 'undefined') { baseReturnships.forEach(oldId=>{ removeReturnshipNotice(oldId); }); }
             fetch('user_request.php?action=my_overdue', { cache:'no-store' })
@@ -5087,65 +5115,80 @@ if (!empty($my_requests)) {
       let lastSig = '';
       let currentSig = '';
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
-      function renderList(items){
-        const rows=[]; latestTs=0; const sigParts=[];
-        (items||[]).forEach(function(r){
-          const id = parseInt(r.id||0,10);
-          const st = String(r.status||'');
-          sigParts.push(id+'|'+st);
-          if (["Approved","Rejected","Borrowed","Returned"].includes(st)){
-            const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.created_at;
-            // Show server string directly in 12-hour-like display, avoid browser timezone shifting
-            const whenTxt = when ? String(when) : '';
-            rows.push('<a href="user_request.php" class="list-group-item list-group-item-action">'
-              + '<div class="d-flex w-100 justify-content-between">'
-              +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
-              +   '<small class="text-muted">'+whenTxt+'</small>'
-              + '</div>'
-              + '<div class="mb-0">Status: <span class="badge '+(st==='Approved'||st==='Borrowed'?'bg-success':'bg-danger')+'">'+escapeHtml(st)+'</span></div>'
-              + '</a>');
-          }
-        });
-        // Append returnship requests (Pending/Requested) so users can act via QR directly
-        try {
-          // Fetch returnship notifications and extend the list
-          // We keep this synchronous-looking by using fetch with then and updating after base rows
-          fetch('user_request.php?action=user_notifications', { cache: 'no-store' })
-            .then(r=>r.json())
-            .then(d=>{
-              const returnships = Array.isArray(d.returnships) ? d.returnships : [];
-              returnships.forEach(function(rs){
-                const rid = parseInt(rs.request_id||0,10)||0;
-                if (!rid) return;
-                const name = escapeHtml(String(rs.model_name||''));
-                const ist = String(rs.item_status||'');
-                const ts = String(rs.ts||'');
-                const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
-                const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
-                const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
-                rows.unshift('<div class="list-group-item">'
-                  + '<div class="d-flex w-100 justify-content-between">'
-                  +   '<strong>#'+rid+' '+name+'</strong>'
-                  +   whenHtml
-                  + '</div>'
-                  + '<div class="d-flex justify-content-between align-items-center mt-1">'
-                  +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
-                  +   '<div>'+action+'</div>'
-                  + '</div>'
-                  + '</div>');
-              });
-            })
-            .catch(()=>{})
-            .finally(()=>{
-              listEl.innerHTML = rows.join('');
-              const any = rows.length>0;
-              emptyEl.style.display = any ? 'none' : 'block';
-            });
-        } catch(_) {
-          listEl.innerHTML = rows.join('');
-          const any = rows.length>0;
-          emptyEl.style.display = any ? 'none' : 'block';
+      function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; const rows=[]; latestTs=0; const sigParts=[];
+      (items||[]).forEach(function(r){
+        const id = parseInt(r.id||0,10);
+        const st = String(r.status||'');
+        sigParts.push(id+'|'+st);
+        if (["Approved","Rejected","Borrowed","Returned","Cancelled"].includes(st)){
+          const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.created_at;
+          // Show server string directly in 12-hour-like display, avoid browser timezone shifting
+          const whenTxt = when ? String(when) : '';
+          rows.push('<a href="user_request.php" class="list-group-item list-group-item-action">'
+            + '<div class="d-flex w-100 justify-content-between">'
+            +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
+            +   '<small class="text-muted">'+whenTxt+'</small>'
+            + '</div>'
+            + '<div class="mb-0">Status: <span class="badge '+(st==='Approved'||st==='Borrowed'?'bg-success':'bg-danger')+'">'+escapeHtml(st)+'</span></div>'
+            + '</a>');
         }
+      });
+      // Append returnship requests (Pending/Requested) so users can act via QR directly, then decisions
+      try {
+        // Fetch returnship notifications and extend the list
+        // We keep this synchronous-looking by using fetch with then and updating after base rows
+        fetch('user_request.php?action=user_notifications', { cache: 'no-store' })
+          .then(r=>r.json())
+          .then(d=>{
+            const returnships = Array.isArray(d.returnships) ? d.returnships : [];
+            const decisions = Array.isArray(d.decisions) ? d.decisions : [];
+            returnships.forEach(function(rs){
+              const rid = parseInt(rs.request_id||0,10)||0;
+              if (!rid) return;
+              const name = escapeHtml(String(rs.model_name||''));
+              const ist = String(rs.item_status||'');
+              const ts = String(rs.ts||'');
+              const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
+              const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
+              const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
+              rows.unshift('<div class="list-group-item">'
+                + '<div class="d-flex w-100 justify-content-between">'
+                +   '<strong>#'+rid+' '+name+'</strong>'
+                +   whenHtml
+                + '</div>'
+                + '<div class="d-flex justify-content-between align-items-center mt-1">'
+                +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
+                +   '<div>'+action+'</div>'
+                + '</div>'
+                + '</div>');
+            });
+            // Show decisions (auto-assign edits and auto-cancels)
+            decisions.forEach(function(dc){
+              const rid = parseInt(dc.id||0,10)||0; if (!rid) return;
+              const msg = escapeHtml(String(dc.message||''));
+              const ts = String(dc.ts||'');
+              const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
+              rows.unshift('<div class="list-group-item">'
+                + '<div class="d-flex w-100 justify-content-between">'
+                +   '<strong>#'+rid+' Decision</strong>'
+                +   whenHtml
+                + '</div>'
+                + '<div class="mb-0">'+msg+'</div>'
+                + '</div>');
+            });
+          })
+          .catch(()=>{})
+          .finally(()=>{
+            listEl.innerHTML = rows.join('');
+            const any = rows.length>0;
+            emptyEl.style.display = any ? 'none' : 'block';
+          });
+      } catch(_) {
+        listEl.innerHTML = rows.join('');
+        const any = rows.length>0;
+        emptyEl.style.display = any ? 'none' : 'block';
+      }
+  }
         try {
           const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
           const sig = sigParts.join(','); currentSig = sig; lastSig = localStorage.getItem('ud_notif_sig_open') || '';
