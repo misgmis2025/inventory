@@ -3526,7 +3526,7 @@ if (!empty($my_requests)) {
                         </tr>
                       </thead>
                       <tbody id="myOverdueTbody">
-                        <tr><td colspan="4" class="text-center text-muted">No overdue items.</td></tr>
+                        <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
                       </tbody>
                     </table>
                   </div>
@@ -4888,12 +4888,12 @@ if (!empty($my_requests)) {
           try {
             var tb=document.getElementById('myOverdueTbody');
             if(tb){
-              // Pre-render from sessionStorage if prefetched to speed up initial view
+              // Pre-render from sessionStorage ONLY if there are items; otherwise keep Loading... until live fetch returns
               try {
                 var pf = sessionStorage.getItem('overdue_prefetch');
                 if (pf) {
                   var parsed = JSON.parse(pf);
-                  if (parsed && parsed.overdue && Array.isArray(parsed.overdue) && parsed.overdue.length >= 0) {
+                  if (parsed && parsed.overdue && Array.isArray(parsed.overdue) && parsed.overdue.length > 0) {
                     renderMyOverdue(parsed);
                     window.__UR_SECTION_LOADED__['section-overdue'] = true;
                   }
@@ -5006,6 +5006,19 @@ if (!empty($my_requests)) {
         const wrap = ensurePersistentWrap();
         const list = Array.isArray(items) ? items : [];
         const count = list.length;
+        // Do not show consolidated overdue notice if user is currently viewing the Overdue table/modal
+        try {
+          let viewing = false;
+          try { if (window.__UR_VISIBLE_SECTION__ === 'section-overdue') viewing = true; } catch(_){ }
+          if (!viewing) {
+            try { const mdl = document.getElementById('userOverdueModal'); if (mdl && mdl.classList && mdl.classList.contains('show')) viewing = true; } catch(_){ }
+          }
+          if (viewing) {
+            const existing = document.getElementById('ov-alert-summary');
+            if (existing) { try{ existing.remove(); }catch(_){ existing.style.display='none'; } }
+            return;
+          }
+        } catch(_){ }
         // Clean up any item-specific overdue alerts, keep only summary if present
         try {
           wrap.querySelectorAll('[id^="ov-alert-"]').forEach(function(node){
