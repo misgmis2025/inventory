@@ -5124,103 +5124,146 @@ if (!empty($my_requests)) {
       let latestTs = 0;
       let lastSig = '';
       let currentSig = '';
-      function setLoadingList(){ try{ if (listEl) listEl.innerHTML = '<div class="text-center text-muted py-2">Loading...</div>'; if (emptyEl) emptyEl.style.display = 'none'; }catch(_){ } }
+      function setLoadingList(){
+        try{
+          if (listEl){
+            const has = !!(listEl.innerHTML && listEl.innerHTML.trim() !== '');
+            if (!has) listEl.innerHTML = '<div class="text-center text-muted py-2">Loading...</div>';
+          }
+          if (emptyEl) emptyEl.style.display = 'none';
+        }catch(_){ }
+      }
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
-      function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; let rows=[]; latestTs=0; const sigParts=[];
-      (items||[]).forEach(function(r){
-        const id = parseInt(r.id||0,10);
-        const st = String(r.status||'');
-        sigParts.push(id+'|'+st);
-        const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.cancelled_at || r.created_at || r.created_at_display;
-        const whenTxt = when ? String(when) : '';
-        try { const whenDate = when ? new Date(String(when).replace(' ','T')) : null; if (whenDate){ const t=whenDate.getTime(); if(!isNaN(t) && t>latestTs) latestTs=t; } } catch(_){ }
-        let badgeCls='bg-secondary';
-        if (st==='Approved' || st==='Borrowed') badgeCls='bg-success';
-        else if (st==='Rejected' || st==='Cancelled') badgeCls='bg-danger';
-        rows.push('<a href="user_request.php" class="list-group-item list-group-item-action">'
-          + '<div class="d-flex w-100 justify-content-between">'
-          +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
-          +   '<small class="text-muted">'+whenTxt+'</small>'
-          + '</div>'
-          + '<div class="mb-0">Status: <span class="badge '+badgeCls+'">'+escapeHtml(st||'')+'</span></div>'
-          + '</a>');
-      });
-      // First, render whatever we already have immediately
-      listEl.innerHTML = rows.join('');
-      let any = rows.length>0;
-      emptyEl.style.display = any ? 'none' : 'block';
-      // If mobile modal is open, sync content right away
+      // Build full list (base requests + extras) in memory and return rows + metadata
+      function composeRows(baseList, dn){
+        let latest=0; let sigParts=[]; const combined=[];
+        (baseList||[]).forEach(function(r){
+          const id = parseInt(r.id||0,10);
+          const st = String(r.status||'');
+          sigParts.push(id+'|'+st);
+          const when = r.approved_at || r.rejected_at || r.borrowed_at || r.returned_at || r.cancelled_at || r.created_at || r.created_at_display;
+          const whenTxt = when ? String(when) : '';
+          let tsn = 0; try { const d = when ? new Date(String(when).replace(' ','T')) : null; if (d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } } catch(_){ }
+          if (tsn>latest) latest=tsn;
+          let badgeCls='bg-secondary';
+          if (st==='Approved' || st==='Borrowed') badgeCls='bg-success';
+          else if (st==='Rejected' || st==='Cancelled') badgeCls='bg-danger';
+          const html = '<a href="user_request.php" class="list-group-item list-group-item-action">'
+            + '<div class="d-flex w-100 justify-content-between">'
+            +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
+            +   '<small class="text-muted">'+whenTxt+'</small>'
+            + '</div>'
+            + '<div class="mb-0">Status: <span class="badge '+badgeCls+'">'+escapeHtml(st||'')+'</span></div>'
+            + '</a>';
+          combined.push({type:'base', id, ts: tsn, html});
+        });
+        try{
+          const returnships = (dn && Array.isArray(dn.returnships)) ? dn.returnships : [];
+          const decisions = (dn && Array.isArray(dn.decisions)) ? dn.decisions : [];
+          returnships.forEach(function(rs){
+            const rid = parseInt(rs.request_id||0,10)||0; if (!rid) return;
+            const name = escapeHtml(String(rs.model_name||''));
+            const ist = String(rs.item_status||'');
+            const ts = String(rs.ts||'');
+            let tsn = 0; try { const d = ts ? new Date(String(ts).replace(' ','T')) : null; if (d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } } catch(_){ }
+            if (tsn>latest) latest=tsn;
+            const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
+            const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
+            const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
+            const html = '<div class="list-group-item">'
+              + '<div class="d-flex w-100 justify-content-between">'
+              +   '<strong>#'+rid+' '+name+'</strong>'
+              +   whenHtml
+              + '</div>'
+              + '<div class="d-flex justify-content-between align-items-center mt-1">'
+              +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
+              +   '<div>'+action+'</div>'
+              + '</div>'
+              + '</div>';
+            combined.push({type:'extra', id: rid, ts: tsn, html});
+          });
+          decisions.forEach(function(dc){
+            const rid = parseInt(dc.id||0,10)||0; if (!rid) return;
+            const msg = escapeHtml(String(dc.message||''));
+            const ts = String(dc.ts||'');
+            let tsn = 0; try { const d = ts ? new Date(String(ts).replace(' ','T')) : null; if (d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } } catch(_){ }
+            if (tsn>latest) latest=tsn;
+            const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
+            const html = '<div class="list-group-item">'
+              + '<div class="d-flex w-100 justify-content-between">'
+              +   '<strong>#'+rid+' Decision</strong>'
+              +   whenHtml
+              + '</div>'
+              + '<div class="mb-0">'+msg+'</div>'
+              + '</div>';
+            combined.push({type:'extra', id: rid, ts: tsn, html});
+          });
+        }catch(_){ }
+        combined.sort(function(a,b){
+          if (b.ts !== a.ts) return b.ts - a.ts;
+          const aw = (a.type === 'base') ? 1 : 0;
+          const bw = (b.type === 'base') ? 1 : 0;
+          if (aw !== bw) return aw - bw;
+          return (b.id||0) - (a.id||0);
+        });
+        const rows = combined.map(function(x){ return x.html; });
+        return { rows, latest, sig: sigParts.join(',') };
+      }
+      function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; 
+        const built = composeRows(items);
+        // Update dot state
+        try {
+          const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
+          currentSig = built.sig; lastSig = localStorage.getItem('ud_notif_sig_open') || '';
+          latestTs = built.latest;
+          const changed = !!(built.sig && built.sig !== lastSig);
+          const any = built.rows.length>0;
+          const showDot = any && (changed || (latestTs>0 && latestTs > lastOpen));
+          if (bellDot) bellDot.classList.toggle('d-none', !showDot);
+        } catch(_){ }
+        // Single DOM commit if content changed
+        const html = built.rows.join('');
+        if (listEl && html !== lastHtml){ listEl.innerHTML = html; lastHtml = html; }
+        if (emptyEl) emptyEl.style.display = (html && html.trim()!=='') ? 'none' : 'block';
+        try{ repositionBellDropdown(); }catch(_){ }
       try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
-      try{ repositionBellDropdown(); }catch(_){ }
-      // Then, augment with returnship + decision notices without delaying initial render
-      try {
-        fetch('user_request.php?action=user_notifications', { cache: 'no-store' })
-          .then(r=>r.json())
-          .then(d=>{
-            const returnships = Array.isArray(d.returnships) ? d.returnships : [];
-            const decisions = Array.isArray(d.decisions) ? d.decisions : [];
-            const extra=[];
-            returnships.forEach(function(rs){
-              const rid = parseInt(rs.request_id||0,10)||0; if (!rid) return;
-              const name = escapeHtml(String(rs.model_name||''));
-              const ist = String(rs.item_status||'');
-              const ts = String(rs.ts||'');
-              const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
-              const badgeCls = (ist === 'Overdue') ? 'badge bg-danger' : 'badge bg-warning text-dark';
-              const action = '<button type="button" class="btn btn-sm btn-outline-primary open-qr-return" data-reqid="'+rid+'" data-model_name="'+name+'"><i class="bi bi-qr-code-scan"></i> Return via QR</button>';
-              extra.push('<div class="list-group-item">'
-                + '<div class="d-flex w-100 justify-content-between">'
-                +   '<strong>#'+rid+' '+name+'</strong>'
-                +   whenHtml
-                + '</div>'
-                + '<div class="d-flex justify-content-between align-items-center mt-1">'
-                +   '<div> Status: <span class="'+badgeCls+'">'+escapeHtml(ist || 'In Use')+'</span></div>'
-                +   '<div>'+action+'</div>'
-                + '</div>'
-                + '</div>');
-            });
-            decisions.forEach(function(dc){
-              const rid = parseInt(dc.id||0,10)||0; if (!rid) return;
-              const msg = escapeHtml(String(dc.message||''));
-              const ts = String(dc.ts||'');
-              const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
-              extra.push('<div class="list-group-item">'
-                + '<div class="d-flex w-100 justify-content-between">'
-                +   '<strong>#'+rid+' Decision</strong>'
-                +   whenHtml
-                + '</div>'
-                + '<div class="mb-0">'+msg+'</div>'
-                + '</div>');
-            });
-            if (extra.length){ rows = extra.concat(rows); listEl.innerHTML = rows.join(''); }
-            any = rows.length>0; emptyEl.style.display = any ? 'none' : 'block';
-            try{ repositionBellDropdown(); }catch(_){ }
-            // Keep mobile modal in sync if open
-            try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
-          })
-          .catch(()=>{});
-      } catch(_){ }
-      // Dot toggle based on whether we have any unseen items since last open
-      try {
-        const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
-        const sig = sigParts.join(','); currentSig = sig; lastSig = localStorage.getItem('ud_notif_sig_open') || '';
-        const changed = !!(sig && sig !== lastSig);
-        const showDot = any && (changed || (latestTs>0 && latestTs > lastOpen));
-        if (bellDot) bellDot.classList.toggle('d-none', !showDot);
-      } catch(_){ if (bellDot) bellDot.classList.toggle('d-none', !any); }
-  }
+      }
+      let lastHtml = '';
       function poll(force){
-        if (fetching && !force) return; fetching=true; setLoadingList();
-        fetch('user_request.php?action=my_requests_status', { cache:'no-store' })
-          .then(r=>r.json())
-          .then(d=>{
-            const list = (d && Array.isArray(d.requests)) ? d.requests : [];
-            const updates = list.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
-            // Show all items if there are no updates yet to avoid an empty list experience
-            renderList(updates.length ? updates : list);
-          })
-          .catch(()=>{ try{ emptyEl.style.display='block'; if (listEl) listEl.innerHTML=''; }catch(_){ } })
-          .finally(()=>{ fetching=false; });
+        // If UI is open, skip background updates to avoid visible switching
+        const isOpen = (dropdown && dropdown.classList && dropdown.classList.contains('show')) || (bellModal && bellModal.style && bellModal.style.display === 'flex');
+        if (isOpen && !force) return;
+        if (fetching && !force) return; fetching=true;
+        const silent = false;
+        if (!isOpen) setLoadingList();
+        Promise.all([
+          fetch('user_request.php?action=my_requests_status', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
+          fetch('user_request.php?action=user_notifications', { cache:'no-store' }).then(r=>r.json()).catch(()=>({}))
+        ])
+        .then(([d, dn])=>{
+          const raw = (d && Array.isArray(d.requests)) ? d.requests : [];
+          const base = raw.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
+          const picked = base;
+          const built = composeRows(picked, dn);
+          // Update dot state
+          try {
+            const lastOpen = parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
+            currentSig = built.sig; lastSig = localStorage.getItem('ud_notif_sig_open') || '';
+            latestTs = built.latest;
+            const changed = !!(built.sig && built.sig !== lastSig);
+            const any = built.rows.length>0;
+            const showDot = any && (changed || (latestTs>0 && latestTs > lastOpen));
+            if (bellDot) bellDot.classList.toggle('d-none', !showDot);
+          } catch(_){ }
+          // Single DOM commit if content changed
+          const html = built.rows.join('');
+          if (listEl && html !== lastHtml){ listEl.innerHTML = html; lastHtml = html; }
+          if (emptyEl) emptyEl.style.display = (html && html.trim()!=='') ? 'none' : 'block';
+          try{ repositionBellDropdown(); }catch(_){ }
+          try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
+        })
+        .catch(()=>{ try{ if (!isOpen){ emptyEl.style.display='block'; if (listEl) listEl.innerHTML=''; lastHtml=''; } }catch(_){ } })
+        .finally(()=>{ fetching=false; });
       }
       bellBtn.addEventListener('click', function(e){
         e.stopPropagation();
@@ -5239,7 +5282,8 @@ if (!empty($my_requests)) {
           dropdown.style.transform = 'none';
           dropdown.style.margin = '0';
           try{ dropdown.style.zIndex = '4000'; }catch(_){ }
-          setLoadingList(); poll(true);
+          // Do not overwrite current content with Loading... while open; fetch in background
+          poll(true);
         }
         if (bellDot) bellDot.classList.add('d-none');
         try {
@@ -5254,10 +5298,12 @@ if (!empty($my_requests)) {
         if (t && (t.closest('#userBellDropdown') || t.closest('#userBellBtn') || t.closest('#userBellWrap'))) return;
         dropdown.classList.remove('show');
         dropdown.style.display='';
+        // After closing, refresh once to sync latest
+        try{ setTimeout(()=>{ poll(true); }, 50); }catch(_){ }
       });
       if (bellBackdrop) bellBackdrop.addEventListener('click', closeMobileModal);
       if (mobileCloseBtn) mobileCloseBtn.addEventListener('click', closeMobileModal);
-      document.addEventListener('keydown', function(ev){ if (ev.key==='Escape'){ closeMobileModal(); dropdown.classList.remove('show'); dropdown.style.display=''; } });
+      document.addEventListener('keydown', function(ev){ if (ev.key==='Escape'){ closeMobileModal(); dropdown.classList.remove('show'); dropdown.style.display=''; try{ setTimeout(()=>{ poll(true); }, 50); }catch(_){ } } });
       function repositionBellDropdown(){
         if (!dropdown.classList.contains('show')) return;
         try{
