@@ -441,6 +441,66 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   } catch (Throwable $e) { echo json_encode(['ok'=>false,'items'=>[]]); }
   exit();
 }
+// List reservations timeline for whitelisted serials in a category/model (JSON)
+if ($act === 'list_borrowable_reservations' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $buCol = $db->selectCollection('borrowable_units');
+    $iiCol = $db->selectCollection('inventory_items');
+    $erCol = $db->selectCollection('equipment_requests');
+    $ubCol = $db->selectCollection('user_borrows');
+    $allocCol = $db->selectCollection('request_allocations');
+    $cat = trim((string)($_GET['category'] ?? ''));
+    $model = trim((string)($_GET['model'] ?? ''));
+    if ($cat === '' || $model === '') { echo json_encode(['ok'=>false,'now'=>date('Y-m-d H:i:s'),'items'=>[]]); exit; }
+    $nowStr = date('Y-m-d H:i:s');
+    $items = [];
+    $cur = $buCol->find(['category'=>$cat,'model_name'=>$model], ['projection'=>['model_id'=>1]]);
+    foreach ($cur as $row) {
+      $mid = (int)($row['model_id'] ?? 0); if ($mid<=0) continue;
+      $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]);
+      if (!$it) continue;
+      $serial = (string)($it['serial_no'] ?? '');
+      $entries = [];
+      // Current borrow as an entry if any
+      try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1,'borrowed_at'=>1]]); } catch (Throwable $_e) { $ub = null; }
+      if ($ub) {
+        $start = (string)($ub['borrowed_at'] ?? '');
+        $end = '';
+        try {
+          $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
+          if ($al && isset($al['request_id'])) {
+            $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+            if ($orig) { $end = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? '')); }
+          }
+        } catch (Throwable $_al) { /* ignore */ }
+        $entries[] = ['kind'=>'in_use','start'=>$start,'end'=>$end];
+      }
+      // All reservations for this unit
+      try {
+        $resCur = $erCol->find([
+          'type' => 'reservation',
+          'status' => 'Approved',
+          'reserved_model_id' => $mid,
+          '$or' => [ ['reserved_from' => ['$exists'=>true]], ['reserved_to' => ['$exists'=>true]] ]
+        ], ['projection'=>['reserved_from'=>1,'reserved_to'=>1], 'sort'=>['reserved_from'=>1]]);
+        foreach ($resCur as $rs) {
+          $rf = (string)($rs['reserved_from'] ?? '');
+          $rt = (string)($rs['reserved_to'] ?? '');
+          if ($rf!=='' || $rt!=='') { $entries[] = ['kind'=>'reservation','start'=>$rf,'end'=>$rt]; }
+        }
+      } catch (Throwable $_r) { /* ignore */ }
+      // Sort by start date asc
+      usort($entries, function($a,$b){ return strcmp((string)($a['start']??''),(string)($b['start']??'')); });
+      $items[] = ['model_id'=>$mid,'serial_no'=>$serial,'entries'=>$entries];
+    }
+    echo json_encode(['ok'=>true,'now'=>$nowStr,'items'=>$items]);
+  } catch (Throwable $e) { echo json_encode(['ok'=>false,'now'=>date('Y-m-d H:i:s'),'items'=>[]]); }
+  exit();
+}
 // List hold serials for a given category and model (JSON)
 if ($act === 'hold_serials' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
@@ -3305,6 +3365,7 @@ try {
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title"><i class="bi bi-list-ul me-2"></i>Borrowable Serials</h5>
+          <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="bmViewResvBtn" title="Reservations timeline" data-bs-toggle="modal" data-bs-target="#bmResvTimelineModal"><i class="bi bi-clock"></i></button>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
@@ -3340,6 +3401,46 @@ try {
       </div>
     </div>
   </div>
+  <!-- Reservations Timeline Modal (for Borrowable Serials group) -->
+  <div class="modal fade" id="bmResvTimelineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Reservations Timeline</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2 small text-muted" id="bmResvTimelineMeta"></div>
+          <div class="table-responsive scroll-viewport">
+            <style>
+              #bmResvTimelineModal table{table-layout:fixed;width:100%;}
+              #bmResvTimelineModal th,#bmResvTimelineModal td{white-space:normal;overflow:visible;text-overflow:clip;font-size:clamp(10px,0.9vw,12px);line-height:1.2;}
+              #bmResvTimelineModal .twol{display:block;line-height:1.15;}
+              #bmResvTimelineModal .twol .dte,#bmResvTimelineModal .twol .tme{display:block;}
+              #bmResvTimelineModal tbody tr{height:calc(2 * 1.2em + 0.6rem);} /* ~two-line rows */
+              #bmResvTimelineModal .active-row{background:#fff3cd;} /* highlight current */
+            </style>
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:20%">Serial ID</th>
+                  <th style="width:16%">Type</th>
+                  <th style="width:32%">Start</th>
+                  <th style="width:32%">End</th>
+                </tr>
+              </thead>
+              <tbody id="bmResvTimelineBody">
+                <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <script>
     (function(){
       function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
@@ -3361,6 +3462,7 @@ try {
         const model = btn.getAttribute('data-model')||'';
         const meta = document.getElementById('bmViewUnitsMeta');
         const body = document.getElementById('bmViewUnitsBody');
+        var vwModal = document.getElementById('bmViewUnitsModal'); if (vwModal){ vwModal.setAttribute('data-category', cat); vwModal.setAttribute('data-model', model); }
         if (meta) meta.innerHTML = 'Category: <strong>'+esc(cat)+'</strong> | Model: <strong>'+esc(model)+'</strong>';
         if (body) body.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>';
         const items = await fetchWhitelisted(cat, model);
@@ -3382,6 +3484,73 @@ try {
           });
         }
         if (body) body.innerHTML = rows.join('');
+      });
+      async function fetchTimeline(cat, model){
+        const url = 'admin_borrow_center.php?action=list_borrowable_reservations&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
+        const r = await fetch(url); if(!r.ok) return {ok:false, now:(new Date()).toISOString(), items:[]};
+        return r.json().catch(()=>({ok:false, now:(new Date()).toISOString(), items:[]}));
+      }
+      function parseDate(dt){ try{ if(!dt) return null; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return null; return d; }catch(_){ return null; } }
+      document.addEventListener('click', async function(e){
+        const clk = e.target.closest && e.target.closest('#bmViewResvBtn');
+        if (!clk) return;
+        const wrap = document.getElementById('bmViewUnitsModal');
+        const cat = wrap ? (wrap.getAttribute('data-category')||'') : '';
+        const model = wrap ? (wrap.getAttribute('data-model')||'') : '';
+        const meta = document.getElementById('bmResvTimelineMeta');
+        const body = document.getElementById('bmResvTimelineBody');
+        if (meta) meta.innerHTML = 'Category: <strong>'+esc(cat)+'</strong> | Model: <strong>'+esc(model)+'</strong>';
+        if (body) body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>';
+        const data = await fetchTimeline(cat, model);
+        const now = data && data.now ? (parseDate(data.now)||new Date()) : new Date();
+        const rows = [];
+        if (!data || !data.ok || !Array.isArray(data.items) || !data.items.length){
+          rows.push('<tr><td colspan="4" class="text-center text-muted">No serials in this group.</td></tr>');
+        } else {
+          data.items.forEach(function(it){
+            const serial = String(it.serial_no||'');
+            const entries = Array.isArray(it.entries)?it.entries:[];
+            if (!entries.length){
+              rows.push('<tr><td>'+esc(serial)+'</td><td>Available</td><td></td><td></td></tr>');
+            } else {
+              // Determine if there is an active In Use; if so, only that row gets highlight
+              let hasActiveInUse = false;
+              entries.forEach(function(en){
+                if (String(en.kind||'')==='in_use'){
+                  const sd=parseDate(String(en.start||'')); const ed=parseDate(String(en.end||''));
+                  if (sd && (!ed || now<=ed) && now>=sd) { hasActiveInUse = true; }
+                }
+              });
+              entries.forEach(function(en){
+                const kind = String(en.kind||'reservation');
+                const s = String(en.start||'');
+                const e2 = String(en.end||'');
+                const sd = parseDate(s); const ed = parseDate(e2);
+                let active = false;
+                if (kind==='in_use'){
+                  if (sd && (!ed || now<=ed) && now>=sd) active = true; // only in_use highlights if active
+                } else if (!hasActiveInUse) {
+                  if (sd && (!ed || now<=ed) && now>=sd) active = true; // otherwise highlight active reservation
+                }
+                const typeLbl = (kind==='in_use' ? 'In Use' : 'Reserved');
+                rows.push('<tr class="'+(active?'active-row':'')+'">'+
+                  '<td>'+esc(serial)+'</td>'+
+                  '<td>'+typeLbl+'</td>'+
+                  '<td>'+twoLine(s)+'</td>'+
+                  '<td>'+twoLine(e2)+'</td>'+
+                '</tr>');
+              });
+            }
+          });
+        }
+        if (body) body.innerHTML = rows.join('');
+        // adapt scroll viewport height to about 6 rows
+        try{
+          var sc = document.querySelector('#bmResvTimelineModal .scroll-viewport');
+          var tr = body && body.querySelector('tr');
+          var rh = tr ? tr.getBoundingClientRect().height : 44;
+          if (sc && rh) { sc.style.maxHeight = Math.round(rh * 6) + 'px'; sc.style.overflow='auto'; }
+        }catch(_){ }
       });
     })();
   </script>
