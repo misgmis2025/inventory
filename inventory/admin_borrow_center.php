@@ -3419,20 +3419,14 @@ try {
               #bmResvTimelineModal .twol .dte,#bmResvTimelineModal .twol .tme{display:block;}
               #bmResvTimelineModal tbody tr{height:calc(2 * 1.2em + 0.6rem);} /* ~two-line rows */
               #bmResvTimelineModal .active-row{background:#fff3cd;} /* highlight current */
+              #bmResvTimelineModal .queue-table{table-layout:fixed;width:100%; border:1px solid #dee2e6; margin-bottom:12px;}
+              #bmResvTimelineModal .queue-table th,#bmResvTimelineModal .queue-table td{border:1px solid #dee2e6; padding:.5rem; vertical-align:top;}
+              #bmResvTimelineModal .slot .line{display:block;}
+              #bmResvTimelineModal .hl{background:#fff3cd;}
             </style>
-            <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th style="width:20%">Serial ID</th>
-                  <th style="width:16%">Type</th>
-                  <th style="width:32%">Start</th>
-                  <th style="width:32%">End</th>
-                </tr>
-              </thead>
-              <tbody id="bmResvTimelineBody">
-                <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
-              </tbody>
-            </table>
+            <div id="bmResvGridWrap" class="mb-2">
+              <div class="text-center text-muted">Loading...</div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -3491,66 +3485,69 @@ try {
         return r.json().catch(()=>({ok:false, now:(new Date()).toISOString(), items:[]}));
       }
       function parseDate(dt){ try{ if(!dt) return null; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return null; return d; }catch(_){ return null; } }
+      function fmtDT(dt){ var d=fmtD(dt), t=fmtT(dt); return (d||t) ? (d + (t?' '+t:'')) : ''; }
+      function chunk5(arr){ var out=[]; for (var i=0;i<arr.length;i+=5){ out.push(arr.slice(i,i+5)); } return out; }
       document.addEventListener('click', async function(e){
         const clk = e.target.closest && e.target.closest('#bmViewResvBtn');
         if (!clk) return;
-        const wrap = document.getElementById('bmViewUnitsModal');
-        const cat = wrap ? (wrap.getAttribute('data-category')||'') : '';
-        const model = wrap ? (wrap.getAttribute('data-model')||'') : '';
+        const vw = document.getElementById('bmViewUnitsModal');
+        const cat = vw ? (vw.getAttribute('data-category')||'') : '';
+        const model = vw ? (vw.getAttribute('data-model')||'') : '';
         const meta = document.getElementById('bmResvTimelineMeta');
-        const body = document.getElementById('bmResvTimelineBody');
+        const gridWrap = document.getElementById('bmResvGridWrap');
         if (meta) meta.innerHTML = 'Category: <strong>'+esc(cat)+'</strong> | Model: <strong>'+esc(model)+'</strong>';
-        if (body) body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>';
+        if (gridWrap) gridWrap.innerHTML = '<div class="text-center text-muted">Loading...</div>';
         const data = await fetchTimeline(cat, model);
         const now = data && data.now ? (parseDate(data.now)||new Date()) : new Date();
-        const rows = [];
-        if (!data || !data.ok || !Array.isArray(data.items) || !data.items.length){
-          rows.push('<tr><td colspan="4" class="text-center text-muted">No serials in this group.</td></tr>');
-        } else {
-          data.items.forEach(function(it){
-            const serial = String(it.serial_no||'');
-            const entries = Array.isArray(it.entries)?it.entries:[];
-            if (!entries.length){
-              rows.push('<tr><td>'+esc(serial)+'</td><td>Available</td><td></td><td></td></tr>');
-            } else {
-              // Determine if there is an active In Use; if so, only that row gets highlight
-              let hasActiveInUse = false;
-              entries.forEach(function(en){
-                if (String(en.kind||'')==='in_use'){
-                  const sd=parseDate(String(en.start||'')); const ed=parseDate(String(en.end||''));
-                  if (sd && (!ed || now<=ed) && now>=sd) { hasActiveInUse = true; }
-                }
-              });
-              entries.forEach(function(en){
-                const kind = String(en.kind||'reservation');
-                const s = String(en.start||'');
-                const e2 = String(en.end||'');
-                const sd = parseDate(s); const ed = parseDate(e2);
-                let active = false;
-                if (kind==='in_use'){
-                  if (sd && (!ed || now<=ed) && now>=sd) active = true; // only in_use highlights if active
-                } else if (!hasActiveInUse) {
-                  if (sd && (!ed || now<=ed) && now>=sd) active = true; // otherwise highlight active reservation
-                }
-                const typeLbl = (kind==='in_use' ? 'In Use' : 'Reserved');
-                rows.push('<tr class="'+(active?'active-row':'')+'">'+
-                  '<td>'+esc(serial)+'</td>'+
-                  '<td>'+typeLbl+'</td>'+
-                  '<td>'+twoLine(s)+'</td>'+
-                  '<td>'+twoLine(e2)+'</td>'+
-                '</tr>');
-              });
+        const items = (data && Array.isArray(data.items)) ? data.items : [];
+        // Map entries per serial
+        const mapped = items.map(function(it){
+          const entries = Array.isArray(it.entries) ? it.entries : [];
+          const inUse = entries.find(function(en){ return String(en.kind||'')==='in_use'; }) || null;
+          const reservations = entries.filter(function(en){ return String(en.kind||'')==='reservation'; })
+            .sort(function(a,b){ return String(a.start||'').localeCompare(String(b.start||'')); });
+          return { serial: String(it.serial_no||''), inUse: inUse, reservations: reservations };
+        });
+        const groups = chunk5(mapped);
+        const tables = groups.map(function(group){
+          // Header row (serial IDs)
+          var ths = '';
+          for (var i=0;i<5;i++){ ths += '<th>'+ (group[i] ? esc(group[i].serial) : '') +'</th>'; }
+          // Ongoing row (In Use)
+          var tdo = '';
+          for (var j=0;j<5;j++){
+            var info = group[j];
+            var cell = '';
+            var cls = '';
+            if (info && info.inUse){
+              var s = fmtDT(info.inUse.start); var e2 = fmtDT(info.inUse.end);
+              if (s || e2){ cell = '<div class="slot"><span class="line">Start: '+esc(s)+'</span><span class="line">End: '+esc(e2)+'</span></div>'; cls=' hl'; }
             }
-          });
-        }
-        if (body) body.innerHTML = rows.join('');
-        // adapt scroll viewport height to about 6 rows
-        try{
-          var sc = document.querySelector('#bmResvTimelineModal .scroll-viewport');
-          var tr = body && body.querySelector('tr');
-          var rh = tr ? tr.getBoundingClientRect().height : 44;
-          if (sc && rh) { sc.style.maxHeight = Math.round(rh * 6) + 'px'; sc.style.overflow='auto'; }
-        }catch(_){ }
+            tdo += '<td class="slot'+cls+'">'+cell+'</td>';
+          }
+          // Reserved rows
+          var maxR = 0; group.forEach(function(g){ if (g && g.reservations && g.reservations.length>maxR) maxR = g.reservations.length; });
+          if (maxR < 1) maxR = 1; // always show at least one Reserved row (may show Available)
+          var bodyRows = '<tr>'+tdo+'</tr>';
+          for (var rIdx=0;rIdx<maxR;rIdx++){
+            var tdr = '';
+            for (var k=0;k<5;k++){
+              var g2 = group[k]; var cell2 = '';
+              if (g2 && g2.reservations && g2.reservations[rIdx]){
+                var rv = g2.reservations[rIdx]; var ss = fmtDT(rv.start); var ee = fmtDT(rv.end);
+                if (ss || ee){ cell2 = '<div class="slot"><span class="line">Start: '+esc(ss)+'</span><span class="line">End: '+esc(ee)+'</span></div>'; }
+              } else if (g2 && rIdx===0 && (!g2.reservations || g2.reservations.length===0) && !g2.inUse) {
+                cell2 = '<div class="slot"><span class="line">Available</span></div>';
+              }
+              tdr += '<td class="slot">'+cell2+'</td>';
+            }
+            bodyRows += '<tr>'+tdr+'</tr>';
+          }
+          return '<table class="queue-table"><thead><tr>'+ths+'</tr></thead><tbody>'+bodyRows+'</tbody></table>';
+        });
+        if (gridWrap) gridWrap.innerHTML = tables.length ? tables.join('') : '<div class="text-center text-muted">No serials in this group.</div>';
+        // viewport height
+        try{ var sc = document.querySelector('#bmResvTimelineModal .scroll-viewport'); if (sc){ sc.style.maxHeight='420px'; sc.style.overflow='auto'; } }catch(_){ }
       });
     })();
   </script>
