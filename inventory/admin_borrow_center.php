@@ -4,6 +4,55 @@ $__sess_path = ini_get('session.save_path');
 if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
     $__alt = __DIR__ . '/../tmp_sessions';
     if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
+// Single serial reservations (JSON)
+if ($act === 'serial_reservations' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $iiCol = $db->selectCollection('inventory_items');
+    $erCol = $db->selectCollection('equipment_requests');
+    $ubCol = $db->selectCollection('user_borrows');
+    $allocCol = $db->selectCollection('request_allocations');
+    $mid = intval($_GET['model_id'] ?? 0);
+    if ($mid <= 0) { echo json_encode(['ok'=>false,'reason'=>'missing id']); exit; }
+    $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]);
+    if (!$it) { echo json_encode(['ok'=>false,'reason'=>'missing']); exit; }
+    $serial = (string)($it['serial_no'] ?? '');
+    $nowStr = date('Y-m-d H:i:s');
+    $inUse = null;
+    try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1,'borrowed_at'=>1]]); } catch (Throwable $_e) { $ub = null; }
+    if ($ub) {
+      $start = (string)($ub['borrowed_at'] ?? '');
+      $end = '';
+      try {
+        $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
+        if ($al && isset($al['request_id'])) {
+          $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+          if ($orig) { $end = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? '')); }
+        }
+      } catch (Throwable $_al) { /* ignore */ }
+      $inUse = ['start'=>$start,'end'=>$end];
+    }
+    $reservations = [];
+    try {
+      $resCur = $erCol->find([
+        'type' => 'reservation',
+        'status' => 'Approved',
+        'reserved_model_id' => $mid,
+        '$or' => [ ['reserved_from' => ['$exists'=>true]], ['reserved_to' => ['$exists'=>true]] ]
+      ], ['projection'=>['reserved_from'=>1,'reserved_to'=>1], 'sort'=>['reserved_from'=>1]]);
+      foreach ($resCur as $rs) {
+        $rf = (string)($rs['reserved_from'] ?? '');
+        $rt = (string)($rs['reserved_to'] ?? '');
+        if ($rf!=='' || $rt!=='') { $reservations[] = ['start'=>$rf,'end'=>$rt]; }
+      }
+    } catch (Throwable $_r) { /* ignore */ }
+    echo json_encode(['ok'=>true,'now'=>$nowStr,'serial'=>$serial,'in_use'=>$inUse,'reservations'=>$reservations]);
+  } catch (Throwable $e) { echo json_encode(['ok'=>false,'now'=>date('Y-m-d H:i:s'),'serial'=>'','in_use'=>null,'reservations'=>[]]); }
+  exit();
+}
     if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
 }
 @ini_set('session.cookie_secure', '0');
@@ -3365,7 +3414,6 @@ try {
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title"><i class="bi bi-list-ul me-2"></i>Borrowable Serials</h5>
-          <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="bmViewResvBtn" title="Reservations timeline" data-bs-toggle="modal" data-bs-target="#bmResvTimelineModal"><i class="bi bi-clock"></i></button>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
@@ -3441,6 +3489,30 @@ try {
       </div>
     </div>
   </div>
+  <!-- Per-Serial Timeline Modal -->
+  <div class="modal fade" id="bmSerialTimelineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-md">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-clock me-2"></i>Reservations — <span id="bmSTSerial">—</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <style>
+            #bmSerialTimelineModal .st-wrap{display:flex; flex-direction:column; gap:10px;}
+            #bmSerialTimelineModal .st-card{border:1px solid #dee2e6; border-radius:.25rem; padding:.5rem .6rem;}
+            #bmSerialTimelineModal .st-title{font-weight:600; margin-bottom:.25rem;}
+            #bmSerialTimelineModal .st-line{display:block; font-size:clamp(11px,3.2vw,12px); line-height:1.2;}
+            #bmSerialTimelineModal .st-hl{background:#fff3cd;}
+            #bmSerialTimelineModal .scroll-viewport{max-height:60vh; overflow:auto;}
+          </style>
+          <div id="bmSTBody" class="scroll-viewport">
+            <div class="text-center text-muted">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
   <script>
     (function(){
       function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
@@ -3474,8 +3546,10 @@ try {
             var rs='', re='';
             if (String(it.status)==='Reserved' && it.reserved_from && it.reserved_to){ rs=twoLine(it.reserved_from); re=twoLine(it.reserved_to); }
             else if (String(it.status)==='In Use'){ if (it.in_use_start) rs=twoLine(it.in_use_start); if (it.in_use_end) re=twoLine(it.in_use_end); }
+            var sid = esc(it.serial_no||'');
+            var btn = '<button type="button" class="btn btn-light btn-sm p-1 bm-serial-clock" title="Reservations" data-mid="'+(parseInt(it.model_id||0,10)||0)+'" data-serial="'+sid+'" data-bs-toggle="modal" data-bs-target="#bmSerialTimelineModal"><i class="bi bi-clock"></i></button>';
             rows.push('<tr>'+
-              '<td>'+esc(it.serial_no||'')+'</td>'+
+              '<td><div class="d-flex align-items-center justify-content-between gap-2"><span>'+sid+'</span><span>'+btn+'</span></div></td>'+
               '<td>'+esc(it.status||'')+'</td>'+
               '<td>'+esc(it.location||'')+'</td>'+
               '<td>'+rs+'</td>'+
@@ -3484,6 +3558,52 @@ try {
           });
         }
         if (body) body.innerHTML = rows.join('');
+      });
+      async function fetchSerialTL(mid){
+        const url = 'admin_borrow_center.php?action=serial_reservations&model_id='+encodeURIComponent(mid);
+        const r = await fetch(url); if(!r.ok) return {ok:false, now:(new Date()).toISOString(), serial:'', in_use:null, reservations:[]};
+        return r.json().catch(()=>({ok:false, now:(new Date()).toISOString(), serial:'', in_use:null, reservations:[]}));
+      }
+      function fmtMD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate()); }catch(_){ return ''; } }
+      function fmtDT1(dt){ var d=fmtMD(dt), t=fmtT(dt); return (d||t) ? (d + (t?' '+t:'')) : ''; }
+      document.addEventListener('click', async function(e){
+        const clk = e.target.closest && e.target.closest('.bm-serial-clock');
+        if (!clk) return;
+        const mid = parseInt(clk.getAttribute('data-mid')||'0',10)||0;
+        const sn = clk.getAttribute('data-serial')||'';
+        var sLabel = document.getElementById('bmSTSerial'); if (sLabel) sLabel.textContent = sn || '—';
+        var body = document.getElementById('bmSTBody'); if (body) body.innerHTML = '<div class="text-center text-muted">Loading...</div>';
+        const data = await fetchSerialTL(mid);
+        const now = data && data.now ? new Date(data.now.replace(' ','T')) : new Date();
+        const wrap = [];
+        // Ongoing
+        if (data && data.in_use){
+          var s = fmtDT1(data.in_use.start), e2 = fmtDT1(data.in_use.end);
+          wrap.push('<div class="st-card st-hl"><div class="st-title text-success">Ongoing</div>'+
+                    '<span class="st-line">S: '+esc(s)+'</span><span class="st-line">E: '+esc(e2)+'</span></div>');
+        } else {
+          wrap.push('<div class="st-card"><div class="st-title text-success">Ongoing</div><span class="st-line text-muted">—</span></div>');
+        }
+        // Reserved list
+        const list = (data && Array.isArray(data.reservations)) ? data.reservations : [];
+        if (!list.length && !data.in_use){
+          wrap.push('<div class="st-card"><div class="st-title">Reserved</div><span class="st-line">Available</span></div>');
+        } else if (!list.length) {
+          wrap.push('<div class="st-card"><div class="st-title">Reserved</div><span class="st-line text-muted">—</span></div>');
+        } else {
+          list.forEach(function(rv){ var ss = fmtDT1(rv.start), ee = fmtDT1(rv.end); wrap.push('<div class="st-card"><div class="st-title">Reserved</div><span class="st-line">S: '+esc(ss)+'</span><span class="st-line">E: '+esc(ee)+'</span></div>'); });
+        }
+        if (body) body.innerHTML = '<div class="st-wrap">'+wrap.join('')+'</div>';
+        // When serial timeline closes, return to Borrowable Serials modal
+        try{
+          var sm = document.getElementById('bmSerialTimelineModal');
+          if (sm && window.bootstrap && bootstrap.Modal){
+            sm.addEventListener('hidden.bs.modal', function(){
+              var vw = document.getElementById('bmViewUnitsModal');
+              if (vw){ bootstrap.Modal.getOrCreateInstance(vw).show(); }
+            }, { once:true });
+          }
+        }catch(_){ }
       });
       async function fetchTimeline(cat, model){
         const url = 'admin_borrow_center.php?action=list_borrowable_reservations&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
