@@ -1814,7 +1814,7 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
       $buf = 5*60;
       $items = [];
       try {
-        $cur = $iiCol->find(['$or'=>[['model'=>$itemName], ['item_name'=>$itemName]]], ['projection'=>['id'=>1,'serial_no'=>1,'model'=>1,'item_name'=>1,'status'=>1]]);
+        $cur = $iiCol->find(['$or'=>[['model'=>$itemName], ['item_name'=>$itemName]]], ['projection'=>['id'=>1,'serial_no'=>1,'model'=>1,'item_name'=>1,'status'=>1,'location'=>1]]);
         foreach ($cur as $unit) {
           $mid = (int)($unit['id'] ?? 0);
           if ($mid <= 0) { continue; }
@@ -1822,14 +1822,17 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           $model  = (string)($unit['model'] ?? ($unit['item_name'] ?? ''));
           $st     = (string)($unit['status'] ?? '');
           $status = $st !== '' ? $st : 'Available';
+          $loc    = (string)($unit['location'] ?? '');
           $inUseEnd = '';
+          $inUseStart = '';
           $resFrom = '';
           $resTo = '';
           $fits = true;
           // current borrow check
-          $ub = null; try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1]]); } catch (Throwable $_) { $ub = null; }
+          $ub = null; try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1,'borrowed_at'=>1]]); } catch (Throwable $_) { $ub = null; }
           if ($ub) {
             $endTs = null; $al = null; $hasKnownEnd = false;
+            if (isset($ub['borrowed_at'])) { $inUseStart = (string)$ub['borrowed_at']; }
             try { $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]); } catch (Throwable $_) { $al = null; }
             if ($al && isset($al['request_id'])) {
               try {
@@ -1876,8 +1879,10 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             'serial_no'=>$serial,
             'model_name'=>$model,
             'status'=>$status,
+            'location'=>$loc,
             'reserved_from'=>$resFrom,
             'reserved_to'=>$resTo,
+            'in_use_start'=>$inUseStart,
             'in_use_end'=>$inUseEnd,
             'fits'=>$fits
           ];
@@ -4931,11 +4936,12 @@ try {
                       <th>Serial ID</th>
                       <th>Model</th>
                       <th>Status</th>
-                      <th>Reserve Start</th>
-                      <th>Reserve End</th>
+                      <th>Location</th>
+                      <th>Start</th>
+                      <th>End</th>
                     </tr>
                   </thead>
-                  <tbody id="ersAvailBody"><tr><td colspan="5" class="text-center text-muted">Loading...</td></tr></tbody>
+                  <tbody id="ersAvailBody"><tr><td colspan="6" class="text-center text-muted">Loading...</td></tr></tbody>
                 </table>
               </div>
             </div>
@@ -5072,9 +5078,9 @@ try {
     // Edit Reserved Serial: View Available List loader and renderer
     (function(){
       function two(n){ n=parseInt(n,10); return (n<10?'0':'')+n; }
-      function fmt(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return String(dt); var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; var mon=months[d.getMonth()]; var dd=two(d.getDate()); var yyyy=d.getFullYear(); return '('+mon+' '+dd+', '+yyyy+')'; }catch(_){ return String(dt); } }
-      function render(list){ var tb=document.getElementById('ersAvailBody'); if(!tb) return; if(!list||!list.length){ tb.innerHTML='<tr><td colspan="5" class="text-center text-muted">No items.</td></tr>'; return; } var order={'Available':0,'Reserved':1,'In Use':2}; list.sort(function(a,b){ var oa=(order[a.status]??9), ob=(order[b.status]??9); if(oa!==ob) return oa-ob; var sa=String(a.serial_no||''), sb=String(b.serial_no||''); return sa.localeCompare(sb); }); var rows=list.map(function(r){ var rs='', re=''; if (String(r.status)==='Reserved' && r.reserved_from && r.reserved_to){ rs=fmt(r.reserved_from); re=fmt(r.reserved_to); } else if (String(r.status)==='In Use' && r.in_use_end){ re=fmt(r.in_use_end); } return '<tr><td>'+String(r.serial_no||'(no serial)')+'</td><td>'+String(r.model_name||'')+'</td><td>'+String(r.status||'')+'</td><td>'+rs+'</td><td>'+re+'</td></tr>'; }).join(''); tb.innerHTML=rows; }
-      function load(){ var ridEl=document.getElementById('ersReqId'); var rid=parseInt((ridEl&&ridEl.value)||'0',10)||0; var tb=document.getElementById('ersAvailBody'); if(tb) tb.innerHTML='<tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>'; fetch('admin_borrow_center.php?action=list_reservation_serials&request_id='+encodeURIComponent(rid),{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){ render((j&&j.items)||[]); }).catch(function(){ if(tb) tb.innerHTML='<tr><td colspan="5" class="text-center text-danger">Failed to load.</td></tr>'; }); }
+      function fmtDisplay(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return String(dt); var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; var mon=months[d.getMonth()]; var dd=two(d.getDate()); var yyyy=d.getFullYear(); var h=d.getHours(); var m=two(d.getMinutes()); var ap=(h>=12?'pm':'am'); h=h%12; if(h===0)h=12; return '('+mon+' '+dd+', '+yyyy+'-'+h+':'+m+ap+')'; }catch(_){ return String(dt); } }
+      function render(list){ var tb=document.getElementById('ersAvailBody'); if(!tb) return; if(!list||!list.length){ tb.innerHTML='<tr><td colspan="6" class="text-center text-muted">No items.</td></tr>'; return; } var order={'Available':0,'Reserved':1,'In Use':2}; list.sort(function(a,b){ var oa=(order[a.status]??9), ob=(order[b.status]??9); if(oa!==ob) return oa-ob; var sa=String(a.serial_no||''), sb=String(b.serial_no||''); return sa.localeCompare(sb); }); var rows=list.map(function(r){ var rs='', re=''; if (String(r.status)==='Reserved' && r.reserved_from && r.reserved_to){ rs=fmtDisplay(r.reserved_from); re=fmtDisplay(r.reserved_to); } else if (String(r.status)==='In Use'){ if (r.in_use_start) { rs=fmtDisplay(r.in_use_start); } if (r.in_use_end) { re=fmtDisplay(r.in_use_end); } } return '<tr><td>'+String(r.serial_no||'(no serial)')+'</td><td>'+String(r.model_name||'')+'</td><td>'+String(r.status||'')+'</td><td>'+String(r.location||'')+'</td><td>'+rs+'</td><td>'+re+'</td></tr>'; }).join(''); tb.innerHTML=rows; }
+      function load(){ var ridEl=document.getElementById('ersReqId'); var rid=parseInt((ridEl&&ridEl.value)||'0',10)||0; var tb=document.getElementById('ersAvailBody'); if(tb) tb.innerHTML='<tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>'; fetch('admin_borrow_center.php?action=list_reservation_serials&request_id='+encodeURIComponent(rid),{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){ render((j&&j.items)||[]); }).catch(function(){ if(tb) tb.innerHTML='<tr><td colspan="6" class="text-center text-danger">Failed to load.</td></tr>'; }); }
       document.addEventListener('DOMContentLoaded', function(){ var btn=document.getElementById('ersViewAvailBtn'); var ref=document.getElementById('ersRefreshAvailBtn'); var wrap=document.getElementById('ersAvailWrap'); var mdl=document.getElementById('editResSerialModal'); var loaded=false; if(btn){ btn.addEventListener('click', function(){ if(!wrap) return; var sh = wrap.classList.contains('d-none'); if (sh){ wrap.classList.remove('d-none'); if(ref) ref.classList.remove('d-none'); if(!loaded){ load(); loaded=true; } } else { wrap.classList.add('d-none'); } }); }
         if(ref){ ref.addEventListener('click', function(){ load(); }); }
         if(mdl){ mdl.addEventListener('hidden.bs.modal', function(){ loaded=false; if(wrap){ wrap.classList.add('d-none'); } if(ref){ ref.classList.add('d-none'); } }); }
