@@ -3395,9 +3395,7 @@ try {
             </table>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        </div>
+        
       </div>
     </div>
   </div>
@@ -3423,6 +3421,11 @@ try {
               #bmResvTimelineModal .queue-table th,#bmResvTimelineModal .queue-table td{border:1px solid #dee2e6; padding:.5rem; vertical-align:top;}
               #bmResvTimelineModal .slot .line{display:block;}
               #bmResvTimelineModal .hl{background:#fff3cd;}
+              #bmResvTimelineModal .queue-wrap{display:flex; align-items:stretch; gap:8px;}
+              #bmResvTimelineModal .queue-labels{table-layout:fixed; border-collapse:collapse; width:84px; border:1px solid #dee2e6; margin-bottom:12px;}
+              #bmResvTimelineModal .queue-labels th,#bmResvTimelineModal .queue-labels td{border:1px solid #dee2e6; padding:.5rem; vertical-align:top;}
+              #bmResvTimelineModal .queue-labels th{background:#f8f9fa;}
+              #bmResvTimelineModal .cap-ongoing{color:#198754; font-weight:600;}
             </style>
             <div id="bmResvGridWrap" class="mb-2">
               <div class="text-center text-muted">Loading...</div>
@@ -3543,7 +3546,13 @@ try {
             }
             bodyRows += '<tr>'+tdr+'</tr>';
           }
-          return '<table class="queue-table"><thead><tr>'+ths+'</tr></thead><tbody>'+bodyRows+'</tbody></table>';
+          // Build labels table: header blank, row for Ongoing, then one Reserved row per rIdx
+          var labHead = '<thead><tr><th></th></tr></thead>';
+          var labBody = '<tbody><tr><td class="cap-ongoing">Ongoing</td></tr>';
+          for (var rr=0; rr<maxR; rr++){ labBody += '<tr><td>Reserved</td></tr>'; }
+          var labelsTbl = '<table class="queue-labels">'+labHead+labBody+'</tbody></table>';
+          var mainTbl   = '<table class="queue-table"><thead><tr>'+ths+'</tr></thead><tbody>'+bodyRows+'</tbody></table>';
+          return '<div class="queue-wrap">'+labelsTbl+mainTbl+'</div>';
         });
         if (gridWrap) gridWrap.innerHTML = tables.length ? tables.join('') : '<div class="text-center text-muted">No serials in this group.</div>';
         // viewport height
