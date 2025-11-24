@@ -4,55 +4,6 @@ $__sess_path = ini_get('session.save_path');
 if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
     $__alt = __DIR__ . '/../tmp_sessions';
     if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
-// Single serial reservations (JSON)
-if ($act === 'serial_reservations' && $_SERVER['REQUEST_METHOD'] === 'GET') {
-  header('Content-Type: application/json');
-  try {
-    @require_once __DIR__ . '/../vendor/autoload.php';
-    @require_once __DIR__ . '/db/mongo.php';
-    $db = get_mongo_db();
-    $iiCol = $db->selectCollection('inventory_items');
-    $erCol = $db->selectCollection('equipment_requests');
-    $ubCol = $db->selectCollection('user_borrows');
-    $allocCol = $db->selectCollection('request_allocations');
-    $mid = intval($_GET['model_id'] ?? 0);
-    if ($mid <= 0) { echo json_encode(['ok'=>false,'reason'=>'missing id']); exit; }
-    $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]);
-    if (!$it) { echo json_encode(['ok'=>false,'reason'=>'missing']); exit; }
-    $serial = (string)($it['serial_no'] ?? '');
-    $nowStr = date('Y-m-d H:i:s');
-    $inUse = null;
-    try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1,'borrowed_at'=>1]]); } catch (Throwable $_e) { $ub = null; }
-    if ($ub) {
-      $start = (string)($ub['borrowed_at'] ?? '');
-      $end = '';
-      try {
-        $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
-        if ($al && isset($al['request_id'])) {
-          $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
-          if ($orig) { $end = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? '')); }
-        }
-      } catch (Throwable $_al) { /* ignore */ }
-      $inUse = ['start'=>$start,'end'=>$end];
-    }
-    $reservations = [];
-    try {
-      $resCur = $erCol->find([
-        'type' => 'reservation',
-        'status' => 'Approved',
-        'reserved_model_id' => $mid,
-        '$or' => [ ['reserved_from' => ['$exists'=>true]], ['reserved_to' => ['$exists'=>true]] ]
-      ], ['projection'=>['reserved_from'=>1,'reserved_to'=>1], 'sort'=>['reserved_from'=>1]]);
-      foreach ($resCur as $rs) {
-        $rf = (string)($rs['reserved_from'] ?? '');
-        $rt = (string)($rs['reserved_to'] ?? '');
-        if ($rf!=='' || $rt!=='') { $reservations[] = ['start'=>$rf,'end'=>$rt]; }
-      }
-    } catch (Throwable $_r) { /* ignore */ }
-    echo json_encode(['ok'=>true,'now'=>$nowStr,'serial'=>$serial,'in_use'=>$inUse,'reservations'=>$reservations]);
-  } catch (Throwable $e) { echo json_encode(['ok'=>false,'now'=>date('Y-m-d H:i:s'),'serial'=>'','in_use'=>null,'reservations'=>[]]); }
-  exit();
-}
     if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
 }
 @ini_set('session.cookie_secure', '0');
@@ -488,66 +439,6 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     }
     echo json_encode(['ok'=>true,'items'=>$list]);
   } catch (Throwable $e) { echo json_encode(['ok'=>false,'items'=>[]]); }
-  exit();
-}
-// List reservations timeline for whitelisted serials in a category/model (JSON)
-if ($act === 'list_borrowable_reservations' && $_SERVER['REQUEST_METHOD'] === 'GET') {
-  header('Content-Type: application/json');
-  try {
-    @require_once __DIR__ . '/../vendor/autoload.php';
-    @require_once __DIR__ . '/db/mongo.php';
-    $db = get_mongo_db();
-    $buCol = $db->selectCollection('borrowable_units');
-    $iiCol = $db->selectCollection('inventory_items');
-    $erCol = $db->selectCollection('equipment_requests');
-    $ubCol = $db->selectCollection('user_borrows');
-    $allocCol = $db->selectCollection('request_allocations');
-    $cat = trim((string)($_GET['category'] ?? ''));
-    $model = trim((string)($_GET['model'] ?? ''));
-    if ($cat === '' || $model === '') { echo json_encode(['ok'=>false,'now'=>date('Y-m-d H:i:s'),'items'=>[]]); exit; }
-    $nowStr = date('Y-m-d H:i:s');
-    $items = [];
-    $cur = $buCol->find(['category'=>$cat,'model_name'=>$model], ['projection'=>['model_id'=>1]]);
-    foreach ($cur as $row) {
-      $mid = (int)($row['model_id'] ?? 0); if ($mid<=0) continue;
-      $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]);
-      if (!$it) continue;
-      $serial = (string)($it['serial_no'] ?? '');
-      $entries = [];
-      // Current borrow as an entry if any
-      try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1,'borrowed_at'=>1]]); } catch (Throwable $_e) { $ub = null; }
-      if ($ub) {
-        $start = (string)($ub['borrowed_at'] ?? '');
-        $end = '';
-        try {
-          $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
-          if ($al && isset($al['request_id'])) {
-            $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
-            if ($orig) { $end = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? '')); }
-          }
-        } catch (Throwable $_al) { /* ignore */ }
-        $entries[] = ['kind'=>'in_use','start'=>$start,'end'=>$end];
-      }
-      // All reservations for this unit
-      try {
-        $resCur = $erCol->find([
-          'type' => 'reservation',
-          'status' => 'Approved',
-          'reserved_model_id' => $mid,
-          '$or' => [ ['reserved_from' => ['$exists'=>true]], ['reserved_to' => ['$exists'=>true]] ]
-        ], ['projection'=>['reserved_from'=>1,'reserved_to'=>1], 'sort'=>['reserved_from'=>1]]);
-        foreach ($resCur as $rs) {
-          $rf = (string)($rs['reserved_from'] ?? '');
-          $rt = (string)($rs['reserved_to'] ?? '');
-          if ($rf!=='' || $rt!=='') { $entries[] = ['kind'=>'reservation','start'=>$rf,'end'=>$rt]; }
-        }
-      } catch (Throwable $_r) { /* ignore */ }
-      // Sort by start date asc
-      usort($entries, function($a,$b){ return strcmp((string)($a['start']??''),(string)($b['start']??'')); });
-      $items[] = ['model_id'=>$mid,'serial_no'=>$serial,'entries'=>$entries];
-    }
-    echo json_encode(['ok'=>true,'now'=>$nowStr,'items'=>$items]);
-  } catch (Throwable $e) { echo json_encode(['ok'=>false,'now'=>date('Y-m-d H:i:s'),'items'=>[]]); }
   exit();
 }
 // List hold serials for a given category and model (JSON)
@@ -3443,72 +3334,8 @@ try {
             </table>
           </div>
         </div>
-        
-      </div>
-    </div>
-  </div>
-  <!-- Reservations Timeline Modal (for Borrowable Serials group) -->
-  <div class="modal fade" id="bmResvTimelineModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Reservations Timeline</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-2 small text-muted" id="bmResvTimelineMeta"></div>
-          <div class="table-responsive scroll-viewport">
-            <style>
-              #bmResvTimelineModal table{table-layout:fixed;width:100%;}
-              #bmResvTimelineModal th,#bmResvTimelineModal td{white-space:normal;overflow:visible;text-overflow:clip;font-size:clamp(10px,0.9vw,12px);line-height:1.2;}
-              #bmResvTimelineModal .twol{display:block;line-height:1.15;}
-              #bmResvTimelineModal .twol .dte,#bmResvTimelineModal .twol .tme{display:block;}
-              #bmResvTimelineModal tbody tr{height:calc(2 * 1.2em + 0.6rem);} /* ~two-line rows */
-              #bmResvTimelineModal .active-row{background:#fff3cd;} /* highlight current */
-              #bmResvTimelineModal .queue-table{table-layout:fixed;width:100%; border:1px solid #dee2e6; margin-bottom:12px;}
-              #bmResvTimelineModal .queue-table th,#bmResvTimelineModal .queue-table td{border:1px solid #dee2e6; padding:.4rem; vertical-align:top;}
-              #bmResvTimelineModal .queue-table th{text-align:center;}
-              #bmResvTimelineModal .slot{font-size:clamp(10px,3.2vw,12px); line-height:1.15; white-space:normal; word-break:keep-all; overflow-wrap:normal;}
-              #bmResvTimelineModal .slot .line{display:block;}
-              #bmResvTimelineModal .hl{background:#fff3cd;}
-              #bmResvTimelineModal .queue-wrap{display:flex; align-items:stretch; gap:8px;}
-              #bmResvTimelineModal .queue-labels{table-layout:fixed; border-collapse:collapse; width:84px; border:1px solid #dee2e6; margin-bottom:12px;}
-              #bmResvTimelineModal .queue-labels th,#bmResvTimelineModal .queue-labels td{border:1px solid #dee2e6; padding:.4rem; vertical-align:top;}
-              #bmResvTimelineModal .queue-labels th{background:#f8f9fa;}
-              #bmResvTimelineModal .cap-ongoing{color:#198754; font-weight:600;}
-              @media (max-width: 576px){
-                #bmResvTimelineModal .queue-labels{width:66px;}
-              }
-            </style>
-            <div id="bmResvGridWrap" class="mb-2">
-              <div class="text-center text-muted">Loading...</div>
-            </div>
-          </div>
-        </div>
-        
-      </div>
-    </div>
-  </div>
-  <!-- Per-Serial Timeline Modal -->
-  <div class="modal fade" id="bmSerialTimelineModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-md">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-clock me-2"></i>Reservations — <span id="bmSTSerial">—</span></h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <style>
-            #bmSerialTimelineModal .st-wrap{display:flex; flex-direction:column; gap:10px;}
-            #bmSerialTimelineModal .st-card{border:1px solid #dee2e6; border-radius:.25rem; padding:.5rem .6rem;}
-            #bmSerialTimelineModal .st-title{font-weight:600; margin-bottom:.25rem;}
-            #bmSerialTimelineModal .st-line{display:block; font-size:clamp(11px,3.2vw,12px); line-height:1.2;}
-            #bmSerialTimelineModal .st-hl{background:#fff3cd;}
-            #bmSerialTimelineModal .scroll-viewport{max-height:60vh; overflow:auto;}
-          </style>
-          <div id="bmSTBody" class="scroll-viewport">
-            <div class="text-center text-muted">Loading...</div>
-          </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
         </div>
       </div>
     </div>
@@ -3534,7 +3361,6 @@ try {
         const model = btn.getAttribute('data-model')||'';
         const meta = document.getElementById('bmViewUnitsMeta');
         const body = document.getElementById('bmViewUnitsBody');
-        var vwModal = document.getElementById('bmViewUnitsModal'); if (vwModal){ vwModal.setAttribute('data-category', cat); vwModal.setAttribute('data-model', model); }
         if (meta) meta.innerHTML = 'Category: <strong>'+esc(cat)+'</strong> | Model: <strong>'+esc(model)+'</strong>';
         if (body) body.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>';
         const items = await fetchWhitelisted(cat, model);
@@ -3546,10 +3372,8 @@ try {
             var rs='', re='';
             if (String(it.status)==='Reserved' && it.reserved_from && it.reserved_to){ rs=twoLine(it.reserved_from); re=twoLine(it.reserved_to); }
             else if (String(it.status)==='In Use'){ if (it.in_use_start) rs=twoLine(it.in_use_start); if (it.in_use_end) re=twoLine(it.in_use_end); }
-            var sid = esc(it.serial_no||'');
-            var btn = '<button type="button" class="btn btn-light btn-sm p-1 bm-serial-clock" title="Reservations" data-mid="'+(parseInt(it.model_id||0,10)||0)+'" data-serial="'+sid+'" data-bs-toggle="modal" data-bs-target="#bmSerialTimelineModal"><i class="bi bi-clock"></i></button>';
             rows.push('<tr>'+
-              '<td><div class="d-flex align-items-center justify-content-between gap-2"><span>'+sid+'</span><span>'+btn+'</span></div></td>'+
+              '<td>'+esc(it.serial_no||'')+'</td>'+
               '<td>'+esc(it.status||'')+'</td>'+
               '<td>'+esc(it.location||'')+'</td>'+
               '<td>'+rs+'</td>'+
@@ -3558,139 +3382,6 @@ try {
           });
         }
         if (body) body.innerHTML = rows.join('');
-      });
-      async function fetchSerialTL(mid){
-        const url = 'admin_borrow_center.php?action=serial_reservations&model_id='+encodeURIComponent(mid);
-        const r = await fetch(url); if(!r.ok) return {ok:false, now:(new Date()).toISOString(), serial:'', in_use:null, reservations:[]};
-        return r.json().catch(()=>({ok:false, now:(new Date()).toISOString(), serial:'', in_use:null, reservations:[]}));
-      }
-      function fmtMD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate()); }catch(_){ return ''; } }
-      function fmtDT1(dt){ var d=fmtMD(dt), t=fmtT(dt); return (d||t) ? (d + (t?' '+t:'')) : ''; }
-      document.addEventListener('click', async function(e){
-        const clk = e.target.closest && e.target.closest('.bm-serial-clock');
-        if (!clk) return;
-        const mid = parseInt(clk.getAttribute('data-mid')||'0',10)||0;
-        const sn = clk.getAttribute('data-serial')||'';
-        var sLabel = document.getElementById('bmSTSerial'); if (sLabel) sLabel.textContent = sn || '—';
-        var body = document.getElementById('bmSTBody'); if (body) body.innerHTML = '<div class="text-center text-muted">Loading...</div>';
-        const data = await fetchSerialTL(mid);
-        const now = data && data.now ? new Date(data.now.replace(' ','T')) : new Date();
-        const wrap = [];
-        // Ongoing
-        if (data && data.in_use){
-          var s = fmtDT1(data.in_use.start), e2 = fmtDT1(data.in_use.end);
-          wrap.push('<div class="st-card st-hl"><div class="st-title text-success">Ongoing</div>'+
-                    '<span class="st-line">S: '+esc(s)+'</span><span class="st-line">E: '+esc(e2)+'</span></div>');
-        } else {
-          wrap.push('<div class="st-card"><div class="st-title text-success">Ongoing</div><span class="st-line text-muted">—</span></div>');
-        }
-        // Reserved list
-        const list = (data && Array.isArray(data.reservations)) ? data.reservations : [];
-        if (!list.length && !data.in_use){
-          wrap.push('<div class="st-card"><div class="st-title">Reserved</div><span class="st-line">Available</span></div>');
-        } else if (!list.length) {
-          wrap.push('<div class="st-card"><div class="st-title">Reserved</div><span class="st-line text-muted">—</span></div>');
-        } else {
-          list.forEach(function(rv){ var ss = fmtDT1(rv.start), ee = fmtDT1(rv.end); wrap.push('<div class="st-card"><div class="st-title">Reserved</div><span class="st-line">S: '+esc(ss)+'</span><span class="st-line">E: '+esc(ee)+'</span></div>'); });
-        }
-        if (body) body.innerHTML = '<div class="st-wrap">'+wrap.join('')+'</div>';
-        // When serial timeline closes, return to Borrowable Serials modal
-        try{
-          var sm = document.getElementById('bmSerialTimelineModal');
-          if (sm && window.bootstrap && bootstrap.Modal){
-            sm.addEventListener('hidden.bs.modal', function(){
-              var vw = document.getElementById('bmViewUnitsModal');
-              if (vw){ bootstrap.Modal.getOrCreateInstance(vw).show(); }
-            }, { once:true });
-          }
-        }catch(_){ }
-      });
-      async function fetchTimeline(cat, model){
-        const url = 'admin_borrow_center.php?action=list_borrowable_reservations&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
-        const r = await fetch(url); if(!r.ok) return {ok:false, now:(new Date()).toISOString(), items:[]};
-        return r.json().catch(()=>({ok:false, now:(new Date()).toISOString(), items:[]}));
-      }
-      function parseDate(dt){ try{ if(!dt) return null; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return null; return d; }catch(_){ return null; } }
-      function fmtMD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate()); }catch(_){ return ''; } }
-      function fmtDT(dt){ var d=fmtMD(dt), t=fmtT(dt); return (d||t) ? (d + (t?' '+t:'')) : ''; }
-      function chunk5(arr){ var out=[]; for (var i=0;i<arr.length;i+=5){ out.push(arr.slice(i,i+5)); } return out; }
-      document.addEventListener('click', async function(e){
-        const clk = e.target.closest && e.target.closest('#bmViewResvBtn');
-        if (!clk) return;
-        const vw = document.getElementById('bmViewUnitsModal');
-        const cat = vw ? (vw.getAttribute('data-category')||'') : '';
-        const model = vw ? (vw.getAttribute('data-model')||'') : '';
-        const meta = document.getElementById('bmResvTimelineMeta');
-        const gridWrap = document.getElementById('bmResvGridWrap');
-        if (meta) meta.innerHTML = 'Category: <strong>'+esc(cat)+'</strong> | Model: <strong>'+esc(model)+'</strong>';
-        if (gridWrap) gridWrap.innerHTML = '<div class="text-center text-muted">Loading...</div>';
-        const data = await fetchTimeline(cat, model);
-        const now = data && data.now ? (parseDate(data.now)||new Date()) : new Date();
-        const items = (data && Array.isArray(data.items)) ? data.items : [];
-        // Map entries per serial
-        const mapped = items.map(function(it){
-          const entries = Array.isArray(it.entries) ? it.entries : [];
-          const inUse = entries.find(function(en){ return String(en.kind||'')==='in_use'; }) || null;
-          const reservations = entries.filter(function(en){ return String(en.kind||'')==='reservation'; })
-            .sort(function(a,b){ return String(a.start||'').localeCompare(String(b.start||'')); });
-          return { serial: String(it.serial_no||''), inUse: inUse, reservations: reservations };
-        });
-        const groups = chunk5(mapped);
-        const tables = groups.map(function(group){
-          // Header row (serial IDs)
-          var ths = '';
-          for (var i=0;i<5;i++){ ths += '<th>'+ (group[i] ? esc(group[i].serial) : '') +'</th>'; }
-          // Ongoing row (In Use)
-          var tdo = '';
-          for (var j=0;j<5;j++){
-            var info = group[j];
-            var cell = '';
-            var cls = '';
-            if (info && info.inUse){
-              var s = fmtDT(info.inUse.start); var e2 = fmtDT(info.inUse.end);
-              if (s || e2){ cell = '<div class="slot"><span class="line">S: '+esc(s)+'</span><span class="line">E: '+esc(e2)+'</span></div>'; cls=' hl'; }
-            }
-            tdo += '<td class="slot'+cls+'">'+cell+'</td>';
-          }
-          // Reserved rows
-          var maxR = 0; group.forEach(function(g){ if (g && g.reservations && g.reservations.length>maxR) maxR = g.reservations.length; });
-          if (maxR < 1) maxR = 1; // always show at least one Reserved row (may show Available)
-          var bodyRows = '<tr>'+tdo+'</tr>';
-          for (var rIdx=0;rIdx<maxR;rIdx++){
-            var tdr = '';
-            for (var k=0;k<5;k++){
-              var g2 = group[k]; var cell2 = '';
-              if (g2 && g2.reservations && g2.reservations[rIdx]){
-                var rv = g2.reservations[rIdx]; var ss = fmtDT(rv.start); var ee = fmtDT(rv.end);
-                if (ss || ee){ cell2 = '<div class="slot"><span class="line">S: '+esc(ss)+'</span><span class="line">E: '+esc(ee)+'</span></div>'; }
-              } else if (g2 && rIdx===0 && (!g2.reservations || g2.reservations.length===0) && !g2.inUse) {
-                cell2 = '<div class="slot"><span class="line">Available</span></div>';
-              }
-              tdr += '<td class="slot">'+cell2+'</td>';
-            }
-            bodyRows += '<tr>'+tdr+'</tr>';
-          }
-          // Build labels table: header blank, row for Ongoing, then one Reserved row per rIdx
-          var labHead = '<thead><tr><th></th></tr></thead>';
-          var labBody = '<tbody><tr><td class="cap-ongoing">Ongoing</td></tr>';
-          for (var rr=0; rr<maxR; rr++){ labBody += '<tr><td>Reserved</td></tr>'; }
-          var labelsTbl = '<table class="queue-labels">'+labHead+labBody+'</tbody></table>';
-          var mainTbl   = '<table class="queue-table"><thead><tr>'+ths+'</tr></thead><tbody>'+bodyRows+'</tbody></table>';
-          return '<div class="queue-wrap">'+labelsTbl+mainTbl+'</div>';
-        });
-        if (gridWrap) gridWrap.innerHTML = tables.length ? tables.join('') : '<div class="text-center text-muted">No serials in this group.</div>';
-        // viewport height
-        try{ var sc = document.querySelector('#bmResvTimelineModal .scroll-viewport'); if (sc){ var mh = Math.min(Math.max(320, Math.floor(window.innerHeight*0.6)), 480); sc.style.maxHeight=mh+'px'; sc.style.overflow='auto'; } }catch(_){ }
-        // When timeline closes, return to Borrowable Serials modal
-        try{
-          var tmodal = document.getElementById('bmResvTimelineModal');
-          if (tmodal && window.bootstrap && bootstrap.Modal){
-            tmodal.addEventListener('hidden.bs.modal', function(){
-              var vw = document.getElementById('bmViewUnitsModal');
-              if (vw){ bootstrap.Modal.getOrCreateInstance(vw).show(); }
-            }, { once:false });
-          }
-        }catch(_){ }
       });
     })();
   </script>
