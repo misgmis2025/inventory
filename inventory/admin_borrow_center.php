@@ -4933,11 +4933,13 @@ try {
                 #ersAvailWrap table{table-layout:fixed;width:100%;}
                 #ersAvailWrap th,#ersAvailWrap td{white-space:nowrap !important;overflow:hidden;text-overflow:ellipsis;font-size:clamp(10px,0.85vw,12px);line-height:1.2;word-break:normal !important;overflow-wrap:normal !important;}
                 #ersAvailWrap th:nth-child(1),#ersAvailWrap td:nth-child(1){width:14%;}
-                #ersAvailWrap th:nth-child(2),#ersAvailWrap td:nth-child(2){width:18%;}
-                #ersAvailWrap th:nth-child(3),#ersAvailWrap td:nth-child(3){width:14%;}
+                #ersAvailWrap th:nth-child(2),#ersAvailWrap td:nth-child(2){width:16%;}
+                #ersAvailWrap th:nth-child(3),#ersAvailWrap td:nth-child(3){width:12%;}
                 #ersAvailWrap th:nth-child(4),#ersAvailWrap td:nth-child(4){width:18%;} /* Location column */
-                #ersAvailWrap th:nth-child(5),#ersAvailWrap td:nth-child(5){width:18%;}
-                #ersAvailWrap th:nth-child(6),#ersAvailWrap td:nth-child(6){width:18%;}
+                #ersAvailWrap th:nth-child(5),#ersAvailWrap td:nth-child(5){width:20%;}
+                #ersAvailWrap th:nth-child(6),#ersAvailWrap td:nth-child(6){width:20%;}
+                /* Allow full display for Start/End (no ellipsis, can wrap) */
+                #ersAvailWrap td:nth-child(5), #ersAvailWrap td:nth-child(6){white-space:normal !important;overflow:visible !important;text-overflow:clip !important;}
               </style>
               <div class="table-responsive" style="max-height:240px; overflow:auto;">
                 <table class="table table-sm align-middle mb-0">
@@ -5088,7 +5090,7 @@ try {
     // Edit Reserved Serial: View Available List loader and renderer
     (function(){
       function two(n){ n=parseInt(n,10); return (n<10?'0':'')+n; }
-      function fmtDisplay(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return String(dt); var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; var mon=months[d.getMonth()]; var dd=two(d.getDate()); var yyyy=d.getFullYear(); var h=d.getHours(); var m=two(d.getMinutes()); var ap=(h>=12?'pm':'am'); h=h%12; if(h===0)h=12; return '('+mon+' '+dd+', '+yyyy+'-'+h+':'+m+ap+')'; }catch(_){ return String(dt); } }
+      function fmtDisplay(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return String(dt); var mm=two(d.getMonth()+1); var dd=two(d.getDate()); var yyyy=d.getFullYear(); var h=d.getHours(); var m=two(d.getMinutes()); var ap=(h>=12?'pm':'am'); h=h%12; if(h===0)h=12; return '('+mm+'-'+dd+'-'+yyyy+'-'+h+':'+m+ap+')'; }catch(_){ return String(dt); } }
       function render(list){ var tb=document.getElementById('ersAvailBody'); if(!tb) return; if(!list||!list.length){ tb.innerHTML='<tr><td colspan="6" class="text-center text-muted">No items.</td></tr>'; return; } var order={'Available':0,'Reserved':1,'In Use':2}; list.sort(function(a,b){ var oa=(order[a.status]??9), ob=(order[b.status]??9); if(oa!==ob) return oa-ob; var sa=String(a.serial_no||''), sb=String(b.serial_no||''); return sa.localeCompare(sb); }); var rows=list.map(function(r){ var rs='', re=''; if (String(r.status)==='Reserved' && r.reserved_from && r.reserved_to){ rs=fmtDisplay(r.reserved_from); re=fmtDisplay(r.reserved_to); } else if (String(r.status)==='In Use'){ if (r.in_use_start) { rs=fmtDisplay(r.in_use_start); } if (r.in_use_end) { re=fmtDisplay(r.in_use_end); } } var locTxt=escapeHtml(String(r.location||'')); return '<tr><td>'+escapeHtml(String(r.serial_no||'(no serial)'))+'</td><td>'+escapeHtml(String(r.model_name||''))+'</td><td>'+escapeHtml(String(r.status||''))+'</td><td title="'+locTxt+'">'+locTxt+'</td><td>'+rs+'</td><td>'+re+'</td></tr>'; }).join(''); tb.innerHTML=rows; }
       function load(){ var ridEl=document.getElementById('ersReqId'); var rid=parseInt((ridEl&&ridEl.value)||'0',10)||0; var tb=document.getElementById('ersAvailBody'); if(tb) tb.innerHTML='<tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>'; fetch('admin_borrow_center.php?action=list_reservation_serials&request_id='+encodeURIComponent(rid),{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){ render((j&&j.items)||[]); }).catch(function(){ if(tb) tb.innerHTML='<tr><td colspan="6" class="text-center text-danger">Failed to load.</td></tr>'; }); }
       document.addEventListener('DOMContentLoaded', function(){ var btn=document.getElementById('ersViewAvailBtn'); var ref=document.getElementById('ersRefreshAvailBtn'); var wrap=document.getElementById('ersAvailWrap'); var mdl=document.getElementById('editResSerialModal'); var loaded=false; if(btn){ btn.addEventListener('click', function(){ if(!wrap) return; var sh = wrap.classList.contains('d-none'); if (sh){ wrap.classList.remove('d-none'); if(ref) ref.classList.remove('d-none'); if(!loaded){ load(); loaded=true; } } else { wrap.classList.add('d-none'); } }); }
