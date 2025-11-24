@@ -333,6 +333,8 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $buCol = $db->selectCollection('borrowable_units');
     $iiCol = $db->selectCollection('inventory_items');
     $erCol = $db->selectCollection('equipment_requests');
+    $ubCol = $db->selectCollection('user_borrows');
+    $allocCol = $db->selectCollection('request_allocations');
     $bcCol = $db->selectCollection('borrowable_catalog');
     $cat = trim((string)($_GET['category'] ?? ''));
     $model = trim((string)($_GET['model'] ?? ''));
@@ -373,7 +375,7 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $cur = $buCol->find(['category'=>$cat,'model_name'=>$model], ['projection'=>['model_id'=>1,'created_at'=>1]]);
     foreach ($cur as $row) {
       $mid = (int)($row['model_id'] ?? 0); if ($mid<=0) continue;
-      $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'status'=>1,'remarks'=>1]]);
+      $it = $iiCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'status'=>1,'remarks'=>1,'location'=>1]]);
       // Auto-clean ghost whitelist entries where the inventory item no longer exists or is permanently retired
       if (!$it) {
         try { $buCol->deleteOne(['model_id'=>$mid]); } catch (Throwable $_cl) {}
@@ -384,23 +386,53 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         try { $buCol->deleteOne(['model_id'=>$mid]); } catch (Throwable $_cl2) {}
         continue;
       }
-      // If reserved for an approved reservation, display Reserved instead of raw status
+      $location = (string)($it['location'] ?? '');
+      $nowStr = date('Y-m-d H:i:s');
       $dispStatus = $rawStatus;
-      try {
-        $nowStr = date('Y-m-d H:i:s');
-        $res = $erCol->findOne([
-          'type' => 'reservation',
-          'status' => 'Approved',
-          'reserved_model_id' => $mid,
-          // consider reservations that are upcoming or currently active
-          '$or' => [ ['reserved_to' => ['$gt' => $nowStr]], ['reserved_to' => ['$exists' => false]] ]
-        ], ['projection' => ['id' => 1]]);
-        if ($res) { $dispStatus = 'Reserved'; }
-      } catch (Throwable $_rs) { /* ignore */ }
+      $inUseStart = '';
+      $inUseEnd = '';
+      $resFrom = '';
+      $resTo = '';
+      // If currently borrowed, set In Use with start/end times
+      try { $ub = $ubCol->findOne(['model_id'=>$mid,'status'=>'Borrowed'], ['projection'=>['id'=>1,'borrowed_at'=>1]]); } catch (Throwable $_ub) { $ub = null; }
+      if ($ub) {
+        $dispStatus = 'In Use';
+        if (isset($ub['borrowed_at'])) { $inUseStart = (string)$ub['borrowed_at']; }
+        try {
+          $al = $allocCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
+          if ($al && isset($al['request_id'])) {
+            $orig = $erCol->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+            if ($orig) {
+              $endStr = (string)($orig['expected_return_at'] ?? ($orig['reserved_to'] ?? ''));
+              if ($endStr !== '') { $inUseEnd = $endStr; }
+            }
+          }
+        } catch (Throwable $_al) { /* ignore */ }
+      } else {
+        // Else look for next upcoming/active reservation on this unit
+        try {
+          $res = $erCol->findOne([
+            'type' => 'reservation',
+            'status' => 'Approved',
+            'reserved_model_id' => $mid,
+            '$or' => [ ['reserved_to' => ['$gt' => $nowStr]], ['reserved_to' => ['$exists' => false]] ]
+          ], ['projection' => ['reserved_from'=>1,'reserved_to'=>1], 'sort'=>['reserved_from'=>1]]);
+          if ($res) {
+            $dispStatus = 'Reserved';
+            $resFrom = (string)($res['reserved_from'] ?? '');
+            $resTo   = (string)($res['reserved_to'] ?? '');
+          }
+        } catch (Throwable $_rs) { /* ignore */ }
+      }
       $list[] = [
         'model_id'=>$mid,
         'serial_no'=> $it ? (string)($it['serial_no'] ?? '') : '',
         'status'=> $dispStatus,
+        'location'=>$location,
+        'reserved_from'=>$resFrom,
+        'reserved_to'=>$resTo,
+        'in_use_start'=>$inUseStart,
+        'in_use_end'=>$inUseEnd,
         'remarks'=> $it ? (string)($it['remarks'] ?? '') : '',
         'added_at'=> (string)($row['created_at'] ?? '')
       ];
@@ -3278,17 +3310,25 @@ try {
         <div class="modal-body">
           <div class="mb-2 small text-muted" id="bmViewUnitsMeta"></div>
           <div class="table-responsive">
+            <style>
+              #bmViewUnitsModal table{table-layout:fixed;width:100%;}
+              #bmViewUnitsModal th,#bmViewUnitsModal td{white-space:normal;overflow:visible;text-overflow:clip;font-size:clamp(10px,0.9vw,12px);line-height:1.2;}
+              #bmViewUnitsModal td:nth-child(2){overflow-wrap:normal;word-break:keep-all;}
+              #bmViewUnitsModal .twol{display:block;line-height:1.15;}
+              #bmViewUnitsModal .twol .dte,#bmViewUnitsModal .twol .tme{display:block;}
+            </style>
             <table class="table table-sm align-middle mb-0">
               <thead class="table-light">
                 <tr>
                   <th>Serial ID</th>
-                  <th>Remarks</th>
                   <th>Status</th>
-                  <th>Added</th>
+                  <th>Location</th>
+                  <th>Start</th>
+                  <th>End</th>
                 </tr>
               </thead>
               <tbody id="bmViewUnitsBody">
-                <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+                <tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -3302,6 +3342,10 @@ try {
   <script>
     (function(){
       function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+      function two(n){ n=parseInt(n,10); return (n<10?'0':'')+n; }
+      function fmtD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate())+'-'+d.getFullYear(); }catch(_){ return ''; } }
+      function fmtT(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; var h=d.getHours(), m=two(d.getMinutes()); var ap=(h>=12?'pm':'am'); h=h%12; if(h===0)h=12; return h+':'+m+' '+ap; }catch(_){ return ''; } }
+      function twoLine(dt){ if(!dt) return ''; var d=fmtD(dt), t=fmtT(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span><span class="tme">'+esc(t)+'</span></span>'; }
       async function fetchWhitelisted(cat, model){
         const url = 'admin_borrow_center.php?action=list_borrowable_units&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
         const r = await fetch(url); if(!r.ok) return [];
@@ -3317,18 +3361,22 @@ try {
         const meta = document.getElementById('bmViewUnitsMeta');
         const body = document.getElementById('bmViewUnitsBody');
         if (meta) meta.innerHTML = 'Category: <strong>'+esc(cat)+'</strong> | Model: <strong>'+esc(model)+'</strong>';
-        if (body) body.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>';
+        if (body) body.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>';
         const items = await fetchWhitelisted(cat, model);
         const rows = [];
         if (!items.length) {
-          rows.push('<tr><td colspan="4" class="text-center text-muted">No whitelisted serials yet.</td></tr>');
+          rows.push('<tr><td colspan="5" class="text-center text-muted">No whitelisted serials yet.</td></tr>');
         } else {
-          items.forEach(it=>{
+          items.forEach(function(it){
+            var rs='', re='';
+            if (String(it.status)==='Reserved' && it.reserved_from && it.reserved_to){ rs=twoLine(it.reserved_from); re=twoLine(it.reserved_to); }
+            else if (String(it.status)==='In Use'){ if (it.in_use_start) rs=twoLine(it.in_use_start); if (it.in_use_end) re=twoLine(it.in_use_end); }
             rows.push('<tr>'+
               '<td>'+esc(it.serial_no||'')+'</td>'+
-              '<td>'+esc(it.remarks||'')+'</td>'+
               '<td>'+esc(it.status||'')+'</td>'+
-              '<td>'+esc(it.added_at||'')+'</td>'+
+              '<td>'+esc(it.location||'')+'</td>'+
+              '<td>'+rs+'</td>'+
+              '<td>'+re+'</td>'+
             '</tr>');
           });
         }
@@ -3336,25 +3384,6 @@ try {
       });
     })();
   </script>
-  <!-- QR Return (Admin) Modal -->
-  <div class="modal fade" id="qrReturnAdminModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-qr-code me-2"></i>QR Return</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-2"><strong>Request ID:</strong> <span id="qrAdmReq"></span></div>
-          <div class="mb-2"><strong>Item Name:</strong> <span id="qrAdmModel"></span></div>
-          <div class="mb-2"><strong>Serial ID:</strong> <span id="qrAdmSerial"></span></div>
-          
-          <div class="mb-2"><strong>User Location:</strong> <span id="qrAdmLoc">—</span></div>
-          <div class="mt-3 text-end"><small class="text-muted">View only</small></div>
-        </div>
-      </div>
-    </div>
-  </div>
   <script>
     (function(){
       document.addEventListener('DOMContentLoaded', function(){
