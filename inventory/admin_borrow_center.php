@@ -3316,6 +3316,7 @@ try {
               #bmViewUnitsModal td:nth-child(2){overflow-wrap:normal;word-break:keep-all;}
               #bmViewUnitsModal .twol{display:block;line-height:1.15;}
               #bmViewUnitsModal .twol .dte,#bmViewUnitsModal .twol .tme{display:block;}
+              #bmViewUnitsModal tbody tr{height:calc(2 * 1.2em + 0.6rem);} /* uniform ~two-line row height */
             </style>
             <table class="table table-sm align-middle mb-0">
               <thead class="table-light">
