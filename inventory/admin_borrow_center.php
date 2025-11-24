@@ -4931,13 +4931,15 @@ try {
             <div id="ersAvailWrap" class="mt-2 d-none">
               <style>
                 #ersAvailWrap table{table-layout:fixed;width:100%;}
-                #ersAvailWrap th,#ersAvailWrap td{white-space:normal !important;overflow:visible !important;text-overflow:clip !important;font-size:clamp(10px,0.9vw,12px);line-height:1.2;word-break:normal !important;overflow-wrap:anywhere !important;}
+                #ersAvailWrap th,#ersAvailWrap td{white-space:normal !important;overflow:visible !important;text-overflow:clip !important;font-size:clamp(10px,0.9vw,12px);line-height:1.2;word-break:normal !important;overflow-wrap:break-word !important;}
                 #ersAvailWrap th:nth-child(1),#ersAvailWrap td:nth-child(1){width:14%;}
                 #ersAvailWrap th:nth-child(2),#ersAvailWrap td:nth-child(2){width:16%;}
-                #ersAvailWrap th:nth-child(3),#ersAvailWrap td:nth-child(3){width:12%;}
+                #ersAvailWrap th:nth-child(3),#ersAvailWrap td:nth-child(3){width:14%;}
+                /* Status column: do not break inside single words */
+                #ersAvailWrap td:nth-child(3){overflow-wrap:normal !important;word-break:keep-all !important;}
                 #ersAvailWrap th:nth-child(4),#ersAvailWrap td:nth-child(4){width:18%;} /* Location column */
-                #ersAvailWrap th:nth-child(5),#ersAvailWrap td:nth-child(5){width:20%;}
-                #ersAvailWrap th:nth-child(6),#ersAvailWrap td:nth-child(6){width:20%;}
+                #ersAvailWrap th:nth-child(5),#ersAvailWrap td:nth-child(5){width:19%;}
+                #ersAvailWrap th:nth-child(6),#ersAvailWrap td:nth-child(6){width:19%;}
                 /* Ensure Start/End can wrap (in addition to global wrap) */
                 #ersAvailWrap td:nth-child(5), #ersAvailWrap td:nth-child(6){white-space:normal !important;}
                 /* Uniform two-line row height and alignment */
