@@ -3418,23 +3418,26 @@ try {
               #bmResvTimelineModal tbody tr{height:calc(2 * 1.2em + 0.6rem);} /* ~two-line rows */
               #bmResvTimelineModal .active-row{background:#fff3cd;} /* highlight current */
               #bmResvTimelineModal .queue-table{table-layout:fixed;width:100%; border:1px solid #dee2e6; margin-bottom:12px;}
-              #bmResvTimelineModal .queue-table th,#bmResvTimelineModal .queue-table td{border:1px solid #dee2e6; padding:.5rem; vertical-align:top;}
+              #bmResvTimelineModal .queue-table th,#bmResvTimelineModal .queue-table td{border:1px solid #dee2e6; padding:.4rem; vertical-align:top;}
+              #bmResvTimelineModal .queue-table th{text-align:center;}
+              #bmResvTimelineModal .slot{font-size:clamp(10px,3.2vw,12px); line-height:1.15; white-space:normal; word-break:keep-all; overflow-wrap:normal;}
               #bmResvTimelineModal .slot .line{display:block;}
               #bmResvTimelineModal .hl{background:#fff3cd;}
               #bmResvTimelineModal .queue-wrap{display:flex; align-items:stretch; gap:8px;}
               #bmResvTimelineModal .queue-labels{table-layout:fixed; border-collapse:collapse; width:84px; border:1px solid #dee2e6; margin-bottom:12px;}
-              #bmResvTimelineModal .queue-labels th,#bmResvTimelineModal .queue-labels td{border:1px solid #dee2e6; padding:.5rem; vertical-align:top;}
+              #bmResvTimelineModal .queue-labels th,#bmResvTimelineModal .queue-labels td{border:1px solid #dee2e6; padding:.4rem; vertical-align:top;}
               #bmResvTimelineModal .queue-labels th{background:#f8f9fa;}
               #bmResvTimelineModal .cap-ongoing{color:#198754; font-weight:600;}
+              @media (max-width: 576px){
+                #bmResvTimelineModal .queue-labels{width:66px;}
+              }
             </style>
             <div id="bmResvGridWrap" class="mb-2">
               <div class="text-center text-muted">Loading...</div>
             </div>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        </div>
+        
       </div>
     </div>
   </div>
@@ -3488,7 +3491,8 @@ try {
         return r.json().catch(()=>({ok:false, now:(new Date()).toISOString(), items:[]}));
       }
       function parseDate(dt){ try{ if(!dt) return null; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return null; return d; }catch(_){ return null; } }
-      function fmtDT(dt){ var d=fmtD(dt), t=fmtT(dt); return (d||t) ? (d + (t?' '+t:'')) : ''; }
+      function fmtMD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate()); }catch(_){ return ''; } }
+      function fmtDT(dt){ var d=fmtMD(dt), t=fmtT(dt); return (d||t) ? (d + (t?' '+t:'')) : ''; }
       function chunk5(arr){ var out=[]; for (var i=0;i<arr.length;i+=5){ out.push(arr.slice(i,i+5)); } return out; }
       document.addEventListener('click', async function(e){
         const clk = e.target.closest && e.target.closest('#bmViewResvBtn');
@@ -3524,7 +3528,7 @@ try {
             var cls = '';
             if (info && info.inUse){
               var s = fmtDT(info.inUse.start); var e2 = fmtDT(info.inUse.end);
-              if (s || e2){ cell = '<div class="slot"><span class="line">Start: '+esc(s)+'</span><span class="line">End: '+esc(e2)+'</span></div>'; cls=' hl'; }
+              if (s || e2){ cell = '<div class="slot"><span class="line">S: '+esc(s)+'</span><span class="line">E: '+esc(e2)+'</span></div>'; cls=' hl'; }
             }
             tdo += '<td class="slot'+cls+'">'+cell+'</td>';
           }
@@ -3538,7 +3542,7 @@ try {
               var g2 = group[k]; var cell2 = '';
               if (g2 && g2.reservations && g2.reservations[rIdx]){
                 var rv = g2.reservations[rIdx]; var ss = fmtDT(rv.start); var ee = fmtDT(rv.end);
-                if (ss || ee){ cell2 = '<div class="slot"><span class="line">Start: '+esc(ss)+'</span><span class="line">End: '+esc(ee)+'</span></div>'; }
+                if (ss || ee){ cell2 = '<div class="slot"><span class="line">S: '+esc(ss)+'</span><span class="line">E: '+esc(ee)+'</span></div>'; }
               } else if (g2 && rIdx===0 && (!g2.reservations || g2.reservations.length===0) && !g2.inUse) {
                 cell2 = '<div class="slot"><span class="line">Available</span></div>';
               }
@@ -3556,7 +3560,17 @@ try {
         });
         if (gridWrap) gridWrap.innerHTML = tables.length ? tables.join('') : '<div class="text-center text-muted">No serials in this group.</div>';
         // viewport height
-        try{ var sc = document.querySelector('#bmResvTimelineModal .scroll-viewport'); if (sc){ sc.style.maxHeight='420px'; sc.style.overflow='auto'; } }catch(_){ }
+        try{ var sc = document.querySelector('#bmResvTimelineModal .scroll-viewport'); if (sc){ var mh = Math.min(Math.max(320, Math.floor(window.innerHeight*0.6)), 480); sc.style.maxHeight=mh+'px'; sc.style.overflow='auto'; } }catch(_){ }
+        // When timeline closes, return to Borrowable Serials modal
+        try{
+          var tmodal = document.getElementById('bmResvTimelineModal');
+          if (tmodal && window.bootstrap && bootstrap.Modal){
+            tmodal.addEventListener('hidden.bs.modal', function(){
+              var vw = document.getElementById('bmViewUnitsModal');
+              if (vw){ bootstrap.Modal.getOrCreateInstance(vw).show(); }
+            }, { once:false });
+          }
+        }catch(_){ }
       });
     })();
   </script>
