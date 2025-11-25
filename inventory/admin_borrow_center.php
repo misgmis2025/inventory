@@ -77,6 +77,38 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           if (isset($u['full_name']) && trim((string)$u['full_name'])!=='') { $borrowerFull = (string)$u['full_name']; }
           if (isset($u['school_id'])) { $borrowerSid = (string)$u['school_id']; }
         }
+
+    // Include free items (no in-use, no reservations) by default so admin can see open slots
+    $includeFree = true;
+    if ($includeFree) {
+      $freeMatch = [];
+      if (!empty($wanted)) {
+        $freeMatch['$and'] = [ ['serial_no' => ['$ne' => '']], ['serial_no' => ['$nin' => $wanted]] ];
+      } else {
+        $freeMatch['serial_no'] = ['$ne' => ''];
+      }
+      if ($category !== '') { $freeMatch['category'] = ['$regex' => '^'.preg_quote($category,'/').'$', '$options' => 'i']; }
+      if ($q !== '') {
+        $freeMatch['$or'] = [
+          ['serial_no' => ['$regex' => $q, '$options' => 'i']],
+          ['item_name' => ['$regex' => $q, '$options' => 'i']],
+          ['model'     => ['$regex' => $q, '$options' => 'i']],
+        ];
+      }
+      $curFree = $ii->find($freeMatch, ['projection' => ['id'=>1,'serial_no'=>1,'item_name'=>1,'model'=>1,'category'=>1,'location'=>1], 'limit' => 50]);
+      foreach ($curFree as $doc) {
+        $id = (int)($doc['id'] ?? 0);
+        $serial = (string)($doc['serial_no'] ?? ''); if ($serial==='') continue;
+        $model = (string)($doc['model'] ?? ''); if ($model==='') $model = (string)($doc['item_name'] ?? '');
+        $items[] = [
+          'id'        => $id,
+          'serial_no' => $serial,
+          'model'     => $model,
+          'category'  => (string)($doc['category'] ?? ''),
+          'location'  => (string)($doc['location'] ?? ''),
+        ];
+      }
+    }
       } catch (Throwable $_e) {}
       // link to request via allocation if exists
       $alloc = $ra->findOne(['borrow_id' => $bid]);
@@ -513,8 +545,10 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       sort($cats);
     }
 
-    // Build in-use map by serial
+    // Build in-use map by serial and compute latest in-use start
     $inUseMap = [];
+    $latestInUseFrom = '';
+    $latestInUseTs = 0;
     $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
     foreach ($curUse as $b) {
       $serial = trim((string)($b['serial_no'] ?? ''));
@@ -542,6 +576,8 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       $fname = '';
       try { $u = $users->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($u) $fname = trim((string)($u['full_name'] ?? '')); } catch (Throwable $_) { }
       $inUseMap[$serial] = [ 'username'=>$uname, 'full_name'=>($fname!==''?$fname:$uname), 'from'=>$from, 'to'=>$to ];
+      $tf = @strtotime($from);
+      if ($tf && $tf > $latestInUseTs) { $latestInUseTs = $tf; $latestInUseFrom = $from; }
     }
 
     // Reservations per serial (approved, overlapping window)
@@ -627,9 +663,9 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       // If any reservations missed because of query edge cases (e.g., reserved_to empty), filter again for safety
       $resList = array_values(array_filter($resList, function($r) use ($fromStr, $toStr, $overlaps){ return $overlaps((string)($r['from'] ?? ''), (string)($r['to'] ?? ''), $fromStr, $toStr); }));
       $row['reservations'] = $resList;
-      if ($inU || !empty($resList)) { $out[] = $row; }
+      if ($inU || !empty($resList) || $includeFree) { $out[] = $row; }
     }
-    echo json_encode(['ok'=>true, 'categories'=>$cats, 'items'=>$out]);
+    echo json_encode(['ok'=>true, 'categories'=>$cats, 'items'=>$out, 'latest_in_use_from'=>$latestInUseFrom]);
     exit();
   } catch (Throwable $e) { echo json_encode(['ok'=>false]); exit(); }
 }
@@ -4997,7 +5033,10 @@ try {
                   (cat?('<span class="badge bg-secondary" title="Category">'+esc(cat)+'</span>'):'')+''+
                 '</div>'+
                 '<div class="card-body">'+
-                  (use ? ('<div class="mb-2"><span class="badge bg-primary me-2">In Use</span>'+esc(use.full_name||use.username||'')+'<div class="small text-muted">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div></div>') : '')+
+                  (use
+                    ? ('<div class="mb-2"><span class="badge bg-primary me-2">In Use</span>'+esc(use.full_name||use.username||'')+'<div class="small text-muted">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div></div>')
+                    : ('<div class="mb-2"><span class="badge bg-success-subtle text-success border">No In Use</span></div>')
+                  )+
                   (res.length? '<div class="small text-muted mb-1">Reservations</div>':'')+
                   res.map(function(r){ var clash = use && overlap(use.from, use.to, r.from, r.to); return (
                     '<div class="d-flex flex-column p-2 rounded '+(clash?'bg-danger bg-opacity-10 border border-danger':'bg-light')+' mb-2">'+
@@ -5044,6 +5083,21 @@ try {
           sel.innerHTML = opts.join('');
           if (cur && cats.indexOf(cur)===-1) sel.value='';
         }
+        // If first run and backend suggests a latest in-use start, preset From and reload once
+        var fEl = document.getElementById('resFilterFrom');
+        if (fEl && !fEl.dataset.presetLatest && j.latest_in_use_from) {
+          try {
+            var s = String(j.latest_in_use_from).trim();
+            if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s = s.replace(' ','T');
+            var d = new Date(s);
+            if (!isNaN(d.getTime())) {
+              var y=d.getFullYear(), m=('0'+(d.getMonth()+1)).slice(-2), d2=('0'+d.getDate()).slice(-2), hh=('0'+d.getHours()).slice(-2), mm=('0'+d.getMinutes()).slice(-2);
+              var val = y+'-'+m+'-'+d2+'T'+hh+':'+mm;
+              if (!fEl.value) { fEl.value = val; fEl.dataset.presetLatest = '1'; return loadTimeline(); }
+            }
+          } catch(_p){}
+        }
+
         var items = Array.isArray(j.items)? j.items : [];
         console.log('[Timeline] Items', items.length);
         renderCards(items);
@@ -5059,7 +5113,7 @@ try {
         var now=new Date();
         var plus=new Date(Date.now()+14*24*3600*1000);
         function toLocal(dt){ var y=dt.getFullYear(), m=('0'+(dt.getMonth()+1)).slice(-2), d=('0'+dt.getDate()).slice(-2), hh=('0'+dt.getHours()).slice(-2), mm=('0'+dt.getMinutes()).slice(-2); return y+'-'+m+'-'+d+'T'+hh+':'+mm; }
-        if (f && !f.value) f.value = toLocal(now);
+        // Do not preset From; backend will suggest latest in-use on first fetch.
         if (t && !t.value) t.value = toLocal(plus);
         loadTimeline();
         if (wired) return; wired=true;
