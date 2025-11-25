@@ -431,50 +431,138 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         } catch (Throwable $_rs) { /* ignore */ }
       }
       $list[] = [
-        'model_id'=>$mid,
-        'serial_no'=> $it ? (string)($it['serial_no'] ?? '') : '',
-        'status'=> $dispStatus,
-        'location'=>$location,
-        'reserved_from'=>$resFrom,
-        'reserved_to'=>$resTo,
-        'in_use_start'=>$inUseStart,
-        'in_use_end'=>$inUseEnd,
-        'remarks'=> $it ? (string)($it['remarks'] ?? '') : '',
-        'added_at'=> (string)($row['created_at'] ?? '')
+        'model_id'       => $mid,
+        'serial_no'      => $it ? (string)($it['serial_no'] ?? '') : '',
+        'status'         => $dispStatus,
+        'location'       => $location,
+        'reserved_from'  => $resFrom,
+        'reserved_to'    => $resTo,
+        'in_use_start'   => $inUseStart,
+        'in_use_end'     => $inUseEnd,
+        'remarks'        => $it ? (string)($it['remarks'] ?? '') : '',
       ];
-    }
-    echo json_encode(['ok'=>true,'items'=>$list]);
-  } catch (Throwable $e) { echo json_encode(['ok'=>false,'items'=>[]]); }
-  exit();
-}
-// List hold serials for a given category and model (JSON)
-if ($act === 'hold_serials' && $_SERVER['REQUEST_METHOD'] === 'GET') {
-  header('Content-Type: application/json');
-  try {
-    @require_once __DIR__ . '/../vendor/autoload.php';
-    @require_once __DIR__ . '/db/mongo.php';
-    $db = get_mongo_db();
-    $holdCol = $db->selectCollection('returned_hold');
-    $itemsCol = $db->selectCollection('inventory_items');
-    $cat = trim((string)($_GET['category'] ?? ''));
-    $model = trim((string)($_GET['model'] ?? ''));
-    if ($cat === '' || $model === '') { echo json_encode(['ok'=>false,'items'=>[]]); exit; }
-    $list = [];
-    // Only include items from returned_hold (not already borrowable)
-    $cur = $holdCol->find(['category'=>$cat, 'model_name'=>$model], ['projection'=>['model_id'=>1], 'sort'=>['id'=>1]]);
-    foreach ($cur as $h) {
-      $mid = (int)($h['model_id'] ?? 0);
-      if ($mid <= 0) continue;
-      $it = $itemsCol->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1,'model'=>1,'item_name'=>1]]);
-      $serial = $it ? (string)($it['serial_no'] ?? '') : '';
-      $mname = $it ? (string)($it['model'] ?? ($it['item_name'] ?? $model)) : $model;
-      $list[] = ['model_id'=>$mid, 'serial_no'=>$serial, 'model'=>$mname, 'source'=>'hold'];
     }
     echo json_encode(['ok'=>true,'items'=>$list]);
   } catch (Throwable $e) {
     echo json_encode(['ok'=>false,'items'=>[]]);
   }
   exit();
+}
+
+// Reservation timeline per serial (JSON)
+if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+  header('Content-Type: application/json');
+  if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? '') !== 'admin') { http_response_code(401); echo json_encode(['ok'=>false,'reason'=>'unauthorized']); exit(); }
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $ii = $db->selectCollection('inventory_items');
+    $ub = $db->selectCollection('user_borrows');
+    $er = $db->selectCollection('equipment_requests');
+    $alloc = $db->selectCollection('request_allocations');
+    $users = $db->selectCollection('users');
+
+    $days = max(1, min(60, (int)($_GET['days'] ?? 14)));
+    $q = trim((string)($_GET['q'] ?? ''));
+    $category = trim((string)($_GET['category'] ?? ''));
+    $now = date('Y-m-d H:i:s');
+    $end = date('Y-m-d H:i:s', time() + $days * 86400);
+
+    // Build candidate items (serialized units)
+    $match = ['serial_no' => ['$ne' => '']];
+    if ($category !== '') { $match['category'] = $category; }
+    if ($q !== '') {
+      $match['$or'] = [
+        ['serial_no' => ['$regex' => $q, '$options' => 'i']],
+        ['item_name' => ['$regex' => $q, '$options' => 'i']],
+        ['model'     => ['$regex' => $q, '$options' => 'i']],
+      ];
+    }
+    $cur = $ii->find($match, ['projection' => ['id'=>1,'serial_no'=>1,'item_name'=>1,'model'=>1,'category'=>1,'location'=>1], 'limit' => 200]);
+    $items = [];
+    foreach ($cur as $doc) {
+      $id = (int)($doc['id'] ?? 0);
+      $serial = (string)($doc['serial_no'] ?? '');
+      if ($serial === '') continue;
+      $model = (string)($doc['model'] ?? ''); if ($model === '') $model = (string)($doc['item_name'] ?? '');
+      $items[] = [
+        'id'        => $id,
+        'serial_no' => $serial,
+        'model'     => $model,
+        'category'  => (string)($doc['category'] ?? ''),
+        'location'  => (string)($doc['location'] ?? ''),
+      ];
+    }
+    // Categories list for filter
+    $cats = array_values(array_unique(array_filter(array_map(function($r){ return (string)($r['category'] ?? ''); }, $items))));
+    sort($cats);
+
+    // Build in-use map by serial
+    $inUseMap = [];
+    $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
+    foreach ($curUse as $b) {
+      $serial = trim((string)($b['serial_no'] ?? ''));
+      if ($serial === '') continue;
+      $from = (string)($b['borrowed_at'] ?? '');
+      $to = (string)($b['expected_return_at'] ?? '');
+      // try linking allocation -> request for better end date if missing
+      if ($to === '') {
+        try {
+          $al = $alloc->findOne(['borrow_id'=>(int)($b['id'] ?? 0)], ['projection'=>['request_id'=>1]]);
+          if ($al && isset($al['request_id'])) {
+            $rq = $er->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
+            if ($rq) { $to = (string)($rq['expected_return_at'] ?? ($rq['reserved_to'] ?? '')); }
+          }
+        } catch (Throwable $_) { }
+      }
+      // resolve full name
+      $uname = (string)($b['username'] ?? '');
+      $fname = '';
+      try { $u = $users->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($u) $fname = trim((string)($u['full_name'] ?? '')); } catch (Throwable $_) { }
+      $inUseMap[$serial] = [ 'username'=>$uname, 'full_name'=>($fname!==''?$fname:$uname), 'from'=>$from, 'to'=>$to ];
+    }
+
+    // Reservations per serial (approved, overlapping window)
+    $resBySerial = [];
+    $qRes = [
+      'type'=>'reservation', 'status'=>'Approved',
+      'reserved_from' => ['$lt' => $end],
+      '$or' => [['reserved_to' => ['$gt' => $now]], ['reserved_to' => ['$exists' => false]]]
+    ];
+    $curRes = $er->find($qRes, ['projection'=>['reserved_serial_no'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'status'=>1], 'sort'=>['reserved_from'=>1]]);
+    foreach ($curRes as $r) {
+      $serial = trim((string)($r['reserved_serial_no'] ?? ''));
+      if ($serial === '') continue; // only serial-specific reservations
+      $uname = (string)($r['username'] ?? '');
+      $fname = '';
+      try { $u = $users->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($u) $fname = trim((string)($u['full_name'] ?? '')); } catch (Throwable $_) { }
+      $resBySerial[$serial][] = [
+        'from' => (string)($r['reserved_from'] ?? ''),
+        'to'   => (string)($r['reserved_to'] ?? ''),
+        'username' => $uname,
+        'full_name' => ($fname!==''?$fname:$uname),
+        'status' => (string)($r['status'] ?? 'Approved'),
+      ];
+    }
+
+    // Compose response items
+    $out = [];
+    foreach ($items as $it) {
+      $serial = $it['serial_no'];
+      $row = [
+        'serial_no' => $serial,
+        'model' => $it['model'],
+        'category' => $it['category'],
+        'location' => $it['location'],
+      ];
+      if (isset($inUseMap[$serial])) { $row['in_use'] = $inUseMap[$serial]; }
+      $row['reservations'] = $resBySerial[$serial] ?? [];
+      $out[] = $row;
+    }
+    echo json_encode(['ok'=>true, 'categories'=>$cats, 'items'=>$out]);
+    exit();
+  } catch (Throwable $e) { echo json_encode(['ok'=>false]); exit(); }
 }
 
 // Print Lost/Damaged history (admin) with inventory_print-style header/footer
@@ -736,6 +824,42 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         <div class="eca-footer">
           <div class="field"><label>Prepared by:</label><span class="eca-print-value"><?php echo htmlspecialchars($prepared); ?>&nbsp;</span></div>
           <div class="field"><label>Checked by:</label><span class="eca-print-value"><?php echo htmlspecialchars($checked); ?>&nbsp;</span></div>
+        </div>
+      </div>
+
+      <!-- Reservation Timeline Modal -->
+      <div class="modal fade" id="resTimelineModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:95vw; width:95vw; max-height:95vh; height:95vh;">
+          <div class="modal-content" style="height:100%;">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="bi bi-calendar-week me-2"></i>Reservation Timeline</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="height:calc(95vh - 120px); overflow:auto;">
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-4">
+                  <label class="form-label mb-1 small">Category</label>
+                  <select id="resFilterCategory" class="form-select form-select-sm"><option value="">All</option></select>
+                </div>
+                <div class="col-8 col-md-5">
+                  <label class="form-label mb-1 small">Search</label>
+                  <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
+                </div>
+                <div class="col-4 col-md-3">
+                  <label class="form-label mb-1 small">Window</label>
+                  <select id="resFilterDays" class="form-select form-select-sm">
+                    <option value="7">Next 7 days</option>
+                    <option value="14" selected>Next 14 days</option>
+                    <option value="30">Next 30 days</option>
+                  </select>
+                </div>
+              </div>
+              <div id="resTimelineList" class="row g-2"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
         </div>
       </div>
       <?php } ?>
@@ -3217,6 +3341,11 @@ try {
             <li>
               <a class="dropdown-item d-flex align-items-center" href="#" data-bs-toggle="modal" data-bs-target="#overdueModal">
                 <i class="bi bi-hourglass-split me-2"></i>Overdue Items
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center" href="#" data-bs-toggle="modal" data-bs-target="#resTimelineModal">
+                <i class="bi bi-calendar-week me-2"></i>Reservation Timeline
               </a>
             </li>
           </ul>
