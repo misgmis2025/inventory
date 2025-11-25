@@ -234,9 +234,9 @@ $pages = array_chunk($history, 15);
                 <col style="width: 8%" />  <!-- Student ID -->
                 <col style="width: 8%" />  <!-- Serial ID -->
                 <col style="width: 12%" />  <!-- Item/Model -->
-                <col style="width: 6%" />  <!-- Category -->
-                <col style="width: 22%" />   <!-- Borrowed At -->
-                <col style="width: 22%" />   <!-- Returned At -->
+                <col style="width: 10%" />  <!-- Category -->
+                <col style="width: 20%" />   <!-- Borrowed At -->
+                <col style="width: 20%" />   <!-- Returned At -->
               </colgroup>
               <thead class="table-light">
                 <tr>
