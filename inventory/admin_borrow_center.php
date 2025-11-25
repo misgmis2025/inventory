@@ -466,6 +466,13 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     $days = max(1, min(60, (int)($_GET['days'] ?? 14)));
     $q = trim((string)($_GET['q'] ?? ''));
     $category = trim((string)($_GET['category'] ?? ''));
+    $atRaw = trim((string)($_GET['at'] ?? ''));
+    $atStr = '';
+    if ($atRaw !== '') {
+      $tmp = str_replace('T', ' ', $atRaw);
+      $ts = strtotime($tmp);
+      if ($ts !== false) { $atStr = date('Y-m-d H:i:s', $ts); }
+    }
     $now = date('Y-m-d H:i:s');
     $end = date('Y-m-d H:i:s', time() + $days * 86400);
 
@@ -494,13 +501,30 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
         'location'  => (string)($doc['location'] ?? ''),
       ];
     }
-    // Categories list for filter
-    $cats = array_values(array_unique(array_filter(array_map(function($r){ return (string)($r['category'] ?? ''); }, $items))));
-    sort($cats);
+    // Categories list for filter (stable, independent of current category/search)
+    try {
+      $baseMatch = ['serial_no' => ['$ne' => '']];
+      $cats = $ii->distinct('category', $baseMatch);
+      $cats = array_values(array_filter(array_map('strval', (array)$cats)));
+      sort($cats);
+    } catch (Throwable $_) {
+      $cats = array_values(array_unique(array_filter(array_map(function($r){ return (string)($r['category'] ?? ''); }, $items))));
+      sort($cats);
+    }
 
     // Build in-use map by serial
     $inUseMap = [];
-    $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
+    if ($atStr !== '') {
+      // In-use at specific datetime: borrowed_at <= at AND (returned_at is null/empty OR returned_at >= at)
+      $ubQuery = [
+        'borrowed_at' => ['$lte' => $atStr],
+        '$or' => [ ['returned_at' => null], ['returned_at' => ''], ['returned_at' => ['$gte' => $atStr]] ]
+      ];
+      $curUse = $ub->find($ubQuery, ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
+    } else {
+      // Currently in-use
+      $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
+    }
     foreach ($curUse as $b) {
       $serial = trim((string)($b['serial_no'] ?? ''));
       if ($serial === '') continue;
@@ -525,11 +549,19 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
 
     // Reservations per serial (approved, overlapping window)
     $resBySerial = [];
-    $qRes = [
-      'type'=>'reservation', 'status'=>'Approved',
-      'reserved_from' => ['$lt' => $end],
-      '$or' => [['reserved_to' => ['$gt' => $now]], ['reserved_to' => ['$exists' => false]]]
-    ];
+    if ($atStr !== '') {
+      $qRes = [
+        'type' => 'reservation', 'status' => 'Approved',
+        'reserved_from' => ['$lte' => $atStr],
+        '$or' => [ ['reserved_to' => ['$gte' => $atStr]], ['reserved_to' => ['$exists' => false]] ]
+      ];
+    } else {
+      $qRes = [
+        'type'=>'reservation', 'status'=>'Approved',
+        'reserved_from' => ['$lt' => $end],
+        '$or' => [['reserved_to' => ['$gt' => $now]], ['reserved_to' => ['$exists' => false]]]
+      ];
+    }
     $curRes = $er->find($qRes, ['projection'=>['reserved_serial_no'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'status'=>1], 'sort'=>['reserved_from'=>1]]);
     foreach ($curRes as $r) {
       $serial = trim((string)($r['reserved_serial_no'] ?? ''));
@@ -550,6 +582,7 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     $out = [];
     foreach ($items as $it) {
       $serial = $it['serial_no'];
+      if ($atStr !== '' && !isset($inUseMap[$serial])) { continue; }
       $row = [
         'serial_no' => $serial,
         'model' => $it['model'],
@@ -845,13 +878,9 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                   <label class="form-label mb-1 small">Search</label>
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
-                <div class="col-4 col-md-3">
-                  <label class="form-label mb-1 small">Window</label>
-                  <select id="resFilterDays" class="form-select form-select-sm">
-                    <option value="7">Next 7 days</option>
-                    <option value="14" selected>Next 14 days</option>
-                    <option value="30">Next 30 days</option>
-                  </select>
+                <div class="col-12 col-md-3">
+                  <label class="form-label mb-1 small">Date/Time (optional)</label>
+                  <input id="resFilterAt" type="datetime-local" class="form-control form-control-sm" />
                 </div>
               </div>
               <div id="resTimelineList" class="row g-2"></div>
@@ -4942,12 +4971,15 @@ try {
       }
       async function loadTimeline(){
         var catSel = document.getElementById('resFilterCategory');
-        var daysSel = document.getElementById('resFilterDays');
         var qInp = document.getElementById('resFilterSearch');
-        var days = daysSel ? parseInt(daysSel.value||'14',10)||14 : 14;
+        var atInp = document.getElementById('resFilterAt');
         var cat = catSel ? (catSel.value||'') : '';
         var q = qInp ? (qInp.value||'') : '';
-        var url = 'admin_borrow_center.php?action=reservation_timeline_json&days='+encodeURIComponent(days)+(cat?('&category='+encodeURIComponent(cat)):'')+(q?('&q='+encodeURIComponent(q)):'');
+        var at = atInp ? (atInp.value||'') : '';
+        var url = 'admin_borrow_center.php?action=reservation_timeline_json' +
+                  (cat?('&category='+encodeURIComponent(cat)):'') +
+                  (q?('&q='+encodeURIComponent(q)):'') +
+                  (at?('&at='+encodeURIComponent(at)):'');
 
         try {
           var r = await fetch(url);
@@ -4967,7 +4999,16 @@ try {
       document.addEventListener('DOMContentLoaded', function(){
         var mdl = document.getElementById('resTimelineModal'); if (!mdl) return;
         var wired=false, timer=null;
-        mdl.addEventListener('show.bs.modal', function(){ loadTimeline(); if (wired) return; wired=true; var c=document.getElementById('resFilterCategory'); var d=document.getElementById('resFilterDays'); var q=document.getElementById('resFilterSearch'); if (c) c.addEventListener('change', loadTimeline); if (d) d.addEventListener('change', loadTimeline); if (q) q.addEventListener('input', function(){ if (timer) clearTimeout(timer); timer=setTimeout(loadTimeline, 300); }); });
+        mdl.addEventListener('show.bs.modal', function(){
+          loadTimeline();
+          if (wired) return; wired=true;
+          var c=document.getElementById('resFilterCategory');
+          var a=document.getElementById('resFilterAt');
+          var q=document.getElementById('resFilterSearch');
+          if (c) c.addEventListener('change', loadTimeline);
+          if (a) a.addEventListener('change', loadTimeline);
+          if (q) q.addEventListener('input', function(){ if (timer) clearTimeout(timer); timer=setTimeout(loadTimeline, 300); });
+        });
       });
     })();
   </script>
