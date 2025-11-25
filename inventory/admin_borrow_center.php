@@ -3598,8 +3598,8 @@ try {
     (function(){
       function esc(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
       function two(n){ n=parseInt(n,10); return (n<10?'0':'')+n; }
-      function fmtD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate())+'-'+d.getFullYear(); }catch(_){ return ''; } }
-      function fmtT(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return ''; var h=d.getHours(), m=two(d.getMinutes()); var ap=(h>=12?'pm':'am'); h=h%12; if(h===0)h=12; return h+':'+m+' '+ap; }catch(_){ return ''; } }
+      function fmtD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); var m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/); if(!m) return ''; return two(parseInt(m[2],10))+'-'+two(parseInt(m[3],10))+'-'+m[1]; }catch(_){ return ''; } }
+      function fmtT(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); var m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/); if(!m) return ''; var H=parseInt(m[4],10), M=parseInt(m[5],10); var ap=(H>=12?'pm':'am'); var h=H%12; if(h===0)h=12; return h+':'+two(M)+' '+ap; }catch(_){ return ''; } }
       function twoLine(dt){ if(!dt) return ''; var d=fmtD(dt), t=fmtT(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span><span class="tme">'+esc(t)+'</span></span>'; }
       async function fetchWhitelisted(cat, model){
         const url = 'admin_borrow_center.php?action=list_borrowable_units&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
@@ -4944,7 +4944,18 @@ try {
       '</td>'+ 
     '</tr>'); }); } 
       tb.innerHTML=rows.join(''); }
-    function fmt(dt){ if(!dt) return ''; try{ let s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); const d=new Date(s); if(isNaN(d.getTime())) return String(dt); const mm=('0'+(d.getMonth()+1)).slice(-2), dd=('0'+d.getDate()).slice(-2), yyyy=d.getFullYear(); let h=d.getHours(), m=('0'+d.getMinutes()).slice(-2); const ap=h>=12?'PM':'AM'; h=h%12; if(h===0)h=12; h=('0'+h).slice(-2); return mm+'-'+dd+'-'+yyyy+' '+h+':'+m+ap; }catch(_){ return String(dt);} }
+    function fmt(dt){
+      if(!dt) return '';
+      try {
+        var s=String(dt).trim();
+        var m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        if(!m) return String(dt);
+        var yyyy=m[1], MM=m[2], DD=m[3], HH=parseInt(m[4],10), mm=m[5];
+        var ap = HH>=12 ? 'PM' : 'AM';
+        var hh = HH%12; if(hh===0) hh=12; hh=('0'+hh).slice(-2);
+        return MM+'-'+DD+'-'+yyyy+' '+hh+':'+mm+ap;
+      } catch(_) { return String(dt); }
+    }
     function renderReservations(d){ const tb=document.getElementById('reservationsTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.reservations))?d.reservations:[]; if(!list.length){ rows.push('<tr><td colspan="5" class="text-center text-muted">No approved reservations.</td></tr>'); } else { list.forEach(function(r){ rows.push('<tr class="reservation-row" role="button" tabindex="0"'+
       ' data-user="'+escapeHtml(r.username||'')+'"'+
       ' data-school_id="'+escapeHtml(r.school_id||'')+'"'+
@@ -4974,18 +4985,27 @@ try {
   </script>
   <script>
     (function(){
-      function esc(s){ return String(s).replace(/[&<>"']/g, function(m){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]; }); }
+      function esc(s){ return String(s).replace(/[&<>"]/g, function(m){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]; }); }
       function two(n){ n=parseInt(n||0,10); return (n<10?'0':'')+n; }
-      function parseDt(dt){ try{ if(!dt) return null; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return null; return d; }catch(_){ return null; } }
-      function fmtDate(dt){ var d=parseDt(dt); if(!d) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate())+'-'+d.getFullYear(); }
-      function fmtTime(dt){ var d=parseDt(dt); if(!d) return ''; var h=d.getHours(), m=two(d.getMinutes()); var ap=(h>=12?'PM':'AM'); h=h%12; if(h===0)h=12; return (h<10?('0'+h):h)+':'+m+ap; }
+      function parseDt(dt){
+        try{
+          if(!dt) return null;
+          var s=String(dt).trim();
+          var m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+          if(!m) return null;
+          return { y:parseInt(m[1],10), m:parseInt(m[2],10), d:parseInt(m[3],10), H:parseInt(m[4],10), M:parseInt(m[5],10) };
+        }catch(_){ return null; }
+      }
+      function toMs(p){ try{ if(!p) return NaN; return new Date(p.y, p.m-1, p.d, p.H, p.M).getTime(); }catch(_){ return NaN; } }
+      function fmtDate(dt){ var p=parseDt(dt); if(!p) return ''; return two(p.m)+'-'+two(p.d)+'-'+p.y; }
+      function fmtTime(dt){ var p=parseDt(dt); if(!p) return ''; var h=p.H, ap=(h>=12?'PM':'AM'); h=h%12; if(h===0)h=12; return (h<10?('0'+h):h)+':'+two(p.M)+ap; }
       function twoLine(dt){ var d=fmtDate(dt), t=fmtTime(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span><span class="tme">'+esc(t)+'</span></span>'; }
       function overlap(a1,a2,b1,b2){
         var A1=parseDt(a1), A2=parseDt(a2), B1=parseDt(b1), B2=parseDt(b2);
         if(!A1||!B1) return false; // need starts
-        var endA = A2 ? A2.getTime() : Number.POSITIVE_INFINITY;
-        var endB = B2 ? B2.getTime() : Number.POSITIVE_INFINITY;
-        return (A1.getTime() <= endB) && (B1.getTime() <= endA);
+        var endA = A2 ? toMs(A2) : Number.POSITIVE_INFINITY;
+        var endB = B2 ? toMs(B2) : Number.POSITIVE_INFINITY;
+        return (toMs(A1) <= endB) && (toMs(B1) <= endA);
       }
       function renderCards(list){
         var out=[];
