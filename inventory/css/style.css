@@ -1181,7 +1181,8 @@ button[data-bs-target="#addItemModal"],
   body.allow-mobile .page-header { gap: 8px !important; margin-bottom: 0.75rem !important; }
   body.allow-mobile .page-title { font-size: 1rem !important; margin: 0 !important; }
   body.allow-mobile h2.page-title i { margin-right: .4rem !important; }
-  body.allow-mobile #page-content-wrapper > *:first-child { margin-top: 12px !important; }
+  body.allow-mobile #page-content-wrapper > *:first-child { margin-top: 16px !important; }
+  body.allow-mobile .page-header { margin-top: 16px !important; }
 
   /* Buttons and forms */
   body.allow-mobile .btn { padding: .35rem .5rem !important; font-size: .85rem !important; }
@@ -1215,6 +1216,7 @@ button[data-bs-target="#addItemModal"],
 /* ===== Admin Borrow Center mobile tweaks ===== */
 @media (max-width: 768px) {
   body.allow-mobile #page-content-wrapper { padding: .6rem !important; }
+  body.allow-mobile #page-content-wrapper { padding-top: 1rem !important; }
   body.allow-mobile #pb-row .card-header { padding: .5rem .6rem !important; }
   body.allow-mobile #pb-row .card-body { padding: .5rem .6rem !important; }
   body.allow-mobile #pb-row .table-responsive { overflow-x: auto !important; }

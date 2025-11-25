@@ -3481,7 +3481,10 @@ try {
     body { overflow: hidden; }
     #sidebar-wrapper { position: sticky; top: 0; height: 100vh; overflow: hidden; }
     #page-content-wrapper { flex: 1 1 auto; height: 100vh; overflow: auto; padding: 0.5rem !important; }
-    @media (max-width: 768px) { body { overflow: auto; } #page-content-wrapper { height: auto; overflow: visible; } }
+    @media (max-width: 768px) {
+      body { overflow: auto; }
+      #page-content-wrapper { height: auto; overflow: visible; padding-top: 1rem !important; }
+    }
     /* Slightly shorter scrollable lists */
     @media (min-width: 768px) {
       .list-scroll { min-height: 45vh; max-height: calc(100vh - 300px); overflow-y: auto; }
