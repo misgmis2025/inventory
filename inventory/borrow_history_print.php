@@ -130,7 +130,8 @@ $pages = array_chunk($history, 15);
       tfoot { display: table-footer-group; }
       .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 11px; }
       .print-table th, .print-table td { padding: .55rem .60rem; vertical-align: middle; line-height: 1.35; text-align: left; }
-      .print-table .col-datetime { white-space: nowrap; font-size: 10px; }
+      .print-table .col-datetime { white-space: normal; font-size: 10px; }
+      .col-datetime .dt { white-space: normal; }
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
       .print-doc { width: 100% !important; border-collapse: collapse !important; border-spacing: 0 !important; }
@@ -155,8 +156,8 @@ $pages = array_chunk($history, 15);
     .table-scroll { max-height: 480px; overflow-y: auto; }
     .table-responsive { margin-top: 8px; }
     .print-doc .print-table { margin-top: 10px; }
-    .print-table .col-datetime { white-space: nowrap; font-size: 10px; }
-    .print-table .col-datetime .dt { display: inline-block; line-height: 1.35; min-height: calc(1.35em * 2); }
+    .print-table .col-datetime { white-space: normal; font-size: 10px; }
+    .print-table .col-datetime .dt { display: inline-block; line-height: 1.35; min-height: calc(1.35em * 2); white-space: normal; }
     .print-table .col-datetime .dt .dt-date,
     .print-table .col-datetime .dt .dt-time { display: block; }
     .table-scroll thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
@@ -228,14 +229,14 @@ $pages = array_chunk($history, 15);
           <div class="table-responsive">
             <table class="table table-bordered table-sm align-middle print-table">
               <colgroup>
-                <col style="width: 10%" />  <!-- User ID -->
-                <col style="width: 16%" />  <!-- User -->
-                <col style="width: 12%" />  <!-- Student ID -->
-                <col style="width: 12%" />  <!-- Serial ID -->
-                <col style="width: 16%" />  <!-- Item/Model -->
-                <col style="width: 10%" />  <!-- Category -->
-                <col style="width: 12%" />   <!-- Borrowed At -->
-                <col style="width: 12%" />   <!-- Returned At -->
+                <col style="width: 8%" />  <!-- User ID -->
+                <col style="width: 14%" />  <!-- User -->
+                <col style="width: 8%" />  <!-- Student ID -->
+                <col style="width: 8%" />  <!-- Serial ID -->
+                <col style="width: 12%" />  <!-- Item/Model -->
+                <col style="width: 6%" />  <!-- Category -->
+                <col style="width: 22%" />   <!-- Borrowed At -->
+                <col style="width: 22%" />   <!-- Returned At -->
               </colgroup>
               <thead class="table-light">
                 <tr>
