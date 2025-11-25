@@ -1121,13 +1121,17 @@ button[data-bs-target="#addItemModal"],
     padding: 0.2rem 0.5rem !important;
 }
 
-/* Hide mobile nav controls while any modal is open (admin and user) */
+/* Show mobile bottom navigation while any modal is open (admin and user) */
 @media (max-width: 768px) {
-  body.modal-open .bottom-nav,
-  body.modal-open .bottom-nav-toggle,
-  body.modal-open .mobile-menu-toggle {
-    display: none !important;
-  }
+  /* Force nav bar visible and above modal content so links are accessible */
+  body.modal-open .bottom-nav { display: flex !important; transform: translateY(0) !important; z-index: 1100 !important; }
+  body.modal-open .bottom-nav.hidden { transform: translateY(0) !important; }
+  /* Keep the toggle visible and raise it so it doesn't overlap the nav bar */
+  body.modal-open .bottom-nav-toggle { display: inline-flex !important; bottom: 78px !important; }
+  /* Keep sidebar toggle visible too */
+  body.modal-open .mobile-menu-toggle { display: inline-flex !important; }
+  /* Add safe room under modal so nav doesn't cover modal actions */
+  body.modal-open .modal.show .modal-dialog { margin-bottom: 92px !important; }
 }
 
 /* ===== GLOBAL MOBILE NAV OVERRIDES (APPLY ACROSS PAGES) ===== */
