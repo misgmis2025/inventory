@@ -44,6 +44,12 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   $prepared = trim($_GET['prepared_by'] ?? '');
   $checked  = trim($_GET['checked_by'] ?? '');
   $dateVal  = trim($_GET['date'] ?? date('Y-m-d'));
+  // Auto-fill Prepared by with admin's full name (fallback to username) if not provided
+  if ($prepared === '') {
+    $prepared = isset($adminFullNameDefault) && trim((string)$adminFullNameDefault) !== ''
+      ? (string)$adminFullNameDefault
+      : (string)($_SESSION['username'] ?? '');
+  }
   try {
     $db = get_mongo_db();
     $ub = $db->selectCollection('user_borrows');
