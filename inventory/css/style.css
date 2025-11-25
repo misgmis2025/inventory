@@ -1121,6 +1121,15 @@ button[data-bs-target="#addItemModal"],
     padding: 0.2rem 0.5rem !important;
 }
 
+/* Hide mobile nav controls while any modal is open (admin and user) */
+@media (max-width: 768px) {
+  body.modal-open .bottom-nav,
+  body.modal-open .bottom-nav-toggle,
+  body.modal-open .mobile-menu-toggle {
+    display: none !important;
+  }
+}
+
 /* ===== GLOBAL MOBILE NAV OVERRIDES (APPLY ACROSS PAGES) ===== */
 @media (max-width: 768px) {
   /* Mobile access blocker: show overlay on small screens unless explicitly allowed */
