@@ -230,13 +230,13 @@ $pages = array_chunk($history, 15);
             <table class="table table-bordered table-sm align-middle print-table">
               <colgroup>
                 <col style="width: 8%" />  <!-- User ID -->
-                <col style="width: 14%" />  <!-- User -->
-                <col style="width: 8%" />  <!-- Student ID -->
-                <col style="width: 8%" />  <!-- Serial ID -->
+                <col style="width: 13%" />  <!-- User -->
+                <col style="width: 10%" />  <!-- Student ID -->
+                <col style="width: 10%" />  <!-- Serial ID -->
                 <col style="width: 12%" />  <!-- Item/Model -->
-                <col style="width: 10%" />  <!-- Category -->
-                <col style="width: 20%" />   <!-- Borrowed At -->
-                <col style="width: 20%" />   <!-- Returned At -->
+                <col style="width: 9%" />  <!-- Category -->
+                <col style="width: 19%" />   <!-- Borrowed At -->
+                <col style="width: 19%" />   <!-- Returned At -->
               </colgroup>
               <thead class="table-light">
                 <tr>
