@@ -152,10 +152,12 @@ $pages = array_chunk($history, 15);
       .col-datetime .dt .dt-date,
       .col-datetime .dt .dt-time { display: block; }
       .col-datetime .dt { line-height: 1.35; min-height: calc(1.35em * 2); }
+      .two-line { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.35; max-height: calc(1.35em * 2); }
     }
     .table-scroll { max-height: 480px; overflow-y: auto; }
     .table-responsive { margin-top: 8px; }
     .print-doc .print-table { margin-top: 10px; }
+    .two-line { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.35; max-height: calc(1.35em * 2); }
     .print-table .col-datetime { white-space: normal; font-size: 10px; }
     .print-table .col-datetime .dt { display: inline-block; line-height: 1.35; min-height: calc(1.35em * 2); white-space: normal; }
     .print-table .col-datetime .dt .dt-date,
@@ -246,8 +248,8 @@ $pages = array_chunk($history, 15);
                   <th>Serial ID</th>
                   <th>Item/Model</th>
                   <th>Category</th>
-                  <th class="col-datetime">Borrowed At</th>
-                  <th class="col-datetime">Returned At</th>
+                  <th class="col-datetime">Time Borrowed</th>
+                  <th class="col-datetime">Time returned</th>
                 </tr>
               </thead>
               <tbody>
@@ -282,12 +284,12 @@ $pages = array_chunk($history, 15);
                       elseif ($lenSer > 24) { $serialClass = 'shrink-3'; }
                     ?>
                     <tr>
-                      <td><?php echo htmlspecialchars((string)($hv['user_id'] ?? '')); ?></td>
-                      <td class="<?php echo $userClass; ?>"><?php echo htmlspecialchars($usr); ?></td>
-                      <td><?php echo htmlspecialchars((string)($hv['school_id'] ?? '')); ?></td>
-                      <td class="<?php echo $serialClass; ?>"><?php echo htmlspecialchars($ser); ?></td>
-                      <td class="<?php echo $modelClass; ?>" title="<?php echo htmlspecialchars($mn); ?>"><?php echo htmlspecialchars($mn); ?></td>
-                      <td class="<?php echo $catClass; ?>"><?php echo htmlspecialchars($cat); ?></td>
+                      <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['user_id'] ?? '')); ?></span></td>
+                      <td class="<?php echo $userClass; ?>"><span class="two-line"><?php echo htmlspecialchars($usr); ?></span></td>
+                      <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['school_id'] ?? '')); ?></span></td>
+                      <td class="<?php echo $serialClass; ?>"><span class="two-line"><?php echo htmlspecialchars($ser); ?></span></td>
+                      <td class="<?php echo $modelClass; ?>" title="<?php echo htmlspecialchars($mn); ?>"><span class="two-line"><?php echo htmlspecialchars($mn); ?></span></td>
+                      <td class="<?php echo $catClass; ?>"><span class="two-line"><?php echo htmlspecialchars($cat); ?></span></td>
                       <td class="col-datetime"><?php
                         if (!empty($hv['borrowed_at'])) {
                           $ts = strtotime($hv['borrowed_at']);
