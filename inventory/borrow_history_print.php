@@ -108,8 +108,8 @@ try {
 
 // If Mongo failed, leave $history empty and render safely
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
-// Build fixed-size pages for printing (20 rows per page)
-$pages = array_chunk($history, 20);
+// Build fixed-size pages for printing (15 rows per page)
+$pages = array_chunk($history, 15);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -132,8 +132,10 @@ $pages = array_chunk($history, 20);
       .print-table th, .print-table td { padding: .55rem .60rem; vertical-align: middle; line-height: 1.35; text-align: left; }
       .print-table .col-datetime { white-space: nowrap; font-size: 10px; }
       .table-scroll { max-height: none !important; overflow: visible !important; }
+      .table-responsive { max-height: none !important; overflow: visible !important; }
       .print-doc { width: 100% !important; border-collapse: collapse !important; border-spacing: 0 !important; }
       .print-doc thead tr:first-child { page-break-before: avoid !important; break-before: avoid-page !important; }
+      .page-break { page-break-before: always !important; break-before: page !important; }
       .container-fluid { padding-left: 0 !important; padding-right: 0 !important; }
       #page-content-wrapper, .print-doc { margin-left: 0 !important; margin-right: 0 !important; }
       .report-title { margin: 6px 0 14px !important; }
@@ -222,7 +224,7 @@ $pages = array_chunk($history, 20);
     <tbody>
       <tr><td style="padding:0;">
         <?php $pagesToRender = !empty($pages) ? $pages : [[]]; ?>
-        <?php foreach ($pagesToRender as $pi => $displayRows): $padRows = 20 - count($displayRows); ?>
+        <?php foreach ($pagesToRender as $pi => $displayRows): $padRows = 15 - count($displayRows); ?>
           <div class="table-responsive">
             <table class="table table-bordered table-sm align-middle print-table">
               <colgroup>
@@ -230,10 +232,10 @@ $pages = array_chunk($history, 20);
                 <col style="width: 16%" />  <!-- User -->
                 <col style="width: 12%" />  <!-- Student ID -->
                 <col style="width: 12%" />  <!-- Serial ID -->
-                <col style="width: 22%" />  <!-- Item/Model -->
+                <col style="width: 16%" />  <!-- Item/Model -->
                 <col style="width: 10%" />  <!-- Category -->
-                <col style="width: 9%" />   <!-- Borrowed At -->
-                <col style="width: 9%" />   <!-- Returned At -->
+                <col style="width: 12%" />   <!-- Borrowed At -->
+                <col style="width: 12%" />   <!-- Returned At -->
               </colgroup>
               <thead class="table-light">
                 <tr>
