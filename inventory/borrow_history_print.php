@@ -146,10 +146,17 @@ $pages = array_chunk($history, 20);
       .shrink-3 { font-size: 9px !important; }
       /* Datetime text container to enforce ellipsis */
       .dt { display: inline-block; max-width: 100%; white-space: nowrap; }
+      .col-datetime .dt .dt-date,
+      .col-datetime .dt .dt-time { display: block; }
+      .col-datetime .dt { line-height: 1.35; min-height: calc(1.35em * 2); }
     }
     .table-scroll { max-height: 480px; overflow-y: auto; }
     .table-responsive { margin-top: 8px; }
     .print-doc .print-table { margin-top: 10px; }
+    .print-table .col-datetime { white-space: nowrap; font-size: 10px; }
+    .print-table .col-datetime .dt { display: inline-block; line-height: 1.35; min-height: calc(1.35em * 2); }
+    .print-table .col-datetime .dt .dt-date,
+    .print-table .col-datetime .dt .dt-time { display: block; }
     .table-scroll thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
     .eca-header { text-align: center; margin-bottom: 14px; }
     .eca-header .eca-title { font-weight: 400; letter-spacing: 6px; font-size: 14pt; }
@@ -280,14 +287,22 @@ $pages = array_chunk($history, 20);
                       <td class="<?php echo $catClass; ?>"><?php echo htmlspecialchars($cat); ?></td>
                       <td class="col-datetime"><?php
                         if (!empty($hv['borrowed_at'])) {
-                          $t = date('h:iA', strtotime($hv['borrowed_at'])) . '&nbsp;' . date('m/d/y', strtotime($hv['borrowed_at']));
-                          echo '<span class="dt">'.$t.'</span>';
+                          $ts = strtotime($hv['borrowed_at']);
+                          if ($ts !== false) {
+                            $datePart = date('F d, Y', $ts);
+                            $timePart = date('g:iA', $ts);
+                            echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                          }
                         }
                       ?></td>
                       <td class="col-datetime"><?php
                         if (!empty($hv['returned_at'])) {
-                          $t = date('h:iA', strtotime($hv['returned_at'])) . '&nbsp;' . date('m/d/y', strtotime($hv['returned_at']));
-                          echo '<span class="dt">'.$t.'</span>';
+                          $ts = strtotime($hv['returned_at']);
+                          if ($ts !== false) {
+                            $datePart = date('F d, Y', $ts);
+                            $timePart = date('g:iA', $ts);
+                            echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                          }
                         }
                       ?></td>
                     </tr>
