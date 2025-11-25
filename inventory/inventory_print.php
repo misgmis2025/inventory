@@ -703,6 +703,23 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
         <div class="page-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 no-print mb-2">
           <h2 class="page-title mb-0 visually-hidden">Print Inventory List</h2>
           <div class="d-flex align-items-center gap-3">
+            <?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
+              <span class="text-muted small">Welcome, <?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?>!</span>
+              <div class="position-relative" id="adminBellWrap">
+                <button class="btn btn-light position-relative" id="adminBellBtn" title="Notifications">
+                  <i class="bi bi-bell" style="font-size:1.2rem;"></i>
+                  <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="adminBellDot"></span>
+                </button>
+                <div class="dropdown-menu dropdown-menu-end shadow" id="adminBellDropdown" style="min-width: 320px; max-height: 360px; overflow:auto;">
+                  <div class="px-3 py-2 border-bottom fw-bold small">Pending Borrow Requests</div>
+                  <div id="adminNotifList" class="list-group list-group-flush small"></div>
+                  <div class="text-center small text-muted py-2 d-none" id="adminNotifEmpty">No notifications.</div>
+                  <div class="border-top p-2 text-center">
+                    <a href="admin_borrow_center.php" class="btn btn-sm btn-outline-primary">Go to Borrow Requests</a>
+                  </div>
+                </div>
+              </div>
+            <?php endif; ?>
           </div>
         </div>
         <div class="toolbar d-flex align-items-center gap-2 flex-nowrap w-100">
