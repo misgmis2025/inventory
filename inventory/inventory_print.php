@@ -587,7 +587,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       #page-content-wrapper { padding-top: 0 !important; }
       .eca-input { border: none; border-bottom: 1px solid #000; }
       /* In print, hide header inputs and show their mirrored spans so values duplicate each page */
-      #deptInput, #dateInput, #prepInputPage, #checkInputPage { display: none !important; }
+      #deptInput, #dateInput { display: none !important; }
       .eca-date-print, .eca-print-value { display: inline-block !important; }
       /* Hide app chrome in print */
       .page-header { display: none !important; }
@@ -630,18 +630,6 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
         <label for="dateInput">Date:</label>
         <input id="dateInput" class="eca-input" type="date" value="<?php echo htmlspecialchars($_GET['date'] ?? ''); ?>" />
         <span id="datePrintSpan" class="eca-date-print eca-print-value"></span>
-      </div>
-    </div>
-    <div class="eca-form-row">
-      <div class="field">
-        <label for="prepInputPage">Prepared by:</label>
-        <input id="prepInputPage" class="eca-input" type="text" placeholder="Enter name" value="<?php echo htmlspecialchars($_GET['prepared_by'] ?? $preparedByDefault); ?>" />
-        <span id="prepPrintSpanHead" class="eca-print-value"></span>
-      </div>
-      <div class="field">
-        <label for="checkInputPage">Checked by:</label>
-        <input id="checkInputPage" class="eca-input" type="text" placeholder="Enter name" value="<?php echo htmlspecialchars($_GET['checked_by'] ?? ''); ?>" />
-        <span id="checkPrintSpanHead" class="eca-print-value"></span>
       </div>
     </div>
     <div class="no-print" style="text-align:right; margin-top:-6px; margin-bottom:8px;">
@@ -1094,13 +1082,13 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                   <div class="eca-footer" style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap;">
                     <div class="field" style="display:flex; align-items:baseline; gap:8px; white-space:nowrap;">
                       <label style="font-weight:600; font-size:10pt;">Prepared by:</label>
-                      <span id="prepPrintSpanFoot" class="eca-print-value" style="display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:220px;">
+                      <span class="eca-print-value" style="display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:220px;">
                         <?php echo htmlspecialchars($_GET['prepared_by'] ?? $preparedByDefault); ?>&nbsp;
                       </span>
                     </div>
                     <div class="field" style="display:flex; align-items:baseline; gap:8px; white-space:nowrap;">
                       <label style="font-weight:600; font-size:10pt;">Checked by:</label>
-                      <span id="checkPrintSpanFoot" class="eca-print-value" style="display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:220px;">
+                      <span class="eca-print-value" style="display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:220px;">
                         <?php echo htmlspecialchars($_GET['checked_by'] ?? ''); ?>&nbsp;
                       </span>
                     </div>
@@ -1250,14 +1238,10 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       btn.addEventListener('click', function(){
         var dept = document.getElementById('deptInput')?.value || '';
         var date = document.getElementById('dateInput')?.value || '';
-        var prep = document.getElementById('prepInputPage')?.value || '';
-        var check = document.getElementById('checkInputPage')?.value || '';
         var url = new URL(window.location.href);
         var p = url.searchParams;
         if (dept) p.set('department', dept); else p.delete('department');
         if (date) p.set('date', date); else p.delete('date');
-        if (prep) p.set('prepared_by', prep); else p.delete('prepared_by');
-        if (check) p.set('checked_by', check); else p.delete('checked_by');
         // Preserve other filters automatically as we're editing the existing URL
         url.search = p.toString();
         window.location.href = url.toString();
@@ -1285,27 +1269,17 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
     // Sync header input values to print-only spans so they repeat each page
     (function(){
       function syncHeaderMirror(){
-        var dept  = document.getElementById('deptInput')?.value || '';
-        var date  = document.getElementById('dateInput')?.value || '';
-        var prep  = document.getElementById('prepInputPage')?.value || '';
-        var check = document.getElementById('checkInputPage')?.value || '';
+        var dept = document.getElementById('deptInput')?.value || '';
+        var date = document.getElementById('dateInput')?.value || '';
         try { document.querySelectorAll('[id="deptPrintSpan"]').forEach(function(el){ el.textContent = dept; }); } catch(_){ }
         try { document.querySelectorAll('[id="datePrintSpan"]').forEach(function(el){ el.textContent = date; }); } catch(_){ }
-        try { var elH=document.getElementById('prepPrintSpanHead'); if (elH) elH.textContent = prep || '\u00A0'; } catch(_){ }
-        try { var elF=document.getElementById('prepPrintSpanFoot'); if (elF) elF.textContent = prep || '\u00A0'; } catch(_){ }
-        try { var elHC=document.getElementById('checkPrintSpanHead'); if (elHC) elHC.textContent = check || '\u00A0'; } catch(_){ }
-        try { var elFC=document.getElementById('checkPrintSpanFoot'); if (elFC) elFC.textContent = check || '\u00A0'; } catch(_){ }
       }
       document.addEventListener('DOMContentLoaded', function(){
         syncHeaderMirror();
         var di = document.getElementById('deptInput');
         var dt = document.getElementById('dateInput');
-        var pi = document.getElementById('prepInputPage');
-        var ci = document.getElementById('checkInputPage');
         if (di) di.addEventListener('input', syncHeaderMirror);
         if (dt) dt.addEventListener('input', syncHeaderMirror);
-        if (pi) pi.addEventListener('input', syncHeaderMirror);
-        if (ci) ci.addEventListener('input', syncHeaderMirror);
         window.addEventListener('beforeprint', syncHeaderMirror);
       });
     })();
