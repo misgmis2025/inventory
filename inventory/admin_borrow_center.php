@@ -540,6 +540,19 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
           }
         } catch (Throwable $_) { }
       }
+      // If a specific datetime filter is set, only include borrows whose logical window covers that moment
+      if ($atStr !== '' && $from !== '') {
+        $fromTs = @strtotime($from);
+        $atTs   = @strtotime($atStr);
+        $toTs   = $to !== '' ? @strtotime($to) : null;
+        if ($fromTs !== false && $atTs !== false) {
+          if ($toTs !== null) {
+            if ($atTs < $fromTs || $atTs > $toTs) { continue; }
+          } else {
+            if ($atTs < $fromTs) { continue; }
+          }
+        }
+      }
       // resolve full name
       $uname = (string)($b['username'] ?? '');
       $fname = '';
