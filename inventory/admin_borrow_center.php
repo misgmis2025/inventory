@@ -734,8 +734,18 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $query = [];
     if ($event !== '' && strcasecmp($event,'All')!==0) { $query['action'] = $event; }
     $cur = $ld->find($query, ['sort'=>['id'=>-1], 'limit'=>1000]);
+    // Materialize logs to compute latest action per model
+    $logs = [];
+    foreach ($cur as $tmpR) { $logs[] = $tmpR; }
+    $latestByModel = [];
+    foreach ($logs as $lr) {
+      $lm = (int)($lr['model_id'] ?? 0);
+      if ($lm > 0 && !isset($latestByModel[$lm])) {
+        $latestByModel[$lm] = (string)($lr['action'] ?? '');
+      }
+    }
     $rows = [];
-    foreach ($cur as $r) {
+    foreach ($logs as $r) {
       $mid = (int)($r['model_id'] ?? 0);
       $itm = $mid>0 ? $ii->findOne(['id'=>$mid]) : null;
       $currStatus = $itm ? (string)($itm['status'] ?? '') : '';
@@ -803,17 +813,26 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       };
       $userFull = $resolve($userUname);
       $markedFull = $resolve($markedUname);
+      // Event to display: skip resolution rows (Found/Fixed)
+      $evt = (string)($r['action'] ?? '');
+      if (in_array($evt, ['Found','Fixed'], true)) { continue; }
+      // Current status text derived from latest action on this model
+      $latestAct = $latestByModel[$mid] ?? '';
+      $currStatusText = $currStatus;
+      if (in_array($latestAct, ['Found','Fixed','Disposed','Permanently Lost','Under Maintenance','Lost'], true)) {
+        $currStatusText = $latestAct;
+      }
       $rows[] = [
         'serial' => $itm ? (string)($itm['serial_no'] ?? '') : '',
         'model' => $itm ? ((string)($itm['model'] ?? '') ?: (string)($itm['item_name'] ?? '')) : '',
         'category' => $itm ? ((string)($itm['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized',
         'location' => $itm ? (string)($itm['location'] ?? '') : '',
         'remarks' => $itm ? (string)($itm['remarks'] ?? '') : '',
-        'event' => (string)($r['action'] ?? ''),
+        'event' => $evt,
         'lost_damaged_by' => $userFull,
         'marked_by' => $markedFull,
         'at' => (string)($r['created_at'] ?? ''),
-        'status' => $currStatus,
+        'status' => $currStatusText,
       ];
     }
     // Keep original full list order (already sorted by id desc)
