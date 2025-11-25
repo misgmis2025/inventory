@@ -475,6 +475,7 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     }
     $now = date('Y-m-d H:i:s');
     $end = date('Y-m-d H:i:s', time() + $days * 86400);
+    $norm = function($s){ $s = trim((string)$s); if ($s==='') return ''; $s = str_replace('T',' ', $s); $ts = @strtotime($s); return $ts!==false ? date('Y-m-d H:i:s', $ts) : ''; };
 
     // Build candidate items (serialized units)
     $match = ['serial_no' => ['$ne' => '']];
@@ -520,25 +521,46 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
         'borrowed_at' => ['$lte' => $atStr],
         '$or' => [ ['returned_at' => null], ['returned_at' => ''], ['returned_at' => ['$gte' => $atStr]] ]
       ];
-      $curUse = $ub->find($ubQuery, ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
+      $curUse = $ub->find($ubQuery, ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1,'returned_at'=>1]]);
     } else {
       // Currently in-use
-      $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
+      $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1,'returned_at'=>1]]);
     }
     foreach ($curUse as $b) {
       $serial = trim((string)($b['serial_no'] ?? ''));
       if ($serial === '') continue;
-      $from = (string)($b['borrowed_at'] ?? '');
-      $to = (string)($b['expected_return_at'] ?? '');
+      $from = $norm($b['borrowed_at'] ?? '');
+      $to = $norm($b['expected_return_at'] ?? '');
+      $retAt = $norm($b['returned_at'] ?? '');
       // try linking allocation -> request for better end date if missing
       if ($to === '') {
         try {
           $al = $alloc->findOne(['borrow_id'=>(int)($b['id'] ?? 0)], ['projection'=>['request_id'=>1]]);
           if ($al && isset($al['request_id'])) {
             $rq = $er->findOne(['id'=>(int)$al['request_id']], ['projection'=>['expected_return_at'=>1,'reserved_to'=>1]]);
-            if ($rq) { $to = (string)($rq['expected_return_at'] ?? ($rq['reserved_to'] ?? '')); }
+            if ($rq) { $to = $norm(($rq['expected_return_at'] ?? ($rq['reserved_to'] ?? ''))); }
           }
         } catch (Throwable $_) { }
+      }
+      // If filtering by a specific datetime, keep only overlaps with [from, effective_to]
+      if ($atStr !== '') {
+        $ats = @strtotime($atStr);
+        $fts = $from !== '' ? @strtotime($from) : false;
+        // Effective end: returned_at if present, else expected
+        $effTo = $retAt !== '' ? $retAt : $to;
+        $tts = $effTo !== '' ? @strtotime($effTo) : false;
+        if (!($fts !== false && $ats !== false && $fts <= $ats && ($tts === false || $tts >= $ats))) {
+          continue;
+        }
+        // For display: don't show an end earlier than the selected time when still out
+        if ($retAt === '' || (@strtotime(str_replace('T',' ', $retAt)) !== false && @strtotime(str_replace('T',' ', $retAt)) >= $ats)) {
+          // If returned_at exists and is after 'at', prefer it for display; else keep expected
+          if ($retAt !== '' && (@strtotime($retAt) >= $ats)) {
+            $to = $retAt;
+          } else if ($to !== '' && (@strtotime($to) < $ats)) {
+            $to = $atStr; // overdue at that time, cap display at selected time
+          }
+        }
       }
       // resolve full name
       $uname = (string)($b['username'] ?? '');
@@ -569,9 +591,15 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       $uname = (string)($r['username'] ?? '');
       $fname = '';
       try { $u = $users->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($u) $fname = trim((string)($u['full_name'] ?? '')); } catch (Throwable $_) { }
+      $rf = $norm(($r['reserved_from'] ?? ''));
+      $rt = $norm(($r['reserved_to'] ?? ''));
+      if ($atStr !== '') {
+        $ats = @strtotime($atStr); $rfs = $rf!==''?@strtotime($rf):false; $rts = $rt!==''?@strtotime($rt):false;
+        if (!($rfs !== false && $ats !== false && $rfs <= $ats && ($rts === false || $rts >= $ats))) { continue; }
+      }
       $resBySerial[$serial][] = [
-        'from' => (string)($r['reserved_from'] ?? ''),
-        'to'   => (string)($r['reserved_to'] ?? ''),
+        'from' => $rf,
+        'to'   => $rt,
         'username' => $uname,
         'full_name' => ($fname!==''?$fname:$uname),
         'status' => (string)($r['status'] ?? 'Approved'),
