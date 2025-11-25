@@ -3312,7 +3312,39 @@ try {
   $iiCol = $db->selectCollection('inventory_items');
   $ldHistory = [];
   $raw = iterator_to_array($ldCol->find([], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]));
-  // Compute last action dates per model
+  // De-dup exact duplicates (same model, action, timestamp) and omit resolution-only rows in the list
+  $seenKeys = [];
+  $filtered = [];
+  foreach ($raw as $l) {
+    $mid0 = (int)($l['model_id'] ?? 0);
+    $act0 = (string)($l['action'] ?? '');
+    $ts0  = (string)($l['created_at'] ?? '');
+    if ($mid0 <= 0 || $ts0 === '' || $act0 === '') continue;
+    // Skip resolution events in the event list; status column will reflect current state
+    if (in_array($act0, ['Found','Fixed'], true)) continue;
+    $k = $mid0.'|'.$act0.'|'.$ts0;
+    if (isset($seenKeys[$k])) continue;
+    $seenKeys[$k] = true;
+    $filtered[] = $l;
+  }
+  // Additionally collapse entries with the same model and exact timestamp by preferring a higher-priority event
+  $pickByTs = [];
+  $prio = function($act){
+    if ($act === 'Disposed') return 4;
+    if ($act === 'Permanently Lost') return 3;
+    if ($act === 'Lost') return 2;
+    if ($act === 'Under Maintenance') return 1;
+    return 0;
+  };
+  foreach ($filtered as $l) {
+    $mid0 = (int)($l['model_id'] ?? 0); $ts0 = (string)($l['created_at'] ?? ''); $act0 = (string)($l['action'] ?? '');
+    $k = $mid0.'|'.$ts0;
+    if (!isset($pickByTs[$k]) || $prio($act0) > $prio((string)($pickByTs[$k]['action'] ?? ''))) {
+      $pickByTs[$k] = $l;
+    }
+  }
+  $filtered = array_values($pickByTs);
+  // Compute last action dates per model (use all logs, including Found/Fixed)
   $lastMap = [];
   foreach ($raw as $l) {
     $mid = (int)($l['model_id'] ?? 0);
@@ -3328,11 +3360,11 @@ try {
     if ($act === 'Permanently Lost' && $ts > (string)$lastMap[$mid]['last_perm_lost_at']) { $lastMap[$mid]['last_perm_lost_at'] = $ts; }
     if ($act === 'Disposed' && $ts > (string)$lastMap[$mid]['last_disposed_at']) { $lastMap[$mid]['last_disposed_at'] = $ts; }
   }
-  // Build history rows enriched with last_* dates
-  foreach ($raw as $l) {
+  // Build history rows enriched with last_* dates (using de-duplicated $filtered list)
+  foreach ($filtered as $l) {
     $mid = (int)($l['model_id'] ?? 0);
     $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
-    $lm = $lastMap[$mid] ?? ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>''];
+    $lm = $lastMap[$mid] ?? ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>'','last_disposed_at'=>''];
     // Determine current_action for filtering and display
     $lostAt  = !empty($lm['last_lost_at']) ? strtotime((string)$lm['last_lost_at']) : null;
     $foundAt = !empty($lm['last_found_at']) ? strtotime((string)$lm['last_found_at']) : null;
@@ -6122,9 +6154,11 @@ try {
                     <td>
                       <?php
                         $ev = trim((string)$h['action']);
-                        // Normalize display for badge style; show Permanently Lost explicitly
+                        // Normalize display for badge style
                         if ($ev === 'Permanently Lost') { $evDisplay = 'Permanently Lost'; $evCls = 'danger'; }
-                        else { $evDisplay = ($ev === 'Lost' || $ev === 'Found') ? 'Lost' : 'Damaged'; $evCls = ($evDisplay === 'Lost') ? 'danger' : 'warning text-dark'; }
+                        elseif ($ev === 'Disposed') { $evDisplay = 'Disposed'; $evCls = 'danger'; }
+                        elseif ($ev === 'Lost') { $evDisplay = 'Lost'; $evCls = 'danger'; }
+                        else { /* Under Maintenance (Damaged) */ $evDisplay = 'Damaged'; $evCls = 'warning text-dark'; }
                       ?>
                       <span class="badge bg-<?php echo $evCls; ?>"><?php echo htmlspecialchars($evDisplay); ?></span>
                     </td>
