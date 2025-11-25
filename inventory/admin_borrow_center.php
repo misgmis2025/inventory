@@ -3429,13 +3429,9 @@ try {
                   <label class="form-label mb-1 small">Search</label>
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
-                <div class="col-4 col-md-3">
-                  <label class="form-label mb-1 small">Window</label>
-                  <select id="resFilterDays" class="form-select form-select-sm">
-                    <option value="7">Next 7 days</option>
-                    <option value="14" selected>Next 14 days</option>
-                    <option value="30">Next 30 days</option>
-                  </select>
+                <div class="col-12 col-md-3">
+                  <label class="form-label mb-1 small">Date/Time (optional)</label>
+                  <input id="resFilterAt" type="datetime-local" class="form-control form-control-sm" />
                 </div>
               </div>
               <div id="resTimelineList" class="row g-2"></div>
