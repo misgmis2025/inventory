@@ -986,7 +986,7 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
                 <div class="col-12 col-md-3">
-                  <label class="form-label mb-1 small">Date (optional)</label>
+                  <label class="form-label mb-1 small">Date</label>
                   <input id="resFilterDay" type="date" class="form-control form-control-sm" />
                 </div>
               </div>
@@ -3506,7 +3506,7 @@ try {
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
                 <div class="col-12 col-md-3">
-                  <label class="form-label mb-1 small">Date (optional)</label>
+                  <label class="form-label mb-1 small">Date </label>
                   <input id="resFilterDay" type="date" class="form-control form-control-sm" />
                 </div>
               </div>
@@ -3648,7 +3648,7 @@ try {
       function two(n){ n=parseInt(n,10); return (n<10?'0':'')+n; }
       function fmtD(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); var m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/); if(!m) return ''; return two(parseInt(m[2],10))+'-'+two(parseInt(m[3],10))+'-'+m[1]; }catch(_){ return ''; } }
       function fmtT(dt){ try{ if(!dt) return ''; var s=String(dt).trim(); var m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/); if(!m) return ''; var H=parseInt(m[4],10), M=parseInt(m[5],10); var ap=(H>=12?'pm':'am'); var h=H%12; if(h===0)h=12; return h+':'+two(M)+' '+ap; }catch(_){ return ''; } }
-      function twoLine(dt){ if(!dt) return ''; var d=fmtD(dt), t=fmtT(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span><span class="tme">'+esc(t)+'</span></span>'; }
+      function twoLine(dt){ if(!dt) return ''; var d=fmtD(dt), t=fmtT(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span> <span class="tme">'+esc(t)+'</span></span>'; }
       async function fetchWhitelisted(cat, model){
         const url = 'admin_borrow_center.php?action=list_borrowable_units&category='+encodeURIComponent(cat)+'&model='+encodeURIComponent(model);
         const r = await fetch(url); if(!r.ok) return [];
@@ -5047,7 +5047,7 @@ try {
       function toMs(p){ try{ if(!p) return NaN; return new Date(p.y, p.m-1, p.d, p.H, p.M).getTime(); }catch(_){ return NaN; } }
       function fmtDate(dt){ var p=parseDt(dt); if(!p) return ''; return two(p.m)+'-'+two(p.d)+'-'+p.y; }
       function fmtTime(dt){ var p=parseDt(dt); if(!p) return ''; var h=p.H, ap=(h>=12?'PM':'AM'); h=h%12; if(h===0)h=12; return (h<10?('0'+h):h)+':'+two(p.M)+ap; }
-      function twoLine(dt){ var d=fmtDate(dt), t=fmtTime(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span><span class="tme">'+esc(t)+'</span></span>'; }
+      function twoLine(dt){ var d=fmtDate(dt), t=fmtTime(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span> <span class="tme">'+esc(t)+'</span></span>'; }
       function overlap(a1,a2,b1,b2){
         var A1=parseDt(a1), A2=parseDt(a2), B1=parseDt(b1), B2=parseDt(b2);
         if(!A1||!B1) return false; // need starts
@@ -5068,6 +5068,21 @@ try {
           if (use && (use.to||'')) {
             res.forEach(function(r){ if (!hasClash && overlap(use.from, use.to, r.from, r.to)) hasClash=true; });
           }
+          var resHtml = '';
+          if (res.length) {
+            var lbl = (res.length===1) ? 'Reservation' : ('Reservations ('+res.length+')');
+            var target = 'reslist_'+serial.replace(/[^A-Za-z0-9_-]/g,'_');
+            var listHtml = res.map(function(r){ var clash = use && overlap(use.from, use.to, r.from, r.to); return (
+              '<div class="d-flex flex-column p-2 rounded '+(clash?'bg-danger bg-opacity-10 border border-danger':'bg-light')+' mb-2">'+
+                '<div><i class="bi bi-person-fill me-1"></i>'+esc(r.full_name||r.username||'')+'</div>'+
+                '<div class="small">'+twoLine(r.from)+' → '+twoLine(r.to)+'</div>'+
+              '</div>'
+            ); }).join('');
+            resHtml = '<div><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#'+target+'" aria-expanded="false" aria-controls="'+target+'">'+
+                        '<i class="bi bi-calendar-event me-1"></i>'+esc(lbl)+
+                      '</button></div>'+
+                      '<div id="'+target+'" class="collapse mt-2">'+listHtml+'</div>';
+          }
           out.push(
             '<div class="col-12 col-lg-6 col-xxl-4">'+
               '<div class="card shadow-sm '+(hasClash?'border-danger':'')+'">'+
@@ -5077,13 +5092,7 @@ try {
                 '</div>'+
                 '<div class="card-body">'+
                   (use ? ('<div class="mb-2"><span class="badge bg-primary me-2">In Use</span>'+esc(use.full_name||use.username||'')+'<div class="small text-muted">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div></div>') : '')+
-                  (res.length? '<div class="small text-muted mb-1">Reservations</div>':'')+
-                  res.map(function(r){ var clash = use && overlap(use.from, use.to, r.from, r.to); return (
-                    '<div class="d-flex flex-column p-2 rounded '+(clash?'bg-danger bg-opacity-10 border border-danger':'bg-light')+' mb-2">'+
-                      '<div><i class="bi bi-person-fill me-1"></i>'+esc(r.full_name||r.username||'')+'</div>'+
-                      '<div class="small">'+twoLine(r.from)+' → '+twoLine(r.to)+'</div>'+
-                    '</div>'
-                  ); }).join('')+''+
+                  resHtml+
                 '</div>'+
                 (loc?('<div class="card-footer text-muted"><i class="bi bi-geo-alt me-1"></i>'+esc(loc)+'</div>'):'')+''+
               '</div>'+
