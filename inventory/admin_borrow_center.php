@@ -578,11 +578,42 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       ];
     }
 
+    // If a specific datetime is set, ensure all overlapping serials are present in $items
+    if ($atStr !== '') {
+      $have = [];
+      foreach ($items as $itmp) { $s = (string)($itmp['serial_no'] ?? ''); if ($s !== '') { $have[$s] = true; } }
+      $ensure = array_values(array_unique(array_merge(array_keys($inUseMap), array_keys($resBySerial))));
+      foreach ($ensure as $srl) {
+        if (isset($have[$srl])) continue;
+        try {
+          $doc = $ii->findOne(['serial_no'=>$srl], ['projection'=>['id'=>1,'serial_no'=>1,'item_name'=>1,'model'=>1,'category'=>1,'location'=>1]]);
+          if (!$doc) continue;
+          // Respect category filter
+          $docCat = (string)($doc['category'] ?? '');
+          if ($category !== '' && strcasecmp($docCat, $category) !== 0) continue;
+          // Respect search filter
+          if ($q !== '') {
+            $hay = [ (string)($doc['serial_no'] ?? ''), (string)($doc['item_name'] ?? ''), (string)($doc['model'] ?? '') ];
+            $found = false; foreach ($hay as $h) { if ($h !== '' && stripos($h, $q) !== false) { $found = true; break; } }
+            if (!$found) continue;
+          }
+          $modelName = (string)($doc['model'] ?? ''); if ($modelName === '') $modelName = (string)($doc['item_name'] ?? '');
+          $items[] = [
+            'id'        => (int)($doc['id'] ?? 0),
+            'serial_no' => (string)($doc['serial_no'] ?? ''),
+            'model'     => $modelName,
+            'category'  => $docCat,
+            'location'  => (string)($doc['location'] ?? ''),
+          ];
+        } catch (Throwable $_) { /* ignore */ }
+      }
+    }
+
     // Compose response items
     $out = [];
     foreach ($items as $it) {
       $serial = $it['serial_no'];
-      if ($atStr !== '' && !isset($inUseMap[$serial])) { continue; }
+      if ($atStr !== '' && !isset($inUseMap[$serial]) && empty($resBySerial[$serial] ?? [])) { continue; }
       $row = [
         'serial_no' => $serial,
         'model' => $it['model'],
