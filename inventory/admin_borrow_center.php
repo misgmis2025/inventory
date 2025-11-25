@@ -933,7 +933,7 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         <div class="print-wrap mb-2">
           <table class="table table-bordered table-sm align-middle print-table">
             <thead class="table-light"><tr>
-              <th>Serial ID</th><th>Model</th><th>Category</th><th>Location</th><th>Remarks</th><th>Event</th><th>Lost/Damaged by</th><th>Marked By</th><th>At</th><th>Current Status</th>
+              <th>Serial ID</th><th>Model</th><th>Category</th><th>Location</th><th>Remarks</th><th>Event</th><th>Lost/Damaged by</th><th>Marked By</th><th>Date Lost/Damaged</th><th>Current Status</th>
             </tr></thead>
             <tbody>
               <?php if (empty($slice)): ?>
@@ -949,7 +949,7 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                   <td><?php echo htmlspecialchars($rw['event']); ?></td>
                   <td><?php echo htmlspecialchars($rw['lost_damaged_by'] ?? ''); ?></td>
                   <td><?php echo htmlspecialchars($rw['marked_by'] ?? ''); ?></td>
-                  <td><?php echo htmlspecialchars($rw['at'] ? date('h:i A m-d-y', strtotime($rw['at'])) : ''); ?></td>
+                  <td><?php $ts = strtotime((string)($rw['at'] ?? '')); if ($ts) { echo '<div>'.htmlspecialchars(date('M d,Y', $ts)).'</div><div>'.htmlspecialchars(date('g:ia', $ts)).'</div>'; } ?></td>
                   <td><?php echo htmlspecialchars($rw['status']); ?></td>
                 </tr>
               <?php endforeach; ?>
