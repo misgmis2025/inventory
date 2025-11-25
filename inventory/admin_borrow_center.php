@@ -467,11 +467,30 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     $q = trim((string)($_GET['q'] ?? ''));
     $category = trim((string)($_GET['category'] ?? ''));
     $atRaw = trim((string)($_GET['at'] ?? ''));
+    $dayRaw = trim((string)($_GET['day'] ?? ''));
     $atStr = '';
+    $dayStart = '';
+    $dayEnd = '';
+    if ($dayRaw !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dayRaw)) {
+      $dayStart = $dayRaw . ' 00:00:00';
+      $dayEnd = $dayRaw . ' 23:59:59';
+    }
     if ($atRaw !== '') {
       $tmp = str_replace('T', ' ', $atRaw);
       $ts = strtotime($tmp);
       if ($ts !== false) { $atStr = date('Y-m-d H:i:s', $ts); }
+    }
+    // Fallback: if only a date or midnight time was provided, treat as full-day filter
+    if ($dayStart === '' && $atRaw !== '') {
+      if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $atRaw)) {
+        $dayStart = $atRaw . ' 00:00:00';
+        $dayEnd = $atRaw . ' 23:59:59';
+        $atStr = '';
+      } else if (preg_match('/^(\d{4}-\d{2}-\d{2})[ T]00:00/', $atRaw, $m)) {
+        $dayStart = $m[1] . ' 00:00:00';
+        $dayEnd = $m[1] . ' 23:59:59';
+        $atStr = '';
+      }
     }
     $now = date('Y-m-d H:i:s');
     $end = date('Y-m-d H:i:s', time() + $days * 86400);
@@ -515,7 +534,14 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
 
     // Build in-use map by serial
     $inUseMap = [];
-    if ($atStr !== '') {
+    if ($dayStart !== '') {
+      // In-use overlapping the whole day: borrowed_at <= end AND (returned_at is null/empty OR returned_at >= start)
+      $ubQuery = [
+        'borrowed_at' => ['$lte' => $dayEnd],
+        '$or' => [ ['returned_at' => null], ['returned_at' => ''], ['returned_at' => ['$gte' => $dayStart]] ]
+      ];
+      $curUse = $ub->find($ubQuery, ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1,'returned_at'=>1]]);
+    } else if ($atStr !== '') {
       // In-use at specific datetime: borrowed_at <= at AND (returned_at is null/empty OR returned_at >= at)
       $ubQuery = [
         'borrowed_at' => ['$lte' => $atStr],
@@ -561,6 +587,16 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
             $to = $atStr; // overdue at that time, cap display at selected time
           }
         }
+      } else if ($dayStart !== '') {
+        // Day range: ensure overlap and clamp display within the day
+        $startTs = @strtotime($dayStart); $endTs = @strtotime($dayEnd);
+        $fts = $from !== '' ? @strtotime($from) : false;
+        $effTo = $retAt !== '' ? $retAt : $to; $tts = $effTo !== '' ? @strtotime($effTo) : false;
+        if (!($fts !== false && $startTs !== false && $fts <= $endTs && ($tts === false || $tts >= $startTs))) {
+          continue;
+        }
+        if ($from !== '' && $fts < $startTs) { $from = $dayStart; }
+        if ($effTo !== '' && $tts > $endTs) { $to = $dayEnd; } else { $to = $effTo!==''?$effTo:$to; }
       }
       // resolve full name
       $uname = (string)($b['username'] ?? '');
@@ -571,11 +607,17 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
 
     // Reservations per serial (approved, overlapping window)
     $resBySerial = [];
-    if ($atStr !== '') {
+    if ($atStr !== '' ) {
       $qRes = [
         'type' => 'reservation', 'status' => 'Approved',
         'reserved_from' => ['$lte' => $atStr],
         '$or' => [ ['reserved_to' => ['$gte' => $atStr]], ['reserved_to' => ['$exists' => false]] ]
+      ];
+    } else if ($dayStart !== '') {
+      $qRes = [
+        'type'=>'reservation', 'status'=>'Approved',
+        'reserved_from' => ['$lte' => $dayEnd],
+        '$or' => [['reserved_to' => ['$gte' => $dayStart]], ['reserved_to' => ['$exists' => false]]]
       ];
     } else {
       $qRes = [
@@ -596,6 +638,12 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       if ($atStr !== '') {
         $ats = @strtotime($atStr); $rfs = $rf!==''?@strtotime($rf):false; $rts = $rt!==''?@strtotime($rt):false;
         if (!($rfs !== false && $ats !== false && $rfs <= $ats && ($rts === false || $rts >= $ats))) { continue; }
+      } else if ($dayStart !== '') {
+        $startTs = @strtotime($dayStart); $endTs = @strtotime($dayEnd);
+        $rfs = $rf!==''?@strtotime($rf):false; $rts = $rt!==''?@strtotime($rt):false;
+        if (!($rfs !== false && $rfs <= $endTs && ($rts === false || $rts >= $startTs))) { continue; }
+        if ($rfs !== false && $rfs < $startTs) { $rf = $dayStart; }
+        if ($rts !== false && $rts > $endTs) { $rt = $dayEnd; }
       }
       $resBySerial[$serial][] = [
         'from' => $rf,
@@ -606,8 +654,8 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       ];
     }
 
-    // If a specific datetime is set, ensure all overlapping serials are present in $items
-    if ($atStr !== '') {
+    // If a specific datetime or day is set, ensure all overlapping serials are present in $items
+    if ($atStr !== '' || $dayStart !== '') {
       $have = [];
       foreach ($items as $itmp) { $s = (string)($itmp['serial_no'] ?? ''); if ($s !== '') { $have[$s] = true; } }
       $ensure = array_values(array_unique(array_merge(array_keys($inUseMap), array_keys($resBySerial))));
@@ -641,7 +689,7 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     $out = [];
     foreach ($items as $it) {
       $serial = $it['serial_no'];
-      if ($atStr !== '' && !isset($inUseMap[$serial]) && empty($resBySerial[$serial] ?? [])) { continue; }
+      if (($atStr !== '' || $dayStart !== '') && !isset($inUseMap[$serial]) && empty($resBySerial[$serial] ?? [])) { continue; }
       $row = [
         'serial_no' => $serial,
         'model' => $it['model'],
@@ -5051,9 +5099,15 @@ try {
         var cat = catSel ? (catSel.value||'') : '';
         var q = qInp ? (qInp.value||'') : '';
         var at = atInp ? (atInp.value||'') : '';
+        var day = '';
+        if (at) {
+          var m = at.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+          if (m && m[2]==='00' && m[3]==='00') { day = m[1]; at=''; }
+        }
         var url = 'admin_borrow_center.php?action=reservation_timeline_json' +
                   (cat?('&category='+encodeURIComponent(cat)):'') +
                   (q?('&q='+encodeURIComponent(q)):'') +
+                  (day?('&day='+encodeURIComponent(day)):'') +
                   (at?('&at='+encodeURIComponent(at)):'');
 
         try {
