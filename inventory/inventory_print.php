@@ -702,9 +702,8 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       <div class="container-fluid py-3">
         <div class="page-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 no-print mb-2">
           <h2 class="page-title mb-0 visually-hidden">Print Inventory List</h2>
-          <div class="d-flex align-items-center gap-3">
+          <div class="d-flex align-items-center gap-3 ms-auto">
             <?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
-              <span class="text-muted small">Welcome, <?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?>!</span>
               <div class="position-relative" id="adminBellWrap">
                 <button class="btn btn-light position-relative" id="adminBellBtn" title="Notifications">
                   <i class="bi bi-bell" style="font-size:1.2rem;"></i>
