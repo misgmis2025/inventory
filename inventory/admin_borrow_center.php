@@ -551,10 +551,16 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       'reserved_from' => ['$lt' => $toStr],
       '$or' => [['reserved_to' => ['$gt' => $fromStr]], ['reserved_to' => ['$exists' => false]]]
     ];
-    $curRes = $er->find($qRes, ['projection'=>['reserved_serial_no'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'status'=>1], 'sort'=>['reserved_from'=>1]]);
+    $curRes = $er->find($qRes, ['projection'=>['reserved_serial_no'=>1,'reserved_model_id'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'status'=>1], 'sort'=>['reserved_from'=>1]]);
     foreach ($curRes as $r) {
       $serial = trim((string)($r['reserved_serial_no'] ?? ''));
-      if ($serial === '') continue; // only serial-specific reservations
+      if ($serial === '') {
+        $mid = (int)($r['reserved_model_id'] ?? 0);
+        if ($mid > 0) {
+          try { $it = $ii->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]); if ($it && !empty($it['serial_no'])) $serial = trim((string)$it['serial_no']); } catch (Throwable $_rm) {}
+        }
+      }
+      if ($serial === '') continue; // still no serial
       $uname = (string)($r['username'] ?? '');
       $fname = '';
       try { $u = $users->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($u) $fname = trim((string)($u['full_name'] ?? '')); } catch (Throwable $_) { }
@@ -4967,7 +4973,11 @@ try {
         return (A1.getTime() <= endB) && (B1.getTime() <= endA);
       }
       function renderCards(list){
-        var out=[];
+      var wrap = document.getElementById('resTimelineList');
+      if (!wrap) return;
+      if (!Array.isArray(list)) list = [];
+      if (list.length === 0) { wrap.innerHTML = '<div class="col-12"><div class="text-center text-muted py-5">No in-use items or reservations found in the selected range.</div></div>'; return; }
+      var out=[];
         list.forEach(function(it){
           var serial = String(it.serial_no||'');
           var model = String(it.model||'');
@@ -5001,9 +5011,9 @@ try {
             '</div>'
           );
         });
-        var wrap = document.getElementById('resTimelineList'); if (wrap) wrap.innerHTML = out.join('');
-      }
-      async function loadTimeline(){
+        wrap.innerHTML = out.join('');
+    }
+    async function loadTimeline(){
         var catSel = document.getElementById('resFilterCategory');
         var qInp = document.getElementById('resFilterSearch');
         var fromInp = document.getElementById('resFilterFrom');
@@ -5019,22 +5029,26 @@ try {
                      (to?('&to='+encodeURIComponent(to)):'');
 
         var url = 'admin_borrow_center.php?' + params;
-
-        try {
-          var r = await fetch(url);
-          var j = await r.json();
-          if (!j || !j.ok) { renderCards([]); return; }
-          var cats = Array.isArray(j.categories)? j.categories : [];
-          var sel = document.getElementById('resFilterCategory');
-          if (sel) {
-            var cur = sel.value;
-            var opts = ['<option value="">All</option>'].concat(cats.map(function(c){ var v=String(c||''); return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(v)+'</option>'; }));
-            sel.innerHTML = opts.join('');
-            if (cur && cats.indexOf(cur)===-1) sel.value='';
-          }
-          renderCards(Array.isArray(j.items)? j.items : []);
-        } catch(_e) { renderCards([]); }
-      }
+      var wrap = document.getElementById('resTimelineList'); if (wrap) wrap.innerHTML = '<div class="col-12"><div class="text-center text-muted py-5">Loading…</div></div>';
+      
+      try {
+        console.log('[Timeline] GET', url);
+        var r = await fetch(url);
+        var j = await r.json();
+        if (!j || !j.ok) { console.error('[Timeline] Response not OK', j); renderCards([]); return; }
+        var cats = Array.isArray(j.categories)? j.categories : [];
+        var sel = document.getElementById('resFilterCategory');
+        if (sel) {
+          var cur = sel.value;
+          var opts = ['<option value="">All</option>'].concat(cats.map(function(c){ var v=String(c||''); return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(v)+'</option>'; }));
+          sel.innerHTML = opts.join('');
+          if (cur && cats.indexOf(cur)===-1) sel.value='';
+        }
+        var items = Array.isArray(j.items)? j.items : [];
+        console.log('[Timeline] Items', items.length);
+        renderCards(items);
+      } catch(_e) { console.error('[Timeline] Fetch error', _e); renderCards([]); }
+    }
       document.addEventListener('DOMContentLoaded', function(){
         var mdl = document.getElementById('resTimelineModal'); if (!mdl) return;
         var wired=false, timer=null;
