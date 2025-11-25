@@ -77,38 +77,6 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           if (isset($u['full_name']) && trim((string)$u['full_name'])!=='') { $borrowerFull = (string)$u['full_name']; }
           if (isset($u['school_id'])) { $borrowerSid = (string)$u['school_id']; }
         }
-
-    // Include free items (no in-use, no reservations) by default so admin can see open slots
-    $includeFree = true;
-    if ($includeFree) {
-      $freeMatch = [];
-      if (!empty($wanted)) {
-        $freeMatch['$and'] = [ ['serial_no' => ['$ne' => '']], ['serial_no' => ['$nin' => $wanted]] ];
-      } else {
-        $freeMatch['serial_no'] = ['$ne' => ''];
-      }
-      if ($category !== '') { $freeMatch['category'] = ['$regex' => '^'.preg_quote($category,'/').'$', '$options' => 'i']; }
-      if ($q !== '') {
-        $freeMatch['$or'] = [
-          ['serial_no' => ['$regex' => $q, '$options' => 'i']],
-          ['item_name' => ['$regex' => $q, '$options' => 'i']],
-          ['model'     => ['$regex' => $q, '$options' => 'i']],
-        ];
-      }
-      $curFree = $ii->find($freeMatch, ['projection' => ['id'=>1,'serial_no'=>1,'item_name'=>1,'model'=>1,'category'=>1,'location'=>1], 'limit' => 50]);
-      foreach ($curFree as $doc) {
-        $id = (int)($doc['id'] ?? 0);
-        $serial = (string)($doc['serial_no'] ?? ''); if ($serial==='') continue;
-        $model = (string)($doc['model'] ?? ''); if ($model==='') $model = (string)($doc['item_name'] ?? '');
-        $items[] = [
-          'id'        => $id,
-          'serial_no' => $serial,
-          'model'     => $model,
-          'category'  => (string)($doc['category'] ?? ''),
-          'location'  => (string)($doc['location'] ?? ''),
-        ];
-      }
-    }
       } catch (Throwable $_e) {}
       // link to request via allocation if exists
       $alloc = $ra->findOne(['borrow_id' => $bid]);
@@ -484,7 +452,7 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
 // Reservation timeline per serial (JSON)
 if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
-  if (!isset($_SESSION['username'])) { http_response_code(401); echo json_encode(['ok'=>false,'reason'=>'unauthorized']); exit(); }
+  if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? '') !== 'admin') { http_response_code(401); echo json_encode(['ok'=>false,'reason'=>'unauthorized']); exit(); }
   try {
     @require_once __DIR__ . '/../vendor/autoload.php';
     @require_once __DIR__ . '/db/mongo.php';
@@ -495,23 +463,15 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     $alloc = $db->selectCollection('request_allocations');
     $users = $db->selectCollection('users');
 
+    $days = max(1, min(60, (int)($_GET['days'] ?? 14)));
     $q = trim((string)($_GET['q'] ?? ''));
     $category = trim((string)($_GET['category'] ?? ''));
-    $rawFrom = trim((string)($_GET['from'] ?? ''));
-    $rawTo   = trim((string)($_GET['to'] ?? ''));
-    $parseLocal = function($s){ if ($s==='') return ''; $s = str_replace('T',' ', $s); $ts = @strtotime($s); if ($ts === false || $ts === -1) return ''; return date('Y-m-d H:i:s', $ts); };
-    $fromStr = $parseLocal($rawFrom);
-    $toStr = $parseLocal($rawTo);
-    if ($fromStr === '') { $fromStr = date('Y-m-d H:i:s'); }
-    if ($toStr === '') { $toStr = date('Y-m-d H:i:s', time() + 14*86400); }
-    if (strtotime($toStr) < strtotime($fromStr)) { $tmp = $fromStr; $fromStr = $toStr; $toStr = $tmp; }
+    $now = date('Y-m-d H:i:s');
+    $end = date('Y-m-d H:i:s', time() + $days * 86400);
 
     // Build candidate items (serialized units)
     $match = ['serial_no' => ['$ne' => '']];
-    if ($category !== '') {
-      $escaped = preg_quote($category, '/');
-      $match['category'] = ['$regex' => '^'.$escaped.'$', '$options' => 'i'];
-    }
+    if ($category !== '') { $match['category'] = $category; }
     if ($q !== '') {
       $match['$or'] = [
         ['serial_no' => ['$regex' => $q, '$options' => 'i']],
@@ -534,30 +494,15 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
         'location'  => (string)($doc['location'] ?? ''),
       ];
     }
-    // Categories list for filter (use distinct over all items)
-    $cats = [];
-    try {
-      $rawCats = $ii->distinct('category', ['category' => ['$exists' => true]]);
-      if (is_array($rawCats)) { foreach ($rawCats as $c) { $cc = trim((string)$c); if ($cc !== '') $cats[] = $cc; } }
-      $cats = array_values(array_unique($cats)); sort($cats);
-    } catch (Throwable $_dc) {
-      $cats = array_values(array_unique(array_filter(array_map(function($r){ return (string)($r['category'] ?? ''); }, $items))));
-      sort($cats);
-    }
+    // Categories list for filter
+    $cats = array_values(array_unique(array_filter(array_map(function($r){ return (string)($r['category'] ?? ''); }, $items))));
+    sort($cats);
 
-    // Build in-use map by serial and compute latest in-use start
+    // Build in-use map by serial
     $inUseMap = [];
-    $latestInUseFrom = '';
-    $latestInUseTs = 0;
     $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
     foreach ($curUse as $b) {
       $serial = trim((string)($b['serial_no'] ?? ''));
-      if ($serial === '') {
-        $mid = (int)($b['model_id'] ?? 0);
-        if ($mid > 0) {
-          try { $it = $ii->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]); if ($it && !empty($it['serial_no'])) $serial = trim((string)$it['serial_no']); } catch (Throwable $_mi) {}
-        }
-      }
       if ($serial === '') continue;
       $from = (string)($b['borrowed_at'] ?? '');
       $to = (string)($b['expected_return_at'] ?? '');
@@ -576,27 +521,19 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       $fname = '';
       try { $u = $users->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($u) $fname = trim((string)($u['full_name'] ?? '')); } catch (Throwable $_) { }
       $inUseMap[$serial] = [ 'username'=>$uname, 'full_name'=>($fname!==''?$fname:$uname), 'from'=>$from, 'to'=>$to ];
-      $tf = @strtotime($from);
-      if ($tf && $tf > $latestInUseTs) { $latestInUseTs = $tf; $latestInUseFrom = $from; }
     }
 
     // Reservations per serial (approved, overlapping window)
     $resBySerial = [];
     $qRes = [
       'type'=>'reservation', 'status'=>'Approved',
-      'reserved_from' => ['$lt' => $toStr],
-      '$or' => [['reserved_to' => ['$gt' => $fromStr]], ['reserved_to' => ['$exists' => false]]]
+      'reserved_from' => ['$lt' => $end],
+      '$or' => [['reserved_to' => ['$gt' => $now]], ['reserved_to' => ['$exists' => false]]]
     ];
-    $curRes = $er->find($qRes, ['projection'=>['reserved_serial_no'=>1,'reserved_model_id'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'status'=>1], 'sort'=>['reserved_from'=>1]]);
+    $curRes = $er->find($qRes, ['projection'=>['reserved_serial_no'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'status'=>1], 'sort'=>['reserved_from'=>1]]);
     foreach ($curRes as $r) {
       $serial = trim((string)($r['reserved_serial_no'] ?? ''));
-      if ($serial === '') {
-        $mid = (int)($r['reserved_model_id'] ?? 0);
-        if ($mid > 0) {
-          try { $it = $ii->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]); if ($it && !empty($it['serial_no'])) $serial = trim((string)$it['serial_no']); } catch (Throwable $_rm) {}
-        }
-      }
-      if ($serial === '') continue; // still no serial
+      if ($serial === '') continue; // only serial-specific reservations
       $uname = (string)($r['username'] ?? '');
       $fname = '';
       try { $u = $users->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($u) $fname = trim((string)($u['full_name'] ?? '')); } catch (Throwable $_) { }
@@ -609,43 +546,6 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
       ];
     }
 
-    // Build items list from serials that actually have data in the window
-    $wanted = array_values(array_unique(array_filter(array_merge(array_keys($inUseMap), array_keys($resBySerial)), function($s){ return trim((string)$s) !== ''; })));
-    $items = [];
-    if (!empty($wanted)) {
-      $qItems = ['serial_no' => ['$in' => $wanted]];
-      if ($category !== '') { $qItems['category'] = ['$regex' => '^'.preg_quote($category,'/').'$', '$options' => 'i']; }
-      if ($q !== '') {
-        $qItems['$or'] = [
-          ['serial_no' => ['$regex' => $q, '$options' => 'i']],
-          ['item_name' => ['$regex' => $q, '$options' => 'i']],
-          ['model'     => ['$regex' => $q, '$options' => 'i']],
-        ];
-      }
-      $curItm = $ii->find($qItems, ['projection' => ['id'=>1,'serial_no'=>1,'item_name'=>1,'model'=>1,'category'=>1,'location'=>1]]);
-      foreach ($curItm as $doc) {
-        $id = (int)($doc['id'] ?? 0);
-        $serial = (string)($doc['serial_no'] ?? ''); if ($serial==='') continue;
-        $model = (string)($doc['model'] ?? ''); if ($model==='') $model = (string)($doc['item_name'] ?? '');
-        $items[] = [
-          'id'        => $id,
-          'serial_no' => $serial,
-          'model'     => $model,
-          'category'  => (string)($doc['category'] ?? ''),
-          'location'  => (string)($doc['location'] ?? ''),
-        ];
-      }
-    }
-
-    // Helper: overlap window
-    $overlaps = function($a1,$a2,$b1,$b2){
-      if ($a1 === '' || $b1 === '') return false;
-      $ta1 = @strtotime($a1); $tb1 = @strtotime($b1); if ($ta1===false||$tb1===false) return false;
-      $ta2 = $a2 !== '' ? @strtotime($a2) : null; $tb2 = $b2 !== '' ? @strtotime($b2) : null;
-      $endA = $ta2 !== null ? $ta2 : PHP_INT_MAX; $endB = $tb2 !== null ? $tb2 : PHP_INT_MAX;
-      return ($ta1 <= $endB) && ($tb1 <= $endA);
-    };
-
     // Compose response items
     $out = [];
     foreach ($items as $it) {
@@ -656,16 +556,11 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
         'category' => $it['category'],
         'location' => $it['location'],
       ];
-      $inU = $inUseMap[$serial] ?? null;
-      if ($inU && !$overlaps($inU['from'] ?? '', $inU['to'] ?? '', $fromStr, $toStr)) { $inU = null; }
-      if ($inU) { $row['in_use'] = $inU; }
-      $resList = $resBySerial[$serial] ?? [];
-      // If any reservations missed because of query edge cases (e.g., reserved_to empty), filter again for safety
-      $resList = array_values(array_filter($resList, function($r) use ($fromStr, $toStr, $overlaps){ return $overlaps((string)($r['from'] ?? ''), (string)($r['to'] ?? ''), $fromStr, $toStr); }));
-      $row['reservations'] = $resList;
-      if ($inU || !empty($resList) || $includeFree) { $out[] = $row; }
+      if (isset($inUseMap[$serial])) { $row['in_use'] = $inUseMap[$serial]; }
+      $row['reservations'] = $resBySerial[$serial] ?? [];
+      $out[] = $row;
     }
-    echo json_encode(['ok'=>true, 'categories'=>$cats, 'items'=>$out, 'latest_in_use_from'=>$latestInUseFrom]);
+    echo json_encode(['ok'=>true, 'categories'=>$cats, 'items'=>$out]);
     exit();
   } catch (Throwable $e) { echo json_encode(['ok'=>false]); exit(); }
 }
@@ -946,17 +841,17 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                   <label class="form-label mb-1 small">Category</label>
                   <select id="resFilterCategory" class="form-select form-select-sm"><option value="">All</option></select>
                 </div>
-                <div class="col-12 col-md-4">
+                <div class="col-8 col-md-5">
                   <label class="form-label mb-1 small">Search</label>
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
-                <div class="col-6 col-md-2">
-                  <label class="form-label mb-1 small">From</label>
-                  <input id="resFilterFrom" type="datetime-local" class="form-control form-control-sm" />
-                </div>
-                <div class="col-6 col-md-2">
-                  <label class="form-label mb-1 small">To</label>
-                  <input id="resFilterTo" type="datetime-local" class="form-control form-control-sm" />
+                <div class="col-4 col-md-3">
+                  <label class="form-label mb-1 small">Window</label>
+                  <select id="resFilterDays" class="form-select form-select-sm">
+                    <option value="7">Next 7 days</option>
+                    <option value="14" selected>Next 14 days</option>
+                    <option value="30">Next 30 days</option>
+                  </select>
                 </div>
               </div>
               <div id="resTimelineList" class="row g-2"></div>
@@ -3474,13 +3369,13 @@ try {
                   <label class="form-label mb-1 small">Search</label>
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
-                <div class="col-6 col-md-3">
-                  <label class="form-label mb-1 small">From</label>
-                  <input id="resFilterFrom" type="datetime-local" class="form-control form-control-sm" />
-                </div>
-                <div class="col-6 col-md-3">
-                  <label class="form-label mb-1 small">To</label>
-                  <input id="resFilterTo" type="datetime-local" class="form-control form-control-sm" />
+                <div class="col-4 col-md-3">
+                  <label class="form-label mb-1 small">Window</label>
+                  <select id="resFilterDays" class="form-select form-select-sm">
+                    <option value="7">Next 7 days</option>
+                    <option value="14" selected>Next 14 days</option>
+                    <option value="30">Next 30 days</option>
+                  </select>
                 </div>
               </div>
               <div id="resTimelineList" class="row g-2"></div>
@@ -5009,11 +4904,7 @@ try {
         return (A1.getTime() <= endB) && (B1.getTime() <= endA);
       }
       function renderCards(list){
-      var wrap = document.getElementById('resTimelineList');
-      if (!wrap) return;
-      if (!Array.isArray(list)) list = [];
-      if (list.length === 0) { wrap.innerHTML = '<div class="col-12"><div class="text-center text-muted py-5">No in-use items or reservations found in the selected range.</div></div>'; return; }
-      var out=[];
+        var out=[];
         list.forEach(function(it){
           var serial = String(it.serial_no||'');
           var model = String(it.model||'');
@@ -5033,10 +4924,7 @@ try {
                   (cat?('<span class="badge bg-secondary" title="Category">'+esc(cat)+'</span>'):'')+''+
                 '</div>'+
                 '<div class="card-body">'+
-                  (use
-                    ? ('<div class="mb-2"><span class="badge bg-primary me-2">In Use</span>'+esc(use.full_name||use.username||'')+'<div class="small text-muted">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div></div>')
-                    : ('<div class="mb-2"><span class="badge bg-success-subtle text-success border">No In Use</span></div>')
-                  )+
+                  (use ? ('<div class="mb-2"><span class="badge bg-primary me-2">In Use</span>'+esc(use.full_name||use.username||'')+'<div class="small text-muted">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div></div>') : '')+
                   (res.length? '<div class="small text-muted mb-1">Reservations</div>':'')+
                   res.map(function(r){ var clash = use && overlap(use.from, use.to, r.from, r.to); return (
                     '<div class="d-flex flex-column p-2 rounded '+(clash?'bg-danger bg-opacity-10 border border-danger':'bg-light')+' mb-2">'+
@@ -5050,80 +4938,36 @@ try {
             '</div>'
           );
         });
-        wrap.innerHTML = out.join('');
-    }
-    async function loadTimeline(){
+        var wrap = document.getElementById('resTimelineList'); if (wrap) wrap.innerHTML = out.join('');
+      }
+      async function loadTimeline(){
         var catSel = document.getElementById('resFilterCategory');
+        var daysSel = document.getElementById('resFilterDays');
         var qInp = document.getElementById('resFilterSearch');
-        var fromInp = document.getElementById('resFilterFrom');
-        var toInp = document.getElementById('resFilterTo');
+        var days = daysSel ? parseInt(daysSel.value||'14',10)||14 : 14;
         var cat = catSel ? (catSel.value||'') : '';
         var q = qInp ? (qInp.value||'') : '';
-        var from = fromInp ? (fromInp.value||'') : '';
-        var to = toInp ? (toInp.value||'') : '';
-        var params = 'action=reservation_timeline_json' +
-                     (cat?('&category='+encodeURIComponent(cat)):'') +
-                     (q?('&q='+encodeURIComponent(q)):'') +
-                     (from?('&from='+encodeURIComponent(from)):'') +
-                     (to?('&to='+encodeURIComponent(to)):'');
+        var url = 'admin_borrow_center.php?action=reservation_timeline_json&days='+encodeURIComponent(days)+(cat?('&category='+encodeURIComponent(cat)):'')+(q?('&q='+encodeURIComponent(q)):'');
 
-        var url = 'admin_borrow_center.php?' + params;
-      var wrap = document.getElementById('resTimelineList'); if (wrap) wrap.innerHTML = '<div class="col-12"><div class="text-center text-muted py-5">Loading…</div></div>';
-      
-      try {
-        console.log('[Timeline] GET', url);
-        var r = await fetch(url);
-        var j = await r.json();
-        if (!j || !j.ok) { console.error('[Timeline] Response not OK', j); renderCards([]); return; }
-        var cats = Array.isArray(j.categories)? j.categories : [];
-        var sel = document.getElementById('resFilterCategory');
-        if (sel) {
-          var cur = sel.value;
-          var opts = ['<option value="">All</option>'].concat(cats.map(function(c){ var v=String(c||''); return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(v)+'</option>'; }));
-          sel.innerHTML = opts.join('');
-          if (cur && cats.indexOf(cur)===-1) sel.value='';
-        }
-        // If first run and backend suggests a latest in-use start, preset From and reload once
-        var fEl = document.getElementById('resFilterFrom');
-        if (fEl && !fEl.dataset.presetLatest && j.latest_in_use_from) {
-          try {
-            var s = String(j.latest_in_use_from).trim();
-            if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s = s.replace(' ','T');
-            var d = new Date(s);
-            if (!isNaN(d.getTime())) {
-              var y=d.getFullYear(), m=('0'+(d.getMonth()+1)).slice(-2), d2=('0'+d.getDate()).slice(-2), hh=('0'+d.getHours()).slice(-2), mm=('0'+d.getMinutes()).slice(-2);
-              var val = y+'-'+m+'-'+d2+'T'+hh+':'+mm;
-              if (!fEl.value) { fEl.value = val; fEl.dataset.presetLatest = '1'; return loadTimeline(); }
-            }
-          } catch(_p){}
-        }
-
-        var items = Array.isArray(j.items)? j.items : [];
-        console.log('[Timeline] Items', items.length);
-        renderCards(items);
-      } catch(_e) { console.error('[Timeline] Fetch error', _e); renderCards([]); }
-    }
+        try {
+          var r = await fetch(url);
+          var j = await r.json();
+          if (!j || !j.ok) { renderCards([]); return; }
+          var cats = Array.isArray(j.categories)? j.categories : [];
+          var sel = document.getElementById('resFilterCategory');
+          if (sel) {
+            var cur = sel.value;
+            var opts = ['<option value="">All</option>'].concat(cats.map(function(c){ var v=String(c||''); return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(v)+'</option>'; }));
+            sel.innerHTML = opts.join('');
+            if (cur && cats.indexOf(cur)===-1) sel.value='';
+          }
+          renderCards(Array.isArray(j.items)? j.items : []);
+        } catch(_e) { renderCards([]); }
+      }
       document.addEventListener('DOMContentLoaded', function(){
         var mdl = document.getElementById('resTimelineModal'); if (!mdl) return;
         var wired=false, timer=null;
-        mdl.addEventListener('show.bs.modal', function(){
-        // set default range: now .. now + 14 days
-        var f=document.getElementById('resFilterFrom');
-        var t=document.getElementById('resFilterTo');
-        var now=new Date();
-        var plus=new Date(Date.now()+14*24*3600*1000);
-        function toLocal(dt){ var y=dt.getFullYear(), m=('0'+(dt.getMonth()+1)).slice(-2), d=('0'+dt.getDate()).slice(-2), hh=('0'+dt.getHours()).slice(-2), mm=('0'+dt.getMinutes()).slice(-2); return y+'-'+m+'-'+d+'T'+hh+':'+mm; }
-        // Do not preset From; backend will suggest latest in-use on first fetch.
-        if (t && !t.value) t.value = toLocal(plus);
-        loadTimeline();
-        if (wired) return; wired=true;
-        var c=document.getElementById('resFilterCategory');
-        var q=document.getElementById('resFilterSearch');
-        if (c) c.addEventListener('change', loadTimeline);
-        if (q) q.addEventListener('input', function(){ if (timer) clearTimeout(timer); timer=setTimeout(loadTimeline, 300); });
-        if (f) f.addEventListener('change', loadTimeline);
-        if (t) t.addEventListener('change', loadTimeline);
-      });
+        mdl.addEventListener('show.bs.modal', function(){ loadTimeline(); if (wired) return; wired=true; var c=document.getElementById('resFilterCategory'); var d=document.getElementById('resFilterDays'); var q=document.getElementById('resFilterSearch'); if (c) c.addEventListener('change', loadTimeline); if (d) d.addEventListener('change', loadTimeline); if (q) q.addEventListener('input', function(){ if (timer) clearTimeout(timer); timer=setTimeout(loadTimeline, 300); }); });
       });
     })();
   </script>
