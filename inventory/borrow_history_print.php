@@ -317,8 +317,8 @@ $pages = array_chunk($history, 15);
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
-                      <td>&nbsp;</td>
-                      <td>&nbsp;</td>
+                      <td class="col-datetime"><span class="dt"><span class="dt-date">&nbsp;</span><span class="dt-time">&nbsp;</span></span></td>
+                      <td class="col-datetime"><span class="dt"><span class="dt-date">&nbsp;</span><span class="dt-time">&nbsp;</span></span></td>
                     </tr>
                   <?php endfor; ?>
                 <?php endif; ?>
