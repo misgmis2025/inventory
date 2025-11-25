@@ -452,7 +452,7 @@ if ($act === 'list_borrowable_units' && $_SERVER['REQUEST_METHOD'] === 'GET') {
 // Reservation timeline per serial (JSON)
 if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
-  if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? '') !== 'admin') { http_response_code(401); echo json_encode(['ok'=>false,'reason'=>'unauthorized']); exit(); }
+  if (!isset($_SESSION['username'])) { http_response_code(401); echo json_encode(['ok'=>false,'reason'=>'unauthorized']); exit(); }
   try {
     @require_once __DIR__ . '/../vendor/autoload.php';
     @require_once __DIR__ . '/db/mongo.php';
@@ -478,7 +478,7 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     $match = ['serial_no' => ['$ne' => '']];
     if ($category !== '') {
       $escaped = preg_quote($category, '/');
-      $match['category'] = ['\$regex' => '^'.$escaped.'$', '\$options' => 'i'];
+      $match['category'] = ['$regex' => '^'.$escaped.'$', '$options' => 'i'];
     }
     if ($q !== '') {
       $match['$or'] = [
@@ -518,6 +518,12 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
     $curUse = $ub->find(['$or' => [['returned_at'=>null], ['returned_at'=>'']]], ['projection'=>['id'=>1,'model_id'=>1,'serial_no'=>1,'username'=>1,'borrowed_at'=>1,'expected_return_at'=>1]]);
     foreach ($curUse as $b) {
       $serial = trim((string)($b['serial_no'] ?? ''));
+      if ($serial === '') {
+        $mid = (int)($b['model_id'] ?? 0);
+        if ($mid > 0) {
+          try { $it = $ii->findOne(['id'=>$mid], ['projection'=>['serial_no'=>1]]); if ($it && !empty($it['serial_no'])) $serial = trim((string)$it['serial_no']); } catch (Throwable $_mi) {}
+        }
+      }
       if ($serial === '') continue;
       $from = (string)($b['borrowed_at'] ?? '');
       $to = (string)($b['expected_return_at'] ?? '');
@@ -559,6 +565,34 @@ if ($act === 'reservation_timeline_json' && $_SERVER['REQUEST_METHOD'] === 'GET'
         'full_name' => ($fname!==''?$fname:$uname),
         'status' => (string)($r['status'] ?? 'Approved'),
       ];
+    }
+
+    // Build items list from serials that actually have data in the window
+    $wanted = array_values(array_unique(array_filter(array_merge(array_keys($inUseMap), array_keys($resBySerial)), function($s){ return trim((string)$s) !== ''; })));
+    $items = [];
+    if (!empty($wanted)) {
+      $qItems = ['serial_no' => ['$in' => $wanted]];
+      if ($category !== '') { $qItems['category'] = ['$regex' => '^'.preg_quote($category,'/').'$', '$options' => 'i']; }
+      if ($q !== '') {
+        $qItems['$or'] = [
+          ['serial_no' => ['$regex' => $q, '$options' => 'i']],
+          ['item_name' => ['$regex' => $q, '$options' => 'i']],
+          ['model'     => ['$regex' => $q, '$options' => 'i']],
+        ];
+      }
+      $curItm = $ii->find($qItems, ['projection' => ['id'=>1,'serial_no'=>1,'item_name'=>1,'model'=>1,'category'=>1,'location'=>1]]);
+      foreach ($curItm as $doc) {
+        $id = (int)($doc['id'] ?? 0);
+        $serial = (string)($doc['serial_no'] ?? ''); if ($serial==='') continue;
+        $model = (string)($doc['model'] ?? ''); if ($model==='') $model = (string)($doc['item_name'] ?? '');
+        $items[] = [
+          'id'        => $id,
+          'serial_no' => $serial,
+          'model'     => $model,
+          'category'  => (string)($doc['category'] ?? ''),
+          'location'  => (string)($doc['location'] ?? ''),
+        ];
+      }
     }
 
     // Helper: overlap window
@@ -3398,13 +3432,13 @@ try {
                   <label class="form-label mb-1 small">Search</label>
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
-                <div class="col-4 col-md-3">
-                  <label class="form-label mb-1 small">Window</label>
-                  <select id="resFilterDays" class="form-select form-select-sm">
-                    <option value="7">Next 7 days</option>
-                    <option value="14" selected>Next 14 days</option>
-                    <option value="30">Next 30 days</option>
-                  </select>
+                <div class="col-6 col-md-3">
+                  <label class="form-label mb-1 small">From</label>
+                  <input id="resFilterFrom" type="datetime-local" class="form-control form-control-sm" />
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label mb-1 small">To</label>
+                  <input id="resFilterTo" type="datetime-local" class="form-control form-control-sm" />
                 </div>
               </div>
               <div id="resTimelineList" class="row g-2"></div>
