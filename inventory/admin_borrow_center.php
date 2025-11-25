@@ -3352,6 +3352,41 @@ try {
         </div>
       </div>
 
+      <div class="modal fade" id="resTimelineModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:95vw; width:95vw; max-height:95vh; height:95vh;">
+          <div class="modal-content" style="height:100%;">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="bi bi-calendar-week me-2"></i>Reservation Timeline</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="height:calc(95vh - 120px); overflow:auto;">
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-4">
+                  <label class="form-label mb-1 small">Category</label>
+                  <select id="resFilterCategory" class="form-select form-select-sm"><option value="">All</option></select>
+                </div>
+                <div class="col-8 col-md-5">
+                  <label class="form-label mb-1 small">Search</label>
+                  <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
+                </div>
+                <div class="col-4 col-md-3">
+                  <label class="form-label mb-1 small">Window</label>
+                  <select id="resFilterDays" class="form-select form-select-sm">
+                    <option value="7">Next 7 days</option>
+                    <option value="14" selected>Next 14 days</option>
+                    <option value="30">Next 30 days</option>
+                  </select>
+                </div>
+              </div>
+              <div id="resTimelineList" class="row g-2"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
   <!-- Mark Lost Modal -->
   <div class="modal fade" id="markLostModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -4852,6 +4887,89 @@ try {
       setInterval(()=>{ fetch('admin_borrow_center.php?action=borrowed_json').then(r=>r.json()).then(renderBorrowed).catch(()=>{}); }, 1000);
       setInterval(()=>{ fetch('admin_borrow_center.php?action=reservations_json').then(r=>r.json()).then(renderReservations).catch(()=>{}); }, 1000);
     });
+  </script>
+  <script>
+    (function(){
+      function esc(s){ return String(s).replace(/[&<>"']/g, function(m){ return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[m]; }); }
+      function two(n){ n=parseInt(n||0,10); return (n<10?'0':'')+n; }
+      function parseDt(dt){ try{ if(!dt) return null; var s=String(dt).trim(); if(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) s=s.replace(' ','T'); var d=new Date(s); if(isNaN(d.getTime())) return null; return d; }catch(_){ return null; } }
+      function fmtDate(dt){ var d=parseDt(dt); if(!d) return ''; return two(d.getMonth()+1)+'-'+two(d.getDate())+'-'+d.getFullYear(); }
+      function fmtTime(dt){ var d=parseDt(dt); if(!d) return ''; var h=d.getHours(), m=two(d.getMinutes()); var ap=(h>=12?'PM':'AM'); h=h%12; if(h===0)h=12; return (h<10?('0'+h):h)+':'+m+ap; }
+      function twoLine(dt){ var d=fmtDate(dt), t=fmtTime(dt); if(!d && !t) return ''; return '<span class="twol"><span class="dte">'+esc(d)+'</span><span class="tme">'+esc(t)+'</span></span>'; }
+      function overlap(a1,a2,b1,b2){
+        var A1=parseDt(a1), A2=parseDt(a2), B1=parseDt(b1), B2=parseDt(b2);
+        if(!A1||!B1) return false; // need starts
+        var endA = A2 ? A2.getTime() : Number.POSITIVE_INFINITY;
+        var endB = B2 ? B2.getTime() : Number.POSITIVE_INFINITY;
+        return (A1.getTime() <= endB) && (B1.getTime() <= endA);
+      }
+      function renderCards(list){
+        var out=[];
+        list.forEach(function(it){
+          var serial = String(it.serial_no||'');
+          var model = String(it.model||'');
+          var cat = String(it.category||'');
+          var loc = String(it.location||'');
+          var use = it.in_use || null;
+          var res = Array.isArray(it.reservations)? it.reservations : [];
+          var hasClash = false;
+          if (use && (use.to||'')) {
+            res.forEach(function(r){ if (!hasClash && overlap(use.from, use.to, r.from, r.to)) hasClash=true; });
+          }
+          out.push(
+            '<div class="col-12 col-lg-6 col-xxl-4">'+
+              '<div class="card shadow-sm '+(hasClash?'border-danger':'')+'">'+
+                '<div class="card-header bg-white d-flex justify-content-between align-items-center">'+
+                  '<div><strong>'+esc(serial||'(no serial)')+'</strong> <span class="text-muted">'+esc(model)+'</span></div>'+
+                  (cat?('<span class="badge bg-secondary" title="Category">'+esc(cat)+'</span>'):'')+''+
+                '</div>'+
+                '<div class="card-body">'+
+                  (use ? ('<div class="mb-2"><span class="badge bg-primary me-2">In Use</span>'+esc(use.full_name||use.username||'')+'<div class="small text-muted">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div></div>') : '')+
+                  (res.length? '<div class="small text-muted mb-1">Reservations</div>':'')+
+                  res.map(function(r){ var clash = use && overlap(use.from, use.to, r.from, r.to); return (
+                    '<div class="d-flex flex-column p-2 rounded '+(clash?'bg-danger bg-opacity-10 border border-danger':'bg-light')+' mb-2">'+
+                      '<div><i class="bi bi-person-fill me-1"></i>'+esc(r.full_name||r.username||'')+'</div>'+
+                      '<div class="small">'+twoLine(r.from)+' → '+twoLine(r.to)+'</div>'+
+                    '</div>'
+                  ); }).join('')+''+
+                '</div>'+
+                (loc?('<div class="card-footer text-muted"><i class="bi bi-geo-alt me-1"></i>'+esc(loc)+'</div>'):'')+''+
+              '</div>'+
+            '</div>'
+          );
+        });
+        var wrap = document.getElementById('resTimelineList'); if (wrap) wrap.innerHTML = out.join('');
+      }
+      async function loadTimeline(){
+        var catSel = document.getElementById('resFilterCategory');
+        var daysSel = document.getElementById('resFilterDays');
+        var qInp = document.getElementById('resFilterSearch');
+        var days = daysSel ? parseInt(daysSel.value||'14',10)||14 : 14;
+        var cat = catSel ? (catSel.value||'') : '';
+        var q = qInp ? (qInp.value||'') : '';
+        var url = 'admin_borrow_center.php?action=reservation_timeline_json&days='+encodeURIComponent(days)+(cat?('&category='+encodeURIComponent(cat)):'')+(q?('&q='+encodeURIComponent(q)):'');
+
+        try {
+          var r = await fetch(url);
+          var j = await r.json();
+          if (!j || !j.ok) { renderCards([]); return; }
+          var cats = Array.isArray(j.categories)? j.categories : [];
+          var sel = document.getElementById('resFilterCategory');
+          if (sel) {
+            var cur = sel.value;
+            var opts = ['<option value="">All</option>'].concat(cats.map(function(c){ var v=String(c||''); return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(v)+'</option>'; }));
+            sel.innerHTML = opts.join('');
+            if (cur && cats.indexOf(cur)===-1) sel.value='';
+          }
+          renderCards(Array.isArray(j.items)? j.items : []);
+        } catch(_e) { renderCards([]); }
+      }
+      document.addEventListener('DOMContentLoaded', function(){
+        var mdl = document.getElementById('resTimelineModal'); if (!mdl) return;
+        var wired=false, timer=null;
+        mdl.addEventListener('show.bs.modal', function(){ loadTimeline(); if (wired) return; wired=true; var c=document.getElementById('resFilterCategory'); var d=document.getElementById('resFilterDays'); var q=document.getElementById('resFilterSearch'); if (c) c.addEventListener('change', loadTimeline); if (d) d.addEventListener('change', loadTimeline); if (q) q.addEventListener('input', function(){ if (timer) clearTimeout(timer); timer=setTimeout(loadTimeline, 300); }); });
+      });
+    })();
   </script>
   <!-- Returned Item Details Modal -->
   <div class="modal fade" id="returnedDetailsModal" tabindex="-1" aria-hidden="true">
