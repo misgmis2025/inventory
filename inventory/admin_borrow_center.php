@@ -165,7 +165,7 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                 <td><?php echo htmlspecialchars((string)($rw['school_id'] ?? '')); ?></td>
                 <td><?php echo htmlspecialchars($rw['approved_by']); ?></td>
                 <td><?php echo htmlspecialchars($rw['remarks']); ?></td>
-                <td><?php echo htmlspecialchars($rw['due_at'] ? date('h:i A m-d-y', strtotime($rw['due_at'])) : ''); ?></td>
+                <td><?php echo htmlspecialchars($rw['due_at'] ? date('F d, Y g:iA', strtotime($rw['due_at'])) : ''); ?></td>
               </tr>
             <?php endforeach; endif; ?>
           </tbody>
