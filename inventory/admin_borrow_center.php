@@ -986,8 +986,8 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
                 <div class="col-12 col-md-3">
-                  <label class="form-label mb-1 small">Date/Time (optional)</label>
-                  <input id="resFilterAt" type="datetime-local" class="form-control form-control-sm" />
+                  <label class="form-label mb-1 small">Date (optional)</label>
+                  <input id="resFilterDay" type="date" class="form-control form-control-sm" />
                 </div>
               </div>
               <div id="resTimelineList" class="row g-2"></div>
@@ -3506,8 +3506,8 @@ try {
                   <input id="resFilterSearch" type="text" class="form-control form-control-sm" placeholder="Search serial/model" />
                 </div>
                 <div class="col-12 col-md-3">
-                  <label class="form-label mb-1 small">Date/Time (optional)</label>
-                  <input id="resFilterAt" type="datetime-local" class="form-control form-control-sm" />
+                  <label class="form-label mb-1 small">Date (optional)</label>
+                  <input id="resFilterDay" type="date" class="form-control form-control-sm" />
                 </div>
               </div>
               <div id="resTimelineList" class="row g-2"></div>
@@ -5095,20 +5095,14 @@ try {
       async function loadTimeline(){
         var catSel = document.getElementById('resFilterCategory');
         var qInp = document.getElementById('resFilterSearch');
-        var atInp = document.getElementById('resFilterAt');
+        var dayInp = document.getElementById('resFilterDay');
         var cat = catSel ? (catSel.value||'') : '';
         var q = qInp ? (qInp.value||'') : '';
-        var at = atInp ? (atInp.value||'') : '';
-        var day = '';
-        if (at) {
-          var m = at.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
-          if (m && m[2]==='00' && m[3]==='00') { day = m[1]; at=''; }
-        }
+        var day = dayInp ? (dayInp.value||'') : '';
         var url = 'admin_borrow_center.php?action=reservation_timeline_json' +
                   (cat?('&category='+encodeURIComponent(cat)):'') +
                   (q?('&q='+encodeURIComponent(q)):'') +
-                  (day?('&day='+encodeURIComponent(day)):'') +
-                  (at?('&at='+encodeURIComponent(at)):'');
+                  (day?('&day='+encodeURIComponent(day)):'');
 
         try {
           var r = await fetch(url);
@@ -5132,7 +5126,7 @@ try {
           loadTimeline();
           if (wired) return; wired=true;
           var c=document.getElementById('resFilterCategory');
-          var a=document.getElementById('resFilterAt');
+          var a=document.getElementById('resFilterDay');
           var q=document.getElementById('resFilterSearch');
           if (c) c.addEventListener('change', loadTimeline);
           if (a) a.addEventListener('change', loadTimeline);
