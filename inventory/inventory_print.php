@@ -461,6 +461,12 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       .print-table td { font-weight: 500 !important; color: #000000 !important; }
       .print-table th { white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
       .print-table td { word-break: break-word; overflow-wrap: anywhere; }
+      /* Datetime two-line layout for borrow history */
+      .print-table .col-datetime { white-space: normal; font-size: 10px; }
+      .dt { display: inline-block; max-width: 100%; white-space: nowrap; }
+      .col-datetime .dt .dt-date,
+      .col-datetime .dt .dt-time { display: block; }
+      .col-datetime .dt { line-height: 1.35; min-height: calc(1.35em * 2); white-space: nowrap; }
       /* Remove shaded backgrounds for Bootstrap tables explicitly */
       .table, .table th, .table td, .table-light, .table-striped tbody tr:nth-of-type(odd), thead th { background-color: #ffffff !important; background-image: none !important; }
       #page-content-wrapper, .container-fluid, .eca-print-header { background: #ffffff !important; }
@@ -523,6 +529,11 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       padding-bottom: .30rem;
       font-weight: 600;
     }
+    /* Screen datetime two-line layout */
+    .print-table .col-datetime { white-space: normal; }
+    .print-table .col-datetime .dt { display: inline-block; line-height: 1.35; min-height: calc(1.35em * 2); white-space: nowrap; }
+    .print-table .col-datetime .dt .dt-date,
+    .print-table .col-datetime .dt .dt-time { display: block; }
 
     /* One-line toolbar for header controls */
     .toolbar { white-space: nowrap; font-size: 0.8rem; overflow: visible; }
@@ -972,8 +983,8 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                     <th>Serial ID</th>
                     <th>Item/Model</th>
                     <th>Category</th>
-                    <th>Borrowed At</th>
-                    <th>Returned At</th>
+                    <th class="col-datetime">Time Borrowed</th>
+                    <th class="col-datetime">Time returned</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -990,9 +1001,27 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                         <td><?php echo htmlspecialchars($hv['model_name'] ?? ''); ?></td>
                         <td><?php echo htmlspecialchars($hv['category'] ?? ''); ?></td>
                         <?php $ba = $hv['borrowed_at'] ?? ''; ?>
-                        <td><?php echo htmlspecialchars($ba !== '' ? date('h:i A m-d-y', strtotime($ba)) : ''); ?></td>
+                        <td class="col-datetime"><?php
+                          if ($ba !== '') {
+                            $ts = strtotime($ba);
+                            if ($ts !== false) {
+                              $datePart = date('F d, Y', $ts);
+                              $timePart = date('g:iA', $ts);
+                              echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                            }
+                          }
+                        ?></td>
                         <?php $ra = $hv['returned_at'] ?? ''; ?>
-                        <td><?php echo htmlspecialchars($ra !== '' ? date('h:i A m-d-y', strtotime($ra)) : ''); ?></td>
+                        <td class="col-datetime"><?php
+                          if ($ra !== '') {
+                            $ts = strtotime($ra);
+                            if ($ts !== false) {
+                              $datePart = date('F d, Y', $ts);
+                              $timePart = date('g:iA', $ts);
+                              echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                            }
+                          }
+                        ?></td>
                       </tr>
                     <?php endforeach; ?>
                   <?php endif; ?>
