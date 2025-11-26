@@ -467,6 +467,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       .col-datetime .dt .dt-date,
       .col-datetime .dt .dt-time { display: block; }
       .col-datetime .dt { line-height: 1.35; min-height: calc(1.35em * 2); white-space: nowrap; }
+      .page-break { page-break-before: always !important; break-before: page !important; }
       /* Remove shaded backgrounds for Bootstrap tables explicitly */
       .table, .table th, .table td, .table-light, .table-striped tbody tr:nth-of-type(odd), thead th { background-color: #ffffff !important; background-image: none !important; }
       #page-content-wrapper, .container-fluid, .eca-print-header { background: #ffffff !important; }
@@ -845,69 +846,80 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
             <tr>
               <td style="padding:0;">
         <?php if (!$qrMode): ?>
-          <div class="table-responsive<?php echo $scrollClass; ?>">
-            <table class="table table-bordered table-sm align-middle print-table">
-              <colgroup>
-                <col style="width: 12%;" />  <!-- Serial ID -->
-                <col style="width: 16%;" />  <!-- Item/Model -->
-                <col style="width: 10%;" />  <!-- Category ID -->
-                <col style="width: 16%;" />  <!-- Category -->
-                <col style="width: 16%;" />  <!-- Location -->
-                <col style="width: 10%;" />  <!-- Status -->
-                <?php if ($ldShow): ?>
-                <col style="width: 10%;" />  <!-- Lost/Damaged By -->
-                <col style="width: 10%;" />  <!-- Marked By -->
-                <?php endif; ?>
-                <col style="width: 10%;" />  <!-- Date Acquired (wider) -->
-              </colgroup>
-              <thead class="table-light">
-                <tr>
-                  <th>Serial ID</th>
-                  <th>Item/Model</th>
-                  <th>Category ID</th>
-                  <th>Category</th>
-                  <th>Location</th>
-                  <th>Status</th>
+          <?php $invPages = array_chunk($items, 30); if (empty($invPages)) { $invPages = [[]]; } $totalCols = $ldShow ? 9 : 7; ?>
+          <?php foreach ($invPages as $pi => $rowsPage): $padRows = 30 - count($rowsPage); ?>
+            <div class="table-responsive">
+              <table class="table table-bordered table-sm align-middle print-table">
+                <colgroup>
+                  <col style="width: 12%;" />  <!-- Serial ID -->
+                  <col style="width: 16%;" />  <!-- Item/Model -->
+                  <col style="width: 10%;" />  <!-- Category ID -->
+                  <col style="width: 16%;" />  <!-- Category -->
+                  <col style="width: 16%;" />  <!-- Location -->
+                  <col style="width: 10%;" />  <!-- Status -->
                   <?php if ($ldShow): ?>
-                    <?php if ($filter_status === 'Lost'): ?>
-                      <th>Lost By</th>
-                    <?php else: ?>
-                      <th>Damaged By</th>
-                    <?php endif; ?>
-                      <th>Marked By</th>
+                  <col style="width: 10%;" />  <!-- Lost/Damaged By -->
+                  <col style="width: 10%;" />  <!-- Marked By -->
                   <?php endif; ?>
-                  <th>Date Acquired</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php if (empty($items)): ?>
-                  <tr><td colspan="<?php echo $ldShow ? 9 : 7; ?>" class="text-center text-muted py-4">No items found.</td></tr>
-                <?php else: ?>
-                  <?php foreach ($items as $it): ?>
+                  <col style="width: 10%;" />  <!-- Date Acquired (wider) -->
+                </colgroup>
+                <thead class="table-light">
                   <tr>
-                    <td><?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?></td>
-                    <td><?php echo htmlspecialchars($it['item_name']); ?></td>
-                    <?php $catPrint = trim($it['category'] ?? '') !== '' ? $it['category'] : 'Uncategorized'; $catIdPrint = $catIdByName[$catPrint] ?? ''; ?>
-                    <td><?php echo htmlspecialchars($catIdPrint); ?></td>
-                    <td><?php echo htmlspecialchars($it['category'] ?: 'Uncategorized'); ?></td>
-                    <td><?php echo htmlspecialchars($it['location']); ?></td>
-                    <td><?php echo htmlspecialchars($it['status']); ?></td>
+                    <th>Serial ID</th>
+                    <th>Item/Model</th>
+                    <th>Category ID</th>
+                    <th>Category</th>
+                    <th>Location</th>
+                    <th>Status</th>
                     <?php if ($ldShow): ?>
-                      <?php $mid = (int)($it['id'] ?? 0); $e = isset($ldExtraMap) && isset($ldExtraMap[$mid]) ? $ldExtraMap[$mid] : null; $by = $e ? (trim((string)($e['by_full_name'] ?? '')) ?: trim((string)($e['by_username'] ?? ''))) : ''; $mk = $e ? (trim((string)($e['marker_full_name'] ?? '')) ?: trim((string)($e['marker_username'] ?? ''))) : ''; ?>
-                      <td><?php echo htmlspecialchars($by); ?></td>
-                      <td><?php echo htmlspecialchars($mk); ?></td>
+                      <?php if ($filter_status === 'Lost'): ?>
+                        <th>Lost By</th>
+                      <?php else: ?>
+                        <th>Damaged By</th>
+                      <?php endif; ?>
+                        <th>Marked By</th>
                     <?php endif; ?>
-                    <td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
+                    <th>Date Acquired</th>
                   </tr>
-                  <?php endforeach; ?>
-                <?php endif; ?>
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  <?php if (empty($rowsPage) && $pi === 0): ?>
+                    <tr><td colspan="<?php echo $totalCols; ?>" class="text-center text-muted py-4">No items found.</td></tr>
+                  <?php else: ?>
+                    <?php foreach ($rowsPage as $it): ?>
+                    <tr>
+                      <td><?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?></td>
+                      <td><?php echo htmlspecialchars($it['item_name']); ?></td>
+                      <?php $catPrint = trim($it['category'] ?? '') !== '' ? $it['category'] : 'Uncategorized'; $catIdPrint = $catIdByName[$catPrint] ?? ''; ?>
+                      <td><?php echo htmlspecialchars($catIdPrint); ?></td>
+                      <td><?php echo htmlspecialchars($it['category'] ?: 'Uncategorized'); ?></td>
+                      <td><?php echo htmlspecialchars($it['location']); ?></td>
+                      <td><?php echo htmlspecialchars($it['status']); ?></td>
+                      <?php if ($ldShow): ?>
+                        <?php $mid = (int)($it['id'] ?? 0); $e = isset($ldExtraMap) && isset($ldExtraMap[$mid]) ? $ldExtraMap[$mid] : null; $by = $e ? (trim((string)($e['by_full_name'] ?? '')) ?: trim((string)($e['by_username'] ?? ''))) : ''; $mk = $e ? (trim((string)($e['marker_full_name'] ?? '')) ?: trim((string)($e['marker_username'] ?? ''))) : ''; ?>
+                        <td><?php echo htmlspecialchars($by); ?></td>
+                        <td><?php echo htmlspecialchars($mk); ?></td>
+                      <?php endif; ?>
+                      <td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php if ($padRows > 0): ?>
+                      <?php for ($ri = 0; $ri < $padRows; $ri++): ?>
+                        <tr>
+                          <?php for ($ci = 0; $ci < $totalCols; $ci++): ?><td>&nbsp;</td><?php endfor; ?>
+                        </tr>
+                      <?php endfor; ?>
+                    <?php endif; ?>
+                  <?php endif; ?>
+                </tbody>
+              </table>
+            </div>
+            <?php if ($pi < count($invPages) - 1): ?><div class="page-break"></div><?php endif; ?>
+          <?php endforeach; ?>
 
           <?php if ($isAdmin): ?>
           <!-- Borrow History (Admin print) -->
-          <div class="mt-4">
+          <div class="mt-4 no-print">
             <h5 class="mb-2"><i class="bi bi-clock-history me-2"></i>Borrow History</h5>
             <div class="table-responsive<?php echo $borrowScrollClass; ?>">
               <table class="table table-bordered table-sm align-middle print-table">
@@ -1016,11 +1028,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               </td>
             </tr>
           </tbody>
-        </table>
-
-        <?php if (!$qrMode): ?>
-        <!-- Repeating print footer (print-only) -->
-        <table class="print-doc only-print" style="width:100%; border-collapse:collapse;">
+          <?php if (!$qrMode): ?>
           <tfoot>
             <tr>
               <td style="padding:0;">
@@ -1029,7 +1037,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                     <div class="field" style="display:flex; align-items:baseline; gap:8px; white-space:nowrap;">
                       <label style="font-weight:600; font-size:10pt;">Prepared by:</label>
                       <span class="eca-print-value" style="display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:220px;">
-                        <?php echo htmlspecialchars($_GET['prepared_by'] ?? $preparedByDefault); ?>&nbsp;
+                        <?php echo htmlspecialchars($_GET['prepared_by'] ?? ($preparedByDefault ?? ($_SESSION['username'] ?? ''))); ?>&nbsp;
                       </span>
                     </div>
                     <div class="field" style="display:flex; align-items:baseline; gap:8px; white-space:nowrap;">
@@ -1043,8 +1051,8 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               </td>
             </tr>
           </tfoot>
+          <?php endif; ?>
         </table>
-        <?php endif; ?>
 
       </div>
     </div>
