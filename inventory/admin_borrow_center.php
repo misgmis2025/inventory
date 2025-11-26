@@ -4252,9 +4252,9 @@ try {
                 <strong>Pending Requests</strong>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
-                <div class="input-group input-group-sm" style="max-width:260px;">
+                <div class="input-group input-group-sm search-pill" style="max-width:260px;">
                   <span class="input-group-text"><i class="bi bi-search"></i></span>
-                  <input type="text" id="pendingSearch" class="form-control" placeholder="Search user/ID" />
+                  <input type="search" id="pendingSearch" class="form-control" placeholder="Search user/ID" />
                 </div>
               </div>
             </div>
@@ -4292,11 +4292,11 @@ try {
                           <td><!-- Student ID (filled by JS) --></td>
                           <td class="text-end">
                           <div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Actions">
-                              <button type="button" class="btn btn-sm btn-success border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Approve/Scan" aria-label="Approve/Scan" data-bs-toggle="modal" data-bs-target="#approveScanModal" data-reqid="<?php echo (int)$r['id']; ?>" data-item="<?php echo htmlspecialchars($r['item_name']); ?>" data-qty="<?php echo isset($r['remaining']) ? (int)$r['remaining'] : (int)$r['quantity']; ?>" data-reqtype="<?php echo htmlspecialchars((string)($r['type'] ?? 'immediate')); ?>" data-expected_return_at="<?php echo htmlspecialchars((string)($r['expected_return_at'] ?? '')); ?>" data-reserved_from="<?php echo htmlspecialchars((string)($r['reserved_from'] ?? '')); ?>" data-reserved_to="<?php echo htmlspecialchars((string)($r['reserved_to'] ?? '')); ?>" data-qr_serial="<?php echo htmlspecialchars((string)($r['qr_serial_no'] ?? '')); ?>" data-bs-toggle="tooltip">
+                              <button type="button" class="btn btn-sm btn-success border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Approve/Scan" aria-label="Approve/Scan" data-bs-toggle="modal" data-bs-target="#approveScanModal" data-reqid="<?php echo (int)$r['id']; ?>" data-item="<?php echo htmlspecialchars($r['item_name']); ?>" data-qty="<?php echo isset($r['remaining']) ? (int)$r['remaining'] : (int)$r['quantity']; ?>" data-reqtype="<?php echo htmlspecialchars((string)($r['type'] ?? 'immediate')); ?>" data-expected_return_at="<?php echo htmlspecialchars((string)($r['expected_return_at'] ?? '')); ?>" data-reserved_from="<?php echo htmlspecialchars((string)($r['reserved_from'] ?? '')); ?>" data-reserved_to="<?php echo htmlspecialchars((string)($r['reserved_to'] ?? '')); ?>" data-qr_serial="<?php echo htmlspecialchars((string)($r['qr_serial_no'] ?? '')); ?>">
                                 <?php $isQr = isset($r['qr_serial_no']) && trim((string)$r['qr_serial_no']) !== ''; ?>
                                 <i class="bi <?php echo $isQr ? 'bi-check2-circle' : 'bi-qr-code-scan'; ?>"></i>
                               </button>
-                              <a href="admin_borrow_center.php?action=reject&id=<?php echo (int)$r['id']; ?>" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Reject" aria-label="Reject" onclick="return confirm('Reject this request?');" data-bs-toggle="tooltip"><i class="bi bi-x"></i></a>
+                              <a href="admin_borrow_center.php?action=reject&id=<?php echo (int)$r['id']; ?>" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Reject" aria-label="Reject" onclick="return confirm('Reject this request?');"><i class="bi bi-x"></i></a>
                           </div>
                             </div>
                           </td>
@@ -4410,6 +4410,12 @@ try {
               <div>
                 <strong>Borrowed Items</strong>
               </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="input-group input-group-sm search-pill" style="max-width:260px;">
+                  <span class="input-group-text"><i class="bi bi-search"></i></span>
+                  <input type="search" id="borrowedSearch" class="form-control" placeholder="Search user/serial/model" />
+                </div>
+              </div>
             </div>
             <div class="card-body p-0">
               <div class="table-responsive list-scroll">
@@ -4453,12 +4459,12 @@ try {
                             <div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Borrowed Actions">
                               <?php $isQrBorrow = (isset($b['type']) && trim((string)$b['type'])==='QR'); ?>
                               <?php if ($isQrBorrow): ?>
-                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="View" aria-label="View" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>" data-bs-toggle="tooltip"><i class="bi bi-eye"></i></button>
+                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="View" aria-label="View" data-bs-toggle="modal" data-bs-target="#qrReturnAdminModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-eye"></i></button>
                               <?php else: ?>
-                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Return/Scan" aria-label="Return/Scan" data-bs-toggle="modal" data-bs-target="#returnScanModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>" data-bs-toggle="tooltip"><i class="bi bi-arrow-counterclockwise"></i></button>
+                                <button type="button" class="btn btn-sm btn-light border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Return/Scan" aria-label="Return/Scan" data-bs-toggle="modal" data-bs-target="#returnScanModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-arrow-counterclockwise"></i></button>
                               <?php endif; ?>
-                              <button type="button" class="btn btn-sm btn-danger border border-dark rounded-0 py-1 px-1 lh-1 fs-6" title="Lost" aria-label="Lost" data-bs-toggle="modal" data-bs-target="#markLostModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_id="<?php echo (int)$b['model_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>" data-bs-toggle="tooltip"><i class="bi bi-exclamation-triangle"></i></button>
-                              <button type="button" class="btn btn-sm btn-warning text-dark border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Maintenance" aria-label="Maintenance" data-bs-toggle="modal" data-bs-target="#markMaintModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_id="<?php echo (int)$b['model_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>" data-bs-toggle="tooltip"><i class="bi bi-tools"></i></button>
+                              <button type="button" class="btn btn-sm btn-danger border border-dark rounded-0 py-1 px-1 lh-1 fs-6" title="Lost" aria-label="Lost" data-bs-toggle="modal" data-bs-target="#markLostModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_id="<?php echo (int)$b['model_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-exclamation-triangle"></i></button>
+                              <button type="button" class="btn btn-sm btn-warning text-dark border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Maintenance" aria-label="Maintenance" data-bs-toggle="modal" data-bs-target="#markMaintModal" data-reqid="<?php echo (int)$b['request_id']; ?>" data-model_id="<?php echo (int)$b['model_id']; ?>" data-model_name="<?php echo htmlspecialchars($b['model']); ?>" data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"><i class="bi bi-tools"></i></button>
                             </div>
                           </td>
                         </tr>
@@ -6702,6 +6708,35 @@ try {
           if(h===p){ a.classList.add('active'); a.setAttribute('aria-current','page'); }
         });
       }catch(_){ }
+    })();
+  </script>
+  <script>
+    (function(){
+      function norm(s){ return String(s||'').toLowerCase(); }
+      function attachScopedSearch(inputId, tbodyId, rowSelector, attrKeys){
+        var inp = document.getElementById(inputId);
+        var tb = document.getElementById(tbodyId);
+        if (!inp || !tb) return;
+        function apply(){
+          var q = norm(inp.value);
+          tb.querySelectorAll(rowSelector).forEach(function(tr){
+            var hay = '';
+            (attrKeys||[]).forEach(function(k){ hay += ' ' + norm(tr.getAttribute(k)||''); });
+            hay += ' ' + norm(tr.textContent||'');
+            tr.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+          });
+        }
+        inp.addEventListener('input', apply);
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function(){
+          attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid']);
+          attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model']);
+        });
+      } else {
+        attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid']);
+        attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model']);
+      }
     })();
   </script>
 </body>

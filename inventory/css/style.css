@@ -1390,14 +1390,20 @@ a:hover { opacity: .9; }
 #borrowed-list .card-header { background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%) !important; border-bottom: 1px solid #e9eef6 !important; }
 #pb-row .table tbody tr:hover,
 #returned-list .table tbody tr:hover { background: #f0f6ff !important; }
-.segmented-actions .btn { border-radius: 8px !important; box-shadow: 0 2px 6px rgba(15,23,42,.08) !important; }
+.segmented-actions .btn { border: 1px solid rgba(15,23,42,.18) !important; border-radius: 8px !important; box-shadow: 0 2px 6px rgba(15,23,42,.08) !important; }
 .segmented-actions .btn-success { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important; border-color: #15803d !important; color: #fff !important; }
 .segmented-actions .btn-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important; border-color: #991b1b !important; color: #fff !important; }
 .segmented-actions .btn-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important; border-color: #b45309 !important; color: #111827 !important; }
-.segmented-actions .btn-light { background: #f8fafc !important; }
+.segmented-actions .btn-light { background: #f8fafc !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
 .badge.badge-qr { background: #e0f2fe !important; color: #075985 !important; border: 1px solid #bae6fd !important; }
 .badge.badge-manual { background: #e2e8f0 !important; color: #334155 !important; border: 1px solid #cbd5e1 !important; }
 @media (max-width: 768px) {
   .segmented-actions { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px !important; }
   .segmented-actions .btn { border-radius: 10px !important; padding: .35rem .5rem !important; }
 }
+
+.search-pill { border: 1px solid rgba(13,110,253,.35); border-radius: 999px; background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%); box-shadow: 0 4px 10px rgba(13,110,253,.08); overflow: hidden; }
+.search-pill .input-group-text { background: transparent; border: 0; color: #0a58ca; }
+.search-pill .form-control { border: 0; background: transparent; box-shadow: none !important; }
+.search-pill:focus-within { border-color: #0a58ca; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25), 0 6px 14px rgba(13,110,253,.18); }
+.search-pill .form-control::placeholder { color: #64748b; }
