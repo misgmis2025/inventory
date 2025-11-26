@@ -1291,3 +1291,41 @@ body.allow-mobile .btn.open-qr-return {
 
 /* Slightly reduce icon size inside the compact QR button */
 .btn.open-qr-return i { font-size: 0.9em !important; }
+
+@media (max-width: 768px) {
+  .bottom-nav {
+    background: rgba(255,255,255,.95) !important;
+    backdrop-filter: saturate(180%) blur(8px) !important;
+    -webkit-backdrop-filter: saturate(180%) blur(8px) !important;
+    border-top: 1px solid rgba(13,110,253,.15) !important;
+    box-shadow: 0 -6px 18px rgba(0,0,0,.08) !important;
+    padding: 10px 8px !important;
+    gap: 6px !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+  }
+  .bottom-nav a {
+    color: #334155 !important;
+    background: transparent !important;
+    padding: 6px 8px !important;
+    border-radius: 10px !important;
+    transition: background-color .15s ease, color .15s ease, transform .08s ease !important;
+    min-width: 64px !important;
+  }
+  .bottom-nav a:hover {
+    background-color: rgba(13,110,253,.08) !important;
+    color: #0d6efd !important;
+  }
+  .bottom-nav a:active { transform: translateY(1px) scale(.98) !important; }
+  .bottom-nav a .bi { font-size: 20px !important; }
+
+  .bottom-nav-toggle {
+    background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%) !important;
+    color: #fff !important;
+    border: 0 !important;
+    box-shadow: 0 8px 18px rgba(13,110,253,.35) !important;
+    padding: 10px 12px !important;
+  }
+  .bottom-nav-toggle .bi { color: #fff !important; }
+  .bottom-nav-toggle:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(13,110,253,.42) !important; }
+  .bottom-nav-toggle:active { transform: translateY(0); box-shadow: 0 6px 12px rgba(13,110,253,.30) !important; }
+}
