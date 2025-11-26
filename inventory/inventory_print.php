@@ -452,6 +452,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       thead { display: table-header-group; }
       tfoot { display: table-footer-group; }
       .table-scroll { max-height: none !important; overflow: visible !important; }
+      body::before, body::after { display: none !important; content: none !important; }
       /* Ensure consistent table layout and alignment during print */
       .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 10px; }
       .print-table th, .print-table td { padding: .2rem .3rem; vertical-align: middle; line-height: 1.2; text-align: left; }
@@ -606,7 +607,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
     }
   </style>
 </head>
-<body>
+<body class="allow-mobile">
   <!-- Legacy header kept for screen-only view; hidden in print via CSS above -->
   <div class="container-fluid pt-3 eca-print-header">
     <div class="eca-header">
