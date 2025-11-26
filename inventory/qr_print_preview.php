@@ -167,9 +167,9 @@ $qr_size_param = (float)($_GET['qr_size'] ?? 100);
 $qr_px_est = $qr_size_param;
 if ($qr_unit_param === 'cm') { $qr_px_est = $qr_size_param * 37.7952755906; }
 elseif ($qr_unit_param === 'mm') { $qr_px_est = $qr_size_param * 3.77952755906; }
-$twoPerPage = ($qr_px_est >= 480);
-// Improve printed QR sharpness by requesting a matching raster size from the API (cap to 1000)
-$qr_api_size = max(100, min(1000, (int)round($qr_px_est)));
+$qr_px_est = min(450, $qr_px_est);
+$twoPerPage = ($qr_px_est >= 430);
+$qr_api_size = max(100, min(450, (int)round($qr_px_est)));
 
 ?>
 <!DOCTYPE html>
@@ -223,9 +223,9 @@ $qr_api_size = max(100, min(1000, (int)round($qr_px_est)));
           $unit_raw = strtolower((string)($_GET['qr_unit'] ?? 'px'));
           $qr_unit = in_array($unit_raw, ['px','cm','mm'], true) ? $unit_raw : 'px';
           $qr_size = floatval($_GET['qr_size'] ?? 100);
-          if ($qr_unit === 'px') { if ($qr_size < 50) $qr_size = 50; if ($qr_size > 500) $qr_size = 500; }
-          elseif ($qr_unit === 'cm') { if ($qr_size < 1.3) $qr_size = 1.3; if ($qr_size > 13.2) $qr_size = 13.2; }
-          elseif ($qr_unit === 'mm') { if ($qr_size < 13) $qr_size = 13; if ($qr_size > 132) $qr_size = 132; }
+          if ($qr_unit === 'px') { if ($qr_size < 50) $qr_size = 50; if ($qr_size > 450) $qr_size = 450; }
+          elseif ($qr_unit === 'cm') { if ($qr_size < 1.3) $qr_size = 1.3; if ($qr_size > 11.9) $qr_size = 11.9; }
+          elseif ($qr_unit === 'mm') { if ($qr_size < 13) $qr_size = 13; if ($qr_size > 119) $qr_size = 119; }
         ?>
         <input id="qrSizeRange" type="range" class="form-range" value="<?php echo htmlspecialchars($qr_size, ENT_QUOTES); ?>" style="width:200px;">
         <input id="qrSizeNumber" type="number" class="form-control form-control-sm" value="<?php echo htmlspecialchars($qr_size, ENT_QUOTES); ?>" style="width:90px;" />
