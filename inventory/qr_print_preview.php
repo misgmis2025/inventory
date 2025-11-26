@@ -223,9 +223,9 @@ $qr_api_size = max(100, min(450, (int)round($qr_px_est)));
           $unit_raw = strtolower((string)($_GET['qr_unit'] ?? 'px'));
           $qr_unit = in_array($unit_raw, ['px','cm','mm'], true) ? $unit_raw : 'px';
           $qr_size = floatval($_GET['qr_size'] ?? 100);
-          if ($qr_unit === 'px') { if ($qr_size < 50) $qr_size = 50; if ($qr_size > 450) $qr_size = 450; }
-          elseif ($qr_unit === 'cm') { if ($qr_size < 1.3) $qr_size = 1.3; if ($qr_size > 11.9) $qr_size = 11.9; }
-          elseif ($qr_unit === 'mm') { if ($qr_size < 13) $qr_size = 13; if ($qr_size > 119) $qr_size = 119; }
+          if ($qr_unit === 'px') { if ($qr_size < 40) $qr_size = 40; if ($qr_size > 450) $qr_size = 450; }
+          elseif ($qr_unit === 'cm') { if ($qr_size < 1.0) $qr_size = 1.0; if ($qr_size > 11.9) $qr_size = 11.9; }
+          elseif ($qr_unit === 'mm') { if ($qr_size < 10) $qr_size = 10; if ($qr_size > 119) $qr_size = 119; }
         ?>
         <input id="qrSizeRange" type="range" class="form-range" value="<?php echo htmlspecialchars($qr_size, ENT_QUOTES); ?>" style="width:200px;">
         <input id="qrSizeNumber" type="number" class="form-control form-control-sm" value="<?php echo htmlspecialchars($qr_size, ENT_QUOTES); ?>" style="width:90px;" />
@@ -266,9 +266,9 @@ $qr_api_size = max(100, min(450, (int)round($qr_px_est)));
       var root = document.documentElement;
       var r = null, n = null, u = null;
       var bounds = {
-        px: {min:50, max:450, step:5},
-        cm: {min:1.3, max:11.9, step:0.1},
-        mm: {min:13, max:119, step:1}
+        px: {min:40, max:450, step:5},
+        cm: {min:1.0, max:11.9, step:0.1},
+        mm: {min:10, max:119, step:1}
       };
       function toPx(value, unit){
         var v = parseFloat(value||0);
