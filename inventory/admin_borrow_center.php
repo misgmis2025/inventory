@@ -4250,7 +4250,6 @@ try {
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
               <div>
                 <strong>Pending Requests</strong>
-                <span class="badge rounded-pill bg-primary-subtle text-primary ms-2"><?php echo (isset($pending) && is_array($pending)) ? count($pending) : 0; ?></span>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="input-group input-group-sm" style="max-width:260px;">
@@ -4410,17 +4409,6 @@ try {
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
               <div>
                 <strong>Borrowed Items</strong>
-                <span class="badge rounded-pill bg-primary-subtle text-primary ms-2"><?php echo (isset($borrowed) && is_array($borrowed)) ? count($borrowed) : 0; ?></span>
-              </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <div class="input-group input-group-sm" style="max-width:260px;">
-                  <span class="input-group-text"><i class="bi bi-search"></i></span>
-                  <input type="text" id="borrowedSearch" class="form-control" placeholder="Search user/serial/model" />
-                </div>
-                <div class="form-check form-switch ms-1">
-                  <input class="form-check-input" type="checkbox" id="overdueOnly" />
-                  <label class="form-check-label" for="overdueOnly">Overdue</label>
-                </div>
               </div>
             </div>
             <div class="card-body p-0">
