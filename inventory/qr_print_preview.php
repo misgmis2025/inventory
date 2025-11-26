@@ -160,7 +160,19 @@ usort($items, function($a,$b) use($catIdByName){
   return strcmp($idb,$ida);
 });
 
-?><!DOCTYPE html>
+// Determine if we should force two QR cards per page (when QR size is large, ~500px)
+$qr_unit_param = strtolower((string)($_GET['qr_unit'] ?? 'px'));
+if (!in_array($qr_unit_param, ['px','cm','mm'], true)) { $qr_unit_param = 'px'; }
+$qr_size_param = (float)($_GET['qr_size'] ?? 100);
+$qr_px_est = $qr_size_param;
+if ($qr_unit_param === 'cm') { $qr_px_est = $qr_size_param * 37.7952755906; }
+elseif ($qr_unit_param === 'mm') { $qr_px_est = $qr_size_param * 3.77952755906; }
+$twoPerPage = ($qr_px_est >= 480);
+// Improve printed QR sharpness by requesting a matching raster size from the API (cap to 1000)
+$qr_api_size = max(100, min(1000, (int)round($qr_px_est)));
+
+?>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -186,6 +198,10 @@ usort($items, function($a,$b) use($catIdByName){
       .qr-card { page-break-inside: avoid; border-width: 0.5px; padding: 1px; }
       /* Use CSS var so the slider affects print size */
       .qr-card img { width: var(--qr-size) !important; height: var(--qr-size) !important; max-width: 100% !important; max-height: 100% !important; object-fit: contain; }
+      /* For large QR (e.g., 500px): force two per page with small vertical margins */
+      body.two-per-page .qr-grid { display: block !important; }
+      body.two-per-page .qr-card { margin: 0.10in 0 !important; break-inside: avoid; page-break-inside: avoid; }
+      body.two-per-page .qr-card:nth-of-type(2n) { page-break-after: always; break-after: page; }
     }
     .qr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--qr-col-min), 1fr)); gap: 8px; }
     .qr-card { border: 1px solid #dee2e6; border-radius: .5rem; padding: 6px; text-align: center; }
@@ -194,7 +210,7 @@ usort($items, function($a,$b) use($catIdByName){
     .qr-meta div { white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
   </style>
 </head>
-<body>
+<body class="<?php echo $twoPerPage ? 'two-per-page' : ''; ?>">
   <div class="container-fluid pt-3">
     <div class="d-flex align-items-center justify-content-between no-print mb-2 flex-wrap" style="gap:8px;">
       <div class="d-flex gap-2 align-items-center">
@@ -230,7 +246,7 @@ usort($items, function($a,$b) use($catIdByName){
             $serialOnly = trim((string)($it['serial_no'] ?? ''));
             if ($serialOnly === '') { $serialOnly = (string)((int)($it['id'] ?? 0)); }
             $payload = $serialOnly;
-            $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=H&margin=1&format=png&data=' . urlencode($payload);
+            $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=' . $qr_api_size . 'x' . $qr_api_size . '&ecc=H&margin=1&format=png&data=' . urlencode($payload);
             $catPrint = trim($it['category'] ?? '') !== '' ? $it['category'] : 'Uncategorized';
           ?>
           <div class="qr-card">
@@ -277,6 +293,23 @@ usort($items, function($a,$b) use($catIdByName){
         var px = toPx(v, unitSafe);
         var colMin = Math.max(120, px + 12);
         root.style.setProperty('--qr-col-min', colMin + 'px');
+        // Toggle two-per-page layout for large QR sizes (~>=480px)
+        try {
+          var body = document.body; if (body) {
+            if (px >= 480) { body.classList.add('two-per-page'); } else { body.classList.remove('two-per-page'); }
+          }
+        } catch(e){}
+        // Update QR raster size to improve print sharpness
+        try {
+          var newSize = Math.max(100, Math.min(1000, Math.round(px)));
+          document.querySelectorAll('.qr-card img').forEach(function(img){
+            try {
+              var u = new URL(img.src);
+              u.searchParams.set('size', newSize + 'x' + newSize);
+              if (img.src !== u.toString()) { img.src = u.toString(); }
+            } catch(_e) { }
+          });
+        } catch(e){}
         // Sync controls and attributes
         r.min = String(bounds[unitSafe].min); r.max = String(bounds[unitSafe].max); r.step = String(bounds[unitSafe].step);
         n.min = String(bounds[unitSafe].min); n.max = String(bounds[unitSafe].max); n.step = String(bounds[unitSafe].step);
