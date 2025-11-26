@@ -4279,6 +4279,7 @@ try {
                           data-bs-toggle="modal" data-bs-target="#requestDetailsModal"
                           data-user="<?php echo htmlspecialchars($r['user_full_name'] ?? $r['username']); ?>"
                           data-reqid="<?php echo (int)$r['id']; ?>"
+                          data-student="<?php echo htmlspecialchars((string)($r['student_school_id'] ?? ($r['student_id'] ?? ($r['school_id'] ?? '')))); ?>"
                           data-item="<?php echo htmlspecialchars($r['item_name']); ?>"
                           data-qty="<?php echo isset($r['remaining']) ? (int)$r['remaining'] : (int)$r['quantity']; ?>"
                           data-loc="<?php echo htmlspecialchars((string)($r['request_location'] ?? ''), ENT_QUOTES); ?>"
@@ -4440,6 +4441,7 @@ try {
                             data-bs-toggle="modal" data-bs-target="#borrowedDetailsModal"
                             data-user="<?php echo htmlspecialchars($b['username']); ?>"
                             data-reqid="<?php echo (int)$b['request_id']; ?>"
+                            data-student="<?php echo htmlspecialchars((string)($b['student_school_id'] ?? ($b['student_id'] ?? ($b['school_id'] ?? '')))); ?>"
                             data-serial="<?php echo htmlspecialchars((string)($b['serial_no'] ?? '')); ?>"
                             data-model="<?php echo htmlspecialchars($b['model']); ?>"
                             data-category="<?php echo htmlspecialchars($b['category']); ?>"
@@ -6729,17 +6731,21 @@ try {
           });
         }
         inp.addEventListener('input', apply);
+        inp.addEventListener('keyup', apply);
+        inp.addEventListener('change', apply);
+        var mo = new MutationObserver(function(){ apply(); });
+        try { mo.observe(tb, {subtree:true, attributes:true, childList:true}); } catch(_){ }
         // initialize state so CSS can enforce visibility
         apply();
       }
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function(){
-          attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid']);
-          attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model']);
+          attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid','data-student']);
+          attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model','data-student']);
         });
       } else {
-        attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid']);
-        attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model']);
+        attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid','data-student']);
+        attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model','data-student']);
       }
     })();
   </script>
