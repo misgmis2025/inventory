@@ -767,9 +767,9 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                     <label class="form-label mb-1">Supply</label>
                     <select name="supply" class="form-select">
                       <option value="">Supply</option>
-                      <option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low (&lt; 10)</option>
-                      <option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average (&gt; 10 and &lt; 50)</option>
-                      <option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High (&gt; 50)</option>
+                      <option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low</option>
+                      <option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average</option>
+                      <option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High</option>
                     </select>
                   </div>
                   <div class="d-flex gap-2">
@@ -892,9 +892,9 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                       <label class="form-label mb-1">Supply</label>
                       <select name="supply" class="form-select">
                         <option value="">Supply</option>
-                        <option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low (&lt; 10)</option>
-                        <option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average (&gt; 10 and &lt; 50)</option>
-                        <option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High (&gt; 50)</option>
+                        <option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low</option>
+                        <option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average</option>
+                        <option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High</option>
                       </select>
                     </div>
                   </div>
