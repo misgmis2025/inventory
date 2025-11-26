@@ -74,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $condition = trim($_POST['condition'] ?? '');
         $status = 'Available';
         $date_acquired = trim($_POST['date_acquired'] ?? '');
+        if ($date_acquired === '') { $date_acquired = date('Y-m-d'); }
         $remarks = trim($_POST['remarks'] ?? '');
         // Expect an array of serial IDs as JSON in serial_list
         $serial_list_raw = $_POST['serial_list'] ?? '[]';
@@ -306,7 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <div class="col-md-3">
                               <label class="form-label fw-bold">Date Acquired</label>
-                              <input type="date" name="date_acquired" class="form-control" />
+                              <input type="date" name="date_acquired" class="form-control" value="<?php echo date('Y-m-d'); ?>" />
                             </div>
                             <div class="col-12">
                               <label class="form-label fw-bold">Remarks</label>
