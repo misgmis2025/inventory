@@ -722,14 +722,10 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
           </div>
         </div>
         <div class="toolbar d-flex align-items-center gap-2 flex-nowrap w-100">
-            <!-- Toggle button for search modal -->
             <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#searchModal">
-              <i class="bi bi-search me-1"></i>Search
+              <i class="bi bi-funnel me-1"></i>Filter
             </button>
-
-            <!-- Main filter dropdown (status/category/condition/supply) -->
-            <form method="GET" class="d-flex align-items-center gap-2">
-              <!-- Filter dropdown (status/category/condition/supply) -->
+            <form method="GET" class="d-flex align-items-center gap-2 d-none">
               <div class="dropdown">
                 <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-display="static" data-bs-container="body" aria-expanded="false">
                   <i class="bi bi-funnel me-1"></i>Filter
@@ -783,9 +779,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                 </div>
               </div>
             </form>
-
-            <!-- Date range filter in separate form to preserve others -->
-            <form method="GET" class="d-flex align-items-center gap-2">
+            <form method="GET" class="d-flex align-items-center gap-2 d-none">
               <div class="dropdown">
                 <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-display="static" data-bs-container="body" aria-expanded="false">
                   <i class="bi bi-calendar-range me-1"></i>Filter Date
@@ -805,7 +799,6 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                   </div>
                 </div>
               </div>
-              <!-- Preserve other filters when submitting date -->
               <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
               <input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
               <input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
@@ -814,10 +807,9 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               <input type="hidden" name="sid" value="<?php echo htmlspecialchars($serial_id_search_raw ?? ''); ?>" />
               <input type="hidden" name="loc" value="<?php echo htmlspecialchars($location_search_raw ?? ''); ?>" />
             </form>
-            <a class="btn btn-outline-secondary btn-sm" href="inventory_print.php" title="Reset filters">Reset</a>
-            <button class="btn btn-primary btn-sm" type="button" id="openPrintModalBtn"><i class="bi bi-printer me-1"></i>Print</button>
-            <form method="GET" class="d-inline-block ms-2">
-              <!-- Preserve filters -->
+            <a class="btn btn-outline-secondary btn-sm d-none" href="inventory_print.php" title="Reset filters">Reset</a>
+            <button class="btn btn-primary btn-sm d-none" type="button" id="openPrintModalBtn"><i class="bi bi-printer me-1"></i>Print</button>
+            <form method="GET" class="d-inline-block ms-2 d-none">
               <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
               <input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
               <input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
@@ -830,11 +822,21 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               <input type="hidden" name="loc" value="<?php echo htmlspecialchars($_GET['loc'] ?? ''); ?>" />
               <button type="button" id="openQrPreviewBtn" class="btn btn-info btn-sm" onclick="window.open('qr_print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>', '_blank')"><i class="bi bi-qr-code me-1"></i>Print QR</button>
             </form>
-            <button type="button" id="printBorrowHistoryBtn" class="btn btn-outline-secondary btn-sm ms-2"
+            <button type="button" id="printBorrowHistoryBtn" class="btn btn-outline-secondary btn-sm ms-2 d-none"
               data-date-from="<?php echo htmlspecialchars($date_from ?? ''); ?>"
               data-date-to="<?php echo htmlspecialchars($date_to ?? ''); ?>">
               <i class="bi bi-clock-history me-1"></i>Print Borrow History
             </button>
+            <div class="dropdown ms-auto">
+              <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-printer me-1"></i>Print
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button type="button" class="dropdown-item" onclick="window.print()"><i class="bi bi-printer me-2"></i>Print Inventory</button></li>
+                <li><a class="dropdown-item" target="_blank" rel="noopener" href="qr_print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>"><i class="bi bi-qr-code me-2"></i>Print QR</a></li>
+                <li><a class="dropdown-item" target="_blank" rel="noopener" href="borrow_history_print.php<?php $qs=[]; if (!empty($date_from)) $qs['date_from']=$date_from; if (!empty($date_to)) $qs['date_to']=$date_to; echo !empty($qs)?('?'.htmlspecialchars(http_build_query($qs))):''; ?>"><i class="bi bi-clock-history me-2"></i>Print Borrow History</a></li>
+              </ul>
+            </div>
           </div>
         </div>
 
@@ -843,7 +845,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
           <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
               <div class="modal-header">
-                <h5 class="modal-title" id="searchModalLabel"><i class="bi bi-search me-2"></i>Search Inventory</h5>
+                <h5 class="modal-title" id="searchModalLabel"><i class="bi bi-funnel me-2"></i>Filters</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
               <form method="GET">
@@ -860,14 +862,53 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                     <label class="form-label">Location</label>
                     <input type="text" name="loc" class="form-control" value="<?php echo htmlspecialchars($location_search_raw ?? ''); ?>" />
                   </div>
-                  <!-- Preserve other filters -->
+                  <div class="mb-3">
+                    <label class="form-label mb-1">Status</label>
+                    <select name="status" class="form-select">
+                      <option value="">Status</option>
+                      <?php $statuses = ['Available','In Use','Reserved','Lost','Under Maintenance','Out of Order']; foreach ($statuses as $st) { $sel = ($filter_status ?? '') === $st ? 'selected' : ''; echo '<option value="'.htmlspecialchars($st).'" '.$sel.'>'.htmlspecialchars($st).'</option>'; } ?>
+                    </select>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label mb-1">Category</label>
+                    <select name="category" class="form-select">
+                      <option value="">Category</option>
+                      <?php foreach ($categoryOptions as $cat): ?>
+                        <option value="<?php echo htmlspecialchars($cat); ?>" <?php echo ($filter_category ?? '') === $cat ? 'selected' : ''; ?>><?php echo htmlspecialchars($cat); ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <label class="form-label mb-1">Condition</label>
+                      <select name="condition" class="form-select">
+                        <option value="">Condition</option>
+                        <?php foreach (["Good","Damaged","Need replacement"] as $cond): ?>
+                          <option value="<?php echo htmlspecialchars($cond); ?>" <?php echo ($filter_condition ?? '') === $cond ? 'selected' : ''; ?>><?php echo htmlspecialchars($cond); ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label mb-1">Supply</label>
+                      <select name="supply" class="form-select">
+                        <option value="">Supply</option>
+                        <option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low (&lt; 10)</option>
+                        <option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average (&gt; 10 and &lt; 50)</option>
+                        <option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High (&gt; 50)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="row g-2 mt-1">
+                    <div class="col-6">
+                      <label class="form-label mb-1">From</label>
+                      <input type="date" name="date_from" class="form-control" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label mb-1">To</label>
+                      <input type="date" name="date_to" class="form-control" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
+                    </div>
+                  </div>
                   <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
-                  <input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
-                  <input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
-                  <input type="hidden" name="condition" value="<?php echo htmlspecialchars($filter_condition ?? ''); ?>" />
-                  <input type="hidden" name="supply" value="<?php echo htmlspecialchars($filter_supply ?? ''); ?>" />
-                  <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
-                  <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
                 </div>
                 <div class="modal-footer">
                   <a href="inventory_print.php" class="btn btn-outline-secondary">Reset</a>
