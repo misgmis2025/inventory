@@ -731,7 +731,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                 <i class="bi bi-printer me-1"></i>Print
               </button>
               <ul class="dropdown-menu">
-                <li><button type="button" class="dropdown-item" onclick="window.print()"><i class="bi bi-printer me-2"></i>Print Inventory</button></li>
+                <li><a class="dropdown-item" target="_blank" rel="noopener" href="print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>"><i class="bi bi-printer me-2"></i>Print Inventory</a></li>
                 <li><a class="dropdown-item" target="_blank" rel="noopener" href="qr_print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>"><i class="bi bi-qr-code me-2"></i>Print QR</a></li>
                 <li><a class="dropdown-item" target="_blank" rel="noopener" href="borrow_history_print.php<?php $qs=[]; if (!empty($date_from)) $qs['date_from']=$date_from; if (!empty($date_to)) $qs['date_to']=$date_to; echo !empty($qs)?('?'.htmlspecialchars(http_build_query($qs))):''; ?>"><i class="bi bi-clock-history me-2"></i>Print Borrow History</a></li>
               </ul>
