@@ -463,6 +463,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
       /* Datetime two-line layout for borrow history */
       .print-table .col-datetime { white-space: normal; font-size: 10px; }
       .dt { display: inline-block; max-width: 100%; white-space: nowrap; }
+      .col-datetime .dt { white-space: normal !important; }
       .col-datetime .dt .dt-date,
       .col-datetime .dt .dt-time { display: block; }
       .col-datetime .dt { line-height: 1.35; min-height: calc(1.35em * 2); white-space: nowrap; }
@@ -912,13 +913,13 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               <table class="table table-bordered table-sm align-middle print-table">
                 <colgroup>
                   <col style="width: 8%;" />   <!-- User ID -->
-                  <col style="width: 16%;" />  <!-- User -->
-                  <col style="width: 12%;" />  <!-- Student ID -->
-                  <col style="width: 14%;" />  <!-- Serial ID -->
-                  <col style="width: 24%;" />  <!-- Item/Model -->
-                  <col style="width: 16%;" />  <!-- Category -->
-                  <col style="width: 5%;" />   <!-- Borrowed At -->
-                  <col style="width: 5%;" />   <!-- Returned At -->
+                  <col style="width: 13%;" />  <!-- User -->
+                  <col style="width: 10%;" />  <!-- Student ID -->
+                  <col style="width: 10%;" />  <!-- Serial ID -->
+                  <col style="width: 12%;" />  <!-- Item/Model -->
+                  <col style="width: 9%;" />   <!-- Category -->
+                  <col style="width: 19%;" />  <!-- Borrowed At -->
+                  <col style="width: 19%;" />  <!-- Returned At -->
                 </colgroup>
                 <thead class="table-light">
                   <tr>
