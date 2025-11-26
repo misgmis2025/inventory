@@ -266,9 +266,9 @@ $qr_api_size = max(100, min(450, (int)round($qr_px_est)));
       var root = document.documentElement;
       var r = null, n = null, u = null;
       var bounds = {
-        px: {min:40, max:500, step:5},
-        cm: {min:1.0, max:13.2, step:0.1},
-        mm: {min:10, max:132, step:1}
+        px: {min:50, max:450, step:5},
+        cm: {min:1.3, max:11.9, step:0.1},
+        mm: {min:13, max:119, step:1}
       };
       function toPx(value, unit){
         var v = parseFloat(value||0);
@@ -296,12 +296,12 @@ $qr_api_size = max(100, min(450, (int)round($qr_px_est)));
         // Toggle two-per-page layout for large QR sizes (~>=480px)
         try {
           var body = document.body; if (body) {
-            if (px >= 480) { body.classList.add('two-per-page'); } else { body.classList.remove('two-per-page'); }
+            if (px >= 430) { body.classList.add('two-per-page'); } else { body.classList.remove('two-per-page'); }
           }
         } catch(e){}
         // Update QR raster size to improve print sharpness
         try {
-          var newSize = Math.max(100, Math.min(1000, Math.round(px)));
+          var newSize = Math.max(100, Math.min(450, Math.round(px)));
           document.querySelectorAll('.qr-card img').forEach(function(img){
             try {
               var u = new URL(img.src);
