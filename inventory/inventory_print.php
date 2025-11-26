@@ -430,7 +430,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Print Inventory List</title>
+  <title>Print Inventory</title>
   <link href="css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
@@ -701,7 +701,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
     <div class="p-4 w-100" id="page-content-wrapper">
       <div class="container-fluid py-3">
         <div class="page-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 no-print mb-2">
-          <h2 class="page-title mb-0">Print Inventory List</h2>
+          <h2 class="page-title mb-0"><i class="bi bi-printer me-2"></i>Print Inventory</h2>
           <div class="d-flex align-items-center gap-3 ms-auto">
             <?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
               <div class="position-relative" id="adminBellWrap">
