@@ -1,9 +1,10 @@
 'use strict';
-const CACHE_NAME = 'inv-pwa-v6';
+const CACHE_NAME = 'inv-pwa-v7';
 const STATIC_ASSETS = [
   'manifest.json',
   'css/style.css',
-  'images/logo-removebg.png'
+  'images/logo-removebg.png',
+  'images/ECA.png'
 ];
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -38,7 +39,7 @@ self.addEventListener('fetch', (event) => {
   // Always fetch latest for the logo to avoid stale cache
   try {
     const url = new URL(req.url);
-    if (url.pathname.endsWith('/images/logo-removebg.png')) {
+    if (false && url.pathname.endsWith('/images/logo-removebg.png')) {
       event.respondWith(
         fetch(req, { cache: 'reload' })
           .then((resp) => resp)
@@ -48,13 +49,26 @@ self.addEventListener('fetch', (event) => {
     }
   } catch (_) {}
   if (isStatic(req)) {
-    event.respondWith(
-      caches.match(req).then((res) => res || fetch(req).then((resp) => {
-        const clone = resp.clone();
-        caches.open(CACHE_NAME).then((c) => c.put(req, clone));
+    event.respondWith((async () => {
+      const exact = await caches.match(req);
+      if (exact) return exact;
+      let fallback = null;
+      try {
+        const u = new URL(req.url);
+        fallback = await caches.match(u.pathname, { ignoreSearch: true });
+      } catch(_) {}
+      if (fallback) {
+        event.waitUntil(fetch(req).then((resp)=>caches.open(CACHE_NAME).then((c)=>c.put(req, resp.clone()))).catch(()=>{}));
+        return fallback;
+      }
+      try {
+        const resp = await fetch(req);
+        caches.open(CACHE_NAME).then((c)=>c.put(req, resp.clone()));
         return resp;
-      }).catch(() => caches.match('images/logo-removebg.png', { ignoreSearch: true })))
-    );
+      } catch(_) {
+        return caches.match('images/logo-removebg.png', { ignoreSearch: true });
+      }
+    })());
     return;
   }
   event.respondWith(
