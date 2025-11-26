@@ -362,10 +362,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                             <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="adminBellDot"></span>
                         </button>
                         <div class="dropdown-menu dropdown-menu-end shadow" id="adminBellDropdown" style="min-width: 320px; max-height: 360px; overflow:auto;">
-                            <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
-                              <span class="fw-bold small">Pending Borrow Requests</span>
-                              <button type="button" class="btn-close" id="adminBellClose" aria-label="Close"></button>
-                            </div>
+                            <div class="px-3 py-2 border-bottom fw-bold small">Pending Borrow Requests</div>
                             <div id="adminNotifList" class="list-group list-group-flush small"></div>
                             <div class="text-center small text-muted py-2 d-none" id="adminNotifEmpty"></div>
                             <div class="border-top p-2 text-center">
@@ -555,8 +552,6 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     try { const nowTs = latestTs || Date.now(); localStorage.setItem('admin_notif_last_open', String(nowTs)); } catch(_){ }
                 });
                 document.addEventListener('click', function(){ dropdown.classList.remove('show'); });
-                const bellClose = document.getElementById('adminBellClose');
-                if (bellClose) { bellClose.addEventListener('click', function(ev){ ev.stopPropagation(); dropdown.classList.remove('show'); }); }
             }
 
             let toastWrap = document.getElementById('adminToastWrap');
@@ -586,19 +581,19 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                       + '</a>');
                 });
                 if ((recent||[]).length){
-                  rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="admClearAllBtn">Clear All</button><button type="button" class="btn-close btn-2xs ms-2" id="adminBellClose"></button></div></div>');
+                  rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="admClearAllBtn">Clear All</button></div></div>');
                   (recent||[]).forEach(function(r){
                     const id = parseInt(r.id||0,10);
                     const nm = String(r.item_name||'');
                     const st = String(r.status||'');
                     const whenTxt = String(r.processed_at||'');
                     const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
-                    rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
+                    rows.push('<div class="list-group-item d-flex justify-content-between align-items-start"+'
                       + '<div class="me-2">'
                       +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(whenTxt)+'</small></div>'
                       +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
                       + '</div>'
-                      + '<div><button type="button" class="btn btn-sm btn-outline-secondary adm-clear-one" data-id="'+id+'">Clear</button></div>'
+                      + '<div><button type="button" class="btn-close adm-clear-one" aria-label="Clear" data-id="'+id+'"></button></div>'
                       + '</div>');
                   });
                 }

@@ -152,7 +152,7 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
               <th>Category</th>
               <th>Location</th>
               <th>Borrowed By</th>
-              <th>Student ID</th>
+              <th>School ID</th>
               <th>Approved By</th>
               <th>Remarks</th>
               <th>Due At</th>
@@ -2320,7 +2320,7 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           $totalUnits = (int)($agg[0]['sum'] ?? 0);
         } catch (Throwable $_) { $totalUnits = 0; }
       }
-      if ($totalUnits <= 1) { echo json_encode(['ok'=>false,'reason'=>'Single-unit model; cannot edit serial']); exit(); }
+      if ($totalUnits <= 1) { echo json_encode(['ok'=>false,'reason'=>'Single-unit model cannot edit serial']); exit(); }
       // Find unit by serial and verify it belongs to the same model/category
       $unit = $iiCol->findOne(['serial_no'=>$serial], ['projection'=>['id'=>1,'status'=>1,'model'=>1,'item_name'=>1,'category'=>1]]);
       if (!$unit) { echo json_encode(['ok'=>false,'reason'=>'Serial ID not found']); exit(); }
@@ -4266,7 +4266,7 @@ try {
                       <th>Req ID</th>
                       <th>Type</th>
                       <th>User</th>
-                      <th>Student ID</th>
+                      <th>School ID</th>
                       <th class="text-end">Actions</th>
                     </tr>
                   </thead>
@@ -4426,7 +4426,7 @@ try {
                       <th>Req ID</th>
                       <th>Type</th>
                       <th>User</th>
-                      <th>Student ID</th>
+                      <th>School ID</th>
                       <th>Expected Return</th>
                       <th class="text-end">Actions</th>
                     </tr>
@@ -4504,7 +4504,7 @@ try {
                               <th>Serial ID</th>
                               <th>Model</th>
                               <th>User</th>
-                              <th>Student ID</th>
+                              <th>School ID</th>
                               <th class="text-end">Actions</th>
                             </tr>
                           </thead>
@@ -4558,7 +4558,7 @@ try {
                               <th>Serial ID</th>
                               <th>Model</th>
                               <th>User</th>
-                              <th>Student ID</th>
+                              <th>School ID</th>
                               <th class="text-end">Actions</th>
                             </tr>
                           </thead>
@@ -4687,7 +4687,7 @@ try {
                       <th>Item</th>
                       <th>Location</th>
                       <th>Borrowed By</th>
-                      <th>Student ID</th>
+                      <th>School ID</th>
                     </tr>
                   </thead>
                   <tbody id="overdueTbody">
@@ -4794,7 +4794,7 @@ try {
                     <tr>
                       <th>Req ID</th>
                       <th>User</th>
-                      <th>Student ID</th>
+                      <th>School ID</th>
                       <th>Item</th>
                       <th class="text-end">Actions</th>
                     </tr>
@@ -5149,7 +5149,7 @@ try {
       } catch(_) { return String(dt); }
     }
     function renderReservations(d){ const tb=document.getElementById('reservationsTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.reservations))?d.reservations:[]; if(!list.length){ rows.push('<tr><td colspan="5" class="text-center text-muted">No approved reservations.</td></tr>'); } else { list.forEach(function(r){ rows.push('<tr class="reservation-row" role="button" tabindex="0"'+
-      ' data-user="'+escapeHtml(r.username||'')+'"'+
+      ' data-user="'+escapeHtml((r.user_full_name||r.username||''))+'"'+
       ' data-school_id="'+escapeHtml(r.school_id||'')+'"'+
       ' data-item="'+escapeHtml(r.item_name||'')+'"'+
       ' data-category="'+escapeHtml(r.category||'')+'"'+
@@ -5158,13 +5158,13 @@ try {
       ' data-rend_raw="'+escapeHtml(String(r.reserved_to||''))+'"'+
       '>'+
       '<td>'+parseInt(r.id||0,10)+'</td>'+
-      '<td>'+escapeHtml(r.username||'')+'</td>'+
+      '<td>'+escapeHtml((r.user_full_name||r.username||''))+'</td>'+
       '<td>'+escapeHtml(r.school_id||'')+'</td>'+
       '<td>'+escapeHtml(r.item_name||'')+'</td>'+
       '<td class="text-end">'+
         '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Reservation Actions">'+
-          '<button type="button" class="btn btn-sm btn-outline-primary border border-dark rounded-start py-0 px-1 lh-1 fs-6" title="Edit Serial" aria-label="Edit Serial" data-bs-toggle="modal" data-bs-target="#editResSerialModal" data-reqid="'+parseInt(r.id||0,10)+'" data-item="'+escapeHtml(r.item_name||'')+'" data-serial="'+escapeHtml(String(r.reserved_serial_no||''))+'"><i class="bi bi-pencil-square"></i> Edit</button>'+
-          '<a href="admin_borrow_center.php?action=cancel_reservation&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-outline-danger border border-dark rounded-end py-0 px-1 lh-1 fs-6" title="Cancel" aria-label="Cancel" onclick="return confirm(\'Cancel this reservation?\');"><i class="bi bi-x"></i> Cancel</a>'+
+         '<button type="button" class="btn btn-sm btn-outline-primary border border-dark rounded-start py-0 px-1 lh-1 fs-6" title="Edit Serial" aria-label="Edit Serial" data-bs-toggle="modal" data-bs-target="#editResSerialModal" data-reqid="'+parseInt(r.id||0,10)+'" data-item="'+escapeHtml(r.item_name||'')+'" data-serial="'+escapeHtml(String(r.reserved_serial_no||''))+'"><i class="bi bi-pencil-square"></i> Edit</button>'+
+         '<a href="admin_borrow_center.php?action=cancel_reservation&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-outline-danger border border-dark rounded-end py-0 px-1 lh-1 fs-6" title="Cancel" aria-label="Cancel" onclick="return confirm(\'Cancel this reservation?\');"><i class="bi bi-x"></i> Cancel</a>'+
         '</div>'+
       '</td>'+
     '</tr>'); }); }
@@ -5302,7 +5302,7 @@ try {
           <div class="mb-2"><strong>Model:</strong> <span id="rtdModel"></span></div>
           <div class="mb-2"><strong>Category:</strong> <span id="rtdCategory"></span></div>
           <div class="mb-2"><strong>Last Borrower:</strong> <span id="rtdLast"></span></div>
-          <div class="mb-2"><strong>Student ID:</strong> <span id="rtdSid"></span></div>
+          <div class="mb-2"><strong>School ID:</strong> <span id="rtdSid"></span></div>
           <div class="mb-2"><strong>Returned At:</strong> <span id="rtdReturned"></span></div>
         </div>
         <div class="modal-footer">
@@ -5490,7 +5490,7 @@ try {
         </div>
         <div class="modal-body">
           <div class="mb-2"><strong>User:</strong> <span id="rvUser"></span></div>
-          <div class="mb-2"><strong>Student ID:</strong> <span id="rvSid"></span></div>
+          <div class="mb-2"><strong>School ID:</strong> <span id="rvSid"></span></div>
           <div class="mb-2"><strong>Item:</strong> <span id="rvItem"></span></div>
           <div class="mb-2"><strong>Category:</strong> <span id="rvCategory"></span></div>
           <div class="mb-2"><strong>Location:</strong> <span id="rvLocation"></span></div>
@@ -5522,7 +5522,7 @@ try {
               <span class="input-group-text">New Serial ID</span>
               <input type="text" class="form-control" name="serial_no" id="ersSerial" placeholder="Enter Serial ID" required />
             </div>
-            <div class="form-text mt-1">Works only for multi-unit models. Serial must belong to the same model; conflicts with other approved reservations are blocked.</div>
+            
             <div id="ersValMsg" class="form-text mt-1"></div>
             <div class="mt-2 d-flex gap-2">
               <button type="button" class="btn btn-sm btn-outline-secondary" id="ersViewAvailBtn"><i class="bi bi-list-ul me-1"></i>View Available List</button>
@@ -6222,7 +6222,7 @@ try {
                   <th>Model</th>
                   <th>Category</th>
                   <th>User</th>
-                  <th>Student ID</th>
+                  <th>School ID</th>
                   <th>Location</th>
                   <th>Event</th>
                   <th>By</th>
