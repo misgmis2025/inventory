@@ -1431,3 +1431,23 @@ a:hover { opacity: .9; }
 
 /* Extra small buttons (e.g., notifications Clear All) */
 .btn-2xs { padding: 0.12rem 0.4rem !important; font-size: 0.72rem !important; line-height: 1 !important; border-width: 1px !important; }
+
+/* Admin bell dropdown: hide scrollbars but keep scrollability */
+#adminBellDropdown {
+  -ms-overflow-style: none;       /* IE/Edge */
+  scrollbar-width: none;          /* Firefox */
+}
+#adminBellDropdown::-webkit-scrollbar { /* Chrome/Safari */
+  width: 0;
+  height: 0;
+}
+
+/* Prevent hover flicker inside the notification dropdown */
+#adminBellDropdown .list-group-item {
+  transition: background-color .15s ease, color .15s ease; /* no transform */
+}
+#adminBellDropdown .list-group-item:hover {
+  transform: none !important;
+  box-shadow: none !important;
+  background-color: #f8f9fa; /* subtle hover */
+}

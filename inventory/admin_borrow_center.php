@@ -6405,11 +6405,9 @@ try {
           var tcat = (tr.getAttribute('data-category') || '').toLowerCase();
           var ok = true;
           if (ev) {
-            if (ev === 'found' || ev === 'fixed') {
-              if (tcur !== ev) ok = false;
-            } else {
-              if (tev !== ev) ok = false;
-            }
+            var matchCurrent = (ev === 'found' || ev === 'fixed' || ev === 'permanently lost' || ev === 'disposed');
+            if (matchCurrent) { if (tcur !== ev) ok = false; }
+            else { if (tev !== ev) ok = false; }
           }
           if (cur && tcur !== cur) ok = false;
           if (q && !(tmodel.includes(q) || tcat.includes(q))) ok = false;
