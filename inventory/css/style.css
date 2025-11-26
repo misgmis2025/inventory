@@ -1407,3 +1407,18 @@ a:hover { opacity: .9; }
 .search-pill .form-control { border: 0; background: transparent; box-shadow: none !important; }
 .search-pill:focus-within { border-color: #0a58ca; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25), 0 6px 14px rgba(13,110,253,.18); }
 .search-pill .form-control::placeholder { color: #64748b; }
+
+.btn-outline-secondary { border: 1px solid rgba(100,116,139,.55) !important; color: #334155 !important; background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%) !important; box-shadow: 0 2px 8px rgba(15,23,42,.08) !important; border-radius: 12px !important; }
+.btn-outline-secondary:hover { background: linear-gradient(180deg, #eef5ff 0%, #e7f0ff 100%) !important; color: #0a58ca !important; border-color: rgba(13,110,253,.45) !important; box-shadow: 0 8px 18px rgba(13,110,253,.22) !important; transform: translateY(-1px); }
+.btn-outline-secondary:active { transform: translateY(0) scale(.98); box-shadow: 0 2px 8px rgba(15,23,42,.12) inset !important; }
+.btn-outline-secondary:focus { box-shadow: 0 0 0 .2rem rgba(13,110,253,.25) !important; }
+
+.btn-secondary { background: linear-gradient(135deg, #64748b 0%, #475569 100%) !important; border-color: #475569 !important; color: #fff !important; box-shadow: 0 10px 18px rgba(71,85,105,.25) !important; border-radius: 12px !important; }
+.btn-secondary:hover { transform: translateY(-1px); box-shadow: 0 14px 26px rgba(71,85,105,.32) !important; }
+.btn-secondary:active { transform: translateY(0) scale(.98); box-shadow: 0 2px 8px rgba(15,23,42,.22) inset !important; }
+
+.btn-light { background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%) !important; border: 1px solid #cbd5e1 !important; color: #0f172a !important; box-shadow: 0 2px 8px rgba(15,23,42,.08) !important; border-radius: 12px !important; }
+.btn-light:hover { background: linear-gradient(180deg, #eef5ff 0%, #e7f0ff 100%) !important; transform: translateY(-1px); box-shadow: 0 8px 16px rgba(13,110,253,.16) !important; }
+.btn-light:active { transform: translateY(0) scale(.98); box-shadow: 0 2px 8px rgba(15,23,42,.12) inset !important; }
+
+.btn-outline-secondary .bi, .btn-secondary .bi, .btn-light .bi { color: inherit !important; }
