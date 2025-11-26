@@ -39,7 +39,6 @@ $filter_status = trim($_GET['status'] ?? '');
 // Normalize status filter to match stored values
 if ($filter_status === 'Maintenance') { $filter_status = 'Under Maintenance'; }
 $filter_category = trim($_GET['category'] ?? '');
-$filter_condition = trim($_GET['condition'] ?? '');
 $filter_supply = trim($_GET['supply'] ?? '');
 $date_from = trim($_GET['date_from'] ?? '');
 $date_to = trim($_GET['date_to'] ?? '');
@@ -70,7 +69,6 @@ if (defined('USE_MONGO') && USE_MONGO) {
       }
     }
     if ($filter_category !== '') { $match['category'] = $filter_category; }
-    if ($filter_condition !== '') { $match['condition'] = $filter_condition; }
     if ($filter_supply !== '') {
       if ($filter_supply === 'low') { $match['quantity'] = ['$lt' => 10]; }
       elseif ($filter_supply === 'average') { $match['quantity'] = ['$gt' => 10, '$lt' => 50]; }
@@ -755,15 +753,6 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                     </select>
                   </div>
                   <div class="mb-2">
-                    <label class="form-label mb-1">Condition</label>
-                    <select name="condition" class="form-select">
-                      <option value="">Condition</option>
-                      <?php foreach (["Good","Damaged","Need replacement"] as $cond): ?>
-                        <option value="<?php echo htmlspecialchars($cond); ?>" <?php echo ($filter_condition ?? '') === $cond ? 'selected' : ''; ?>><?php echo htmlspecialchars($cond); ?></option>
-                      <?php endforeach; ?>
-                    </select>
-                  </div>
-                  <div class="mb-2">
                     <label class="form-label mb-1">Supply</label>
                     <select name="supply" class="form-select">
                       <option value="">Supply</option>
@@ -802,7 +791,6 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
               <input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
               <input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
-              <input type="hidden" name="condition" value="<?php echo htmlspecialchars($filter_condition ?? ''); ?>" />
               <input type="hidden" name="supply" value="<?php echo htmlspecialchars($filter_supply ?? ''); ?>" />
               <input type="hidden" name="sid" value="<?php echo htmlspecialchars($serial_id_search_raw ?? ''); ?>" />
               <input type="hidden" name="loc" value="<?php echo htmlspecialchars($location_search_raw ?? ''); ?>" />
@@ -813,7 +801,6 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
               <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
               <input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
               <input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
-              <input type="hidden" name="condition" value="<?php echo htmlspecialchars($filter_condition ?? ''); ?>" />
               <input type="hidden" name="supply" value="<?php echo htmlspecialchars($filter_supply ?? ''); ?>" />
               <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
               <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
@@ -879,16 +866,7 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                     </select>
                   </div>
                   <div class="row g-2">
-                    <div class="col-6">
-                      <label class="form-label mb-1">Condition</label>
-                      <select name="condition" class="form-select">
-                        <option value="">Condition</option>
-                        <?php foreach (["Good","Damaged","Need replacement"] as $cond): ?>
-                          <option value="<?php echo htmlspecialchars($cond); ?>" <?php echo ($filter_condition ?? '') === $cond ? 'selected' : ''; ?>><?php echo htmlspecialchars($cond); ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                    </div>
-                    <div class="col-6">
+                    <div class="col-12">
                       <label class="form-label mb-1">Supply</label>
                       <select name="supply" class="form-select">
                         <option value="">Supply</option>
