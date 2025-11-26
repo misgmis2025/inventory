@@ -724,102 +724,11 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
             <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#searchModal">
               <i class="bi bi-funnel me-1"></i>Filter
             </button>
-            <form method="GET" class="d-flex align-items-center gap-2 d-none">
-              <div class="dropdown">
-                <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-display="static" data-bs-container="body" aria-expanded="false">
-                  <i class="bi bi-funnel me-1"></i>Filter
-                </button>
-                <div class="dropdown-menu p-3" style="min-width: 280px;">
-                  <div class="mb-2">
-                    <label class="form-label mb-1">Status</label>
-                    <select name="status" class="form-select">
-                      <option value="">Status</option>
-                      <?php
-                        // Desired order
-                        $statuses = ['Available','In Use','Reserved','Lost','Maintenance','Out of Order'];
-                        foreach ($statuses as $st) {
-                          $sel = ($filter_status ?? '') === $st ? 'selected' : '';
-                          echo '<option value="'.htmlspecialchars($st).'" '.$sel.'>'.htmlspecialchars($st).'</option>';
-                        }
-                      ?>
-                    </select>
-                  </div>
-                  <div class="mb-2">
-                    <label class="form-label mb-1">Category</label>
-                    <select name="category" class="form-select">
-                      <option value="">Category</option>
-                      <?php foreach ($categoryOptions as $cat): ?>
-                        <option value="<?php echo htmlspecialchars($cat); ?>" <?php echo ($filter_category ?? '') === $cat ? 'selected' : ''; ?>><?php echo htmlspecialchars($cat); ?></option>
-                      <?php endforeach; ?>
-                    </select>
-                  </div>
-                  <div class="mb-2">
-                    <label class="form-label mb-1">Supply</label>
-                    <select name="supply" class="form-select">
-                      <option value="">Supply</option>
-                      <option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low</option>
-                      <option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average</option>
-                      <option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High</option>
-                    </select>
-                  </div>
-                  <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-check2 me-1"></i>Apply</button>
-                    <a href="inventory_print.php" class="btn btn-outline-secondary w-100">Reset</a>
-                  </div>
-                </div>
-              </div>
-            </form>
-            <form method="GET" class="d-flex align-items-center gap-2 d-none">
-              <div class="dropdown">
-                <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-display="static" data-bs-container="body" aria-expanded="false">
-                  <i class="bi bi-calendar-range me-1"></i>Filter Date
-                </button>
-                <div class="dropdown-menu p-3" style="min-width: 280px;">
-                  <div class="mb-2">
-                    <label class="form-label mb-1">From</label>
-                    <input type="date" name="date_from" class="form-control" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
-                  </div>
-                  <div class="mb-2">
-                    <label class="form-label mb-1">To</label>
-                    <input type="date" name="date_to" class="form-control" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
-                  </div>
-                  <div class="d-flex gap-2">
-                    <button class="btn btn-primary w-100" type="submit"><i class="bi bi-check2 me-1"></i>Apply</button>
-                    <button class="btn btn-outline-secondary w-100" type="button" onclick="const f=this.closest('form'); f.querySelector('[name=\'date_from\']').value=''; f.querySelector('[name=\'date_to\']').value=''; f.submit();">Reset</button>
-                  </div>
-                </div>
-              </div>
-              <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
-              <input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
-              <input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
-              <input type="hidden" name="supply" value="<?php echo htmlspecialchars($filter_supply ?? ''); ?>" />
-              <input type="hidden" name="sid" value="<?php echo htmlspecialchars($serial_id_search_raw ?? ''); ?>" />
-              <input type="hidden" name="loc" value="<?php echo htmlspecialchars($location_search_raw ?? ''); ?>" />
-            </form>
-            <a class="btn btn-outline-secondary btn-sm d-none" href="inventory_print.php" title="Reset filters">Reset</a>
-            <button class="btn btn-primary btn-sm d-none" type="button" id="openPrintModalBtn"><i class="bi bi-printer me-1"></i>Print</button>
-            <form method="GET" class="d-inline-block ms-2 d-none">
-              <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
-              <input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
-              <input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
-              <input type="hidden" name="supply" value="<?php echo htmlspecialchars($filter_supply ?? ''); ?>" />
-              <input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
-              <input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
-              <input type="hidden" name="cat_id" value="<?php echo htmlspecialchars($_GET['cat_id'] ?? ''); ?>" />
-              <input type="hidden" name="sid" value="<?php echo htmlspecialchars($_GET['sid'] ?? ($_GET['mid'] ?? '')); ?>" />
-              <input type="hidden" name="loc" value="<?php echo htmlspecialchars($_GET['loc'] ?? ''); ?>" />
-              <button type="button" id="openQrPreviewBtn" class="btn btn-info btn-sm" onclick="window.open('qr_print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>', '_blank')"><i class="bi bi-qr-code me-1"></i>Print QR</button>
-            </form>
-            <button type="button" id="printBorrowHistoryBtn" class="btn btn-outline-secondary btn-sm ms-2 d-none"
-              data-date-from="<?php echo htmlspecialchars($date_from ?? ''); ?>"
-              data-date-to="<?php echo htmlspecialchars($date_to ?? ''); ?>">
-              <i class="bi bi-clock-history me-1"></i>Print Borrow History
-            </button>
-            <div class="dropdown ms-auto">
+            <div class="dropdown">
               <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="bi bi-printer me-1"></i>Print
               </button>
-              <ul class="dropdown-menu dropdown-menu-end">
+              <ul class="dropdown-menu">
                 <li><button type="button" class="dropdown-item" onclick="window.print()"><i class="bi bi-printer me-2"></i>Print Inventory</button></li>
                 <li><a class="dropdown-item" target="_blank" rel="noopener" href="qr_print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>"><i class="bi bi-qr-code me-2"></i>Print QR</a></li>
                 <li><a class="dropdown-item" target="_blank" rel="noopener" href="borrow_history_print.php<?php $qs=[]; if (!empty($date_from)) $qs['date_from']=$date_from; if (!empty($date_to)) $qs['date_to']=$date_to; echo !empty($qs)?('?'.htmlspecialchars(http_build_query($qs))):''; ?>"><i class="bi bi-clock-history me-2"></i>Print Borrow History</a></li>
