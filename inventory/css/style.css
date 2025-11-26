@@ -1422,3 +1422,9 @@ a:hover { opacity: .9; }
 .btn-light:active { transform: translateY(0) scale(.98); box-shadow: 0 2px 8px rgba(15,23,42,.12) inset !important; }
 
 .btn-outline-secondary .bi, .btn-secondary .bi, .btn-light .bi { color: inherit !important; }
+
+/* Enforce scoped table filtering (admin borrow center) */
+#pendingTbody tr[data-filtered="0"],
+#borrowedTbody tr[data-filtered="0"] { display: none !important; }
+#pendingTbody tr[data-filtered="1"],
+#borrowedTbody tr[data-filtered="1"] { display: table-row !important; }

@@ -6723,10 +6723,14 @@ try {
             var hay = '';
             (attrKeys||[]).forEach(function(k){ hay += ' ' + norm(tr.getAttribute(k)||''); });
             hay += ' ' + norm(tr.textContent||'');
-            tr.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+            var match = (!q || hay.indexOf(q) !== -1);
+            tr.setAttribute('data-filtered', match ? '1' : '0');
+            if (match) { try{ tr.style.removeProperty('display'); }catch(_){} } else { tr.style.display = 'none'; }
           });
         }
         inp.addEventListener('input', apply);
+        // initialize state so CSS can enforce visibility
+        apply();
       }
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function(){
