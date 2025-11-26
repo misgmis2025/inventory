@@ -1967,10 +1967,22 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
         // Resolve student id from users for borrower
         $uname = (string)($ub['username'] ?? '');
         $sid = '';
-        if ($uname !== '') { try { $u = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1]]); if ($u && isset($u['school_id'])) { $sid = (string)$u['school_id']; } } catch (Throwable $_) { $sid = ''; } }
+        $ufull = $uname;
+        if ($uname !== '') {
+          try {
+            $u = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]);
+            if ($u) {
+              if (isset($u['school_id'])) { $sid = (string)$u['school_id']; }
+              if (isset($u['full_name']) && trim((string)$u['full_name'])!=='') { $ufull = (string)$u['full_name']; }
+              elseif (isset($u['first_name']) || isset($u['last_name'])) { $ufull = trim((string)($u['first_name']??'').' '.(string)($u['last_name']??'')); }
+              elseif (isset($u['name']) && trim((string)$u['name'])!=='') { $ufull = (string)$u['name']; }
+            }
+          } catch (Throwable $_) { /* keep defaults */ }
+        }
         $rows[] = [
           'request_id' => $reqId,
           'username' => $uname,
+          'user_full_name' => $ufull,
           'school_id' => $sid,
           'model_id' => $mid,
           'serial_no' => $ii ? (string)($ii['serial_no'] ?? '') : '',
@@ -2137,7 +2149,8 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
         foreach ($rq as $doc) {
           $uname = (string)($doc['username'] ?? '');
           $sid = '';
-          if ($uname !== '') { try { $u = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1]]); if ($u && isset($u['school_id'])) { $sid = (string)$u['school_id']; } } catch (Throwable $_) { $sid = ''; } }
+          $ufull = $uname;
+          if ($uname !== '') { try { $u = $uCol->findOne(['username'=>$uname], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]); if ($u) { if (isset($u['school_id'])) { $sid = (string)$u['school_id']; } if (isset($u['full_name']) && trim((string)$u['full_name'])!=='') { $ufull = (string)$u['full_name']; } elseif (isset($u['first_name']) || isset($u['last_name'])) { $ufull = trim((string)($u['first_name']??'').' '.(string)($u['last_name']??'')); } elseif (isset($u['name']) && trim((string)$u['name'])!=='') { $ufull = (string)$u['name']; } } } catch (Throwable $_) { $sid = $sid; $ufull = $ufull; } }
           // Resolve category and location for display from inventory_items
           $itemName = (string)($doc['item_name'] ?? '');
           $iiDoc = null;
@@ -2171,6 +2184,7 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           $rows[] = [
             'id' => (int)($doc['id'] ?? 0),
             'username' => $uname,
+            'user_full_name' => $ufull,
             'school_id' => $sid,
             'item_name' => (string)($doc['item_name'] ?? ''),
             'reserved_from' => (string)($doc['reserved_from'] ?? ''),
@@ -5124,7 +5138,7 @@ try {
     '</tr>'); }); }
       tb.innerHTML=rows.join(''); }
     function renderBorrowed(d){ const tb=document.getElementById('borrowedTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.borrowed))?d.borrowed:[]; if(!list.length){ rows.push('<tr><td colspan="6" class="text-center text-muted">No active borrowed items.</td></tr>'); } else { list.forEach(function(b){ const dt = b.expected_return_display? String(b.expected_return_display) : (b.expected_return_at? String(b.expected_return_at):''); const typ = (b && b.type) ? String(b.type) : (((b && b.qr_serial_no) ? 'QR' : 'Manual')); const rawExp=(b && (b.expected_return_at||b.reserved_to))? String(b.expected_return_at||b.reserved_to):''; let t=NaN; if(rawExp){ try{ t=new Date(rawExp.replace(' ','T')).getTime(); }catch(_){ t=NaN; } } const overdue = !!(rawExp && !isNaN(t) && t < Date.now()); const expHtml = escapeHtml(dt) + (overdue ? ' <span class="text-danger" title="Overdue"><i class="bi bi-exclamation-circle-fill"></i></span>' : ''); rows.push('<tr class="borrowed-row" role="button" tabindex="0" data-bs-toggle="modal" data-bs-target="#borrowedDetailsModal"'+
-      ' data-user="'+escapeHtml(b.username||'')+'"'+
+      ' data-user="'+escapeHtml((b.user_full_name||b.username||''))+'"'+
       ' data-serial="'+escapeHtml(b.serial_no||'')+'"'+
       ' data-model="'+escapeHtml(b.model||'')+'"'+
       ' data-category="'+escapeHtml(b.category||'')+'"'+
@@ -5133,7 +5147,7 @@ try {
       '>'+ 
       '<td>'+parseInt(b.request_id||0,10)+'</td>'+ 
       '<td>'+escapeHtml(typ)+'</td>'+ 
-      '<td>'+escapeHtml(b.username||'')+'</td>'+ 
+      '<td>'+escapeHtml((b.user_full_name||b.username||''))+'</td>'+ 
       '<td>'+escapeHtml(b.school_id||'')+'</td>'+ 
       '<td>'+expHtml+'</td>'+ 
       '<td class="text-end">'+ 
