@@ -1428,3 +1428,6 @@ a:hover { opacity: .9; }
 #borrowedTbody tr[data-filtered="0"] { display: none !important; }
 #pendingTbody tr[data-filtered="1"],
 #borrowedTbody tr[data-filtered="1"] { display: table-row !important; }
+
+/* Extra small buttons (e.g., notifications Clear All) */
+.btn-2xs { padding: 0.12rem 0.4rem !important; font-size: 0.72rem !important; line-height: 1 !important; border-width: 1px !important; }

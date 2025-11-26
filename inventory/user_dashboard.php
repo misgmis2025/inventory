@@ -244,7 +244,10 @@ if (!$USED_MONGO) {
                             <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="userBellDot"></span>
                         </button>
                         <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdown" style="min-width: 320px !important; max-width: 360px !important; width: auto !important; max-height: 360px; overflow:auto; z-index: 1070;">
-                            <div class="px-3 py-2 border-bottom fw-bold small">Request Updates</div>
+                            <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                              <span class="fw-bold small">Request Updates</span>
+                              <button type="button" class="btn-close" id="userBellClose" aria-label="Close"></button>
+                            </div>
                             <div id="userNotifList" class="list-group list-group-flush small"></div>
                             <div class="text-center small text-muted py-2" id="userNotifEmpty">No updates yet.</div>
                             <div class="border-top p-2 text-center">
@@ -540,6 +543,8 @@ if (!$USED_MONGO) {
                     try { poll(true); } catch(_){ }
                 });
                 document.addEventListener('click', function(){ dropdown.classList.remove('show'); dropdown.style.display=''; closeMobileModal(); });
+                const uBellClose = document.getElementById('userBellClose');
+                if (uBellClose) { uBellClose.addEventListener('click', function(ev){ ev.stopPropagation(); dropdown.classList.remove('show'); dropdown.style.display=''; }); }
                 if (mBackdrop) mBackdrop.addEventListener('click', closeMobileModal);
                 if (mClose) mClose.addEventListener('click', closeMobileModal);
             }

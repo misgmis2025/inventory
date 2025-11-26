@@ -6733,8 +6733,11 @@ try {
         inp.addEventListener('input', apply);
         inp.addEventListener('keyup', apply);
         inp.addEventListener('change', apply);
-        var mo = new MutationObserver(function(){ apply(); });
-        try { mo.observe(tb, {subtree:true, attributes:true, childList:true}); } catch(_){ }
+        // Observe only row additions/removals to avoid loops from our own attribute writes
+        var mo = new MutationObserver(function(muts){
+          for (var i=0;i<muts.length;i++){ if (muts[i].type === 'childList') { apply(); break; } }
+        });
+        try { mo.observe(tb, { childList: true }); } catch(_){ }
         // initialize state so CSS can enforce visibility
         apply();
       }

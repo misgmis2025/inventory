@@ -187,7 +187,10 @@ try {
                             <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="adminBellDot"></span>
                         </button>
                         <div class="dropdown-menu dropdown-menu-end shadow" id="adminBellDropdown" style="min-width: 320px; max-height: 360px; overflow:auto;">
-                            <div class="px-3 py-2 border-bottom fw-bold small">Pending Borrow Requests</div>
+                            <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                              <span class="fw-bold small">Pending Borrow Requests</span>
+                              <button type="button" class="btn-close" id="adminBellClose" aria-label="Close"></button>
+                            </div>
                             <div id="adminNotifList" class="list-group list-group-flush small"></div>
                             <div class="text-center small text-muted py-2" id="adminNotifEmpty">No new requests.</div>
                             <div class="border-top p-2 text-center">
@@ -320,6 +323,10 @@ try {
                     if (bellDot) bellDot.classList.add('d-none');
                 });
                 document.addEventListener('click', ()=>dropdown.classList.remove('show'));
+                const bellClose = document.getElementById('adminBellClose');
+                if (bellClose) {
+                    bellClose.addEventListener('click', function(ev){ ev.stopPropagation(); dropdown.classList.remove('show'); });
+                }
             }
             let toastWrap = document.getElementById('adminToastWrap');
             if (!toastWrap) { toastWrap=document.createElement('div'); toastWrap.id='adminToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080'; document.body.appendChild(toastWrap); }
@@ -342,7 +349,7 @@ try {
                       + '</a>');
                 });
                 if ((recent||[]).length){
-                  rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary" id="admClearAllBtn">Clear All</button></div></div>');
+                  rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="admClearAllBtn">Clear All</button></div></div>');
                   (recent||[]).forEach(r=>{
                     const id=parseInt(r.id||0,10);
                     const nm=String(r.item_name||'');

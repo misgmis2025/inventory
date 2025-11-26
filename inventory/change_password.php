@@ -237,7 +237,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="adminBellDot"></span>
                         </button>
                         <div class="dropdown-menu dropdown-menu-end shadow" id="adminBellDropdown" style="min-width: 320px; max-height: 360px; overflow:auto;">
-                            <div class="px-3 py-2 border-bottom fw-bold small">Pending Borrow Requests</div>
+                            <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                              <span class="fw-bold small">Pending Borrow Requests</span>
+                              <button type="button" class="btn-close" id="adminBellClose" aria-label="Close"></button>
+                            </div>
                             <div id="adminNotifList" class="list-group list-group-flush small"></div>
                             <div class="text-center small text-muted py-2 d-none" id="adminNotifEmpty"></div>
                             <div class="border-top p-2 text-center">
@@ -252,7 +255,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="userBellDotCP"></span>
                         </button>
                         <div class="dropdown-menu dropdown-menu-end shadow" id="userBellDropdownCP" style="min-width: 320px !important; max-width: 360px !important; width: auto !important; max-height: 360px; overflow:auto;">
-                            <div class="px-3 py-2 border-bottom fw-bold small">Request Updates</div>
+                            <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                              <span class="fw-bold small">Request Updates</span>
+                              <button type="button" class="btn-close" id="userBellCloseCP" aria-label="Close"></button>
+                            </div>
                             <div id="userNotifListCP" class="list-group list-group-flush small"></div>
                             <div class="text-center small text-muted py-2" id="userNotifEmptyCP">No updates yet.</div>
                             <div class="border-top p-2 text-center">
