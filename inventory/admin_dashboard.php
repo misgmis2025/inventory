@@ -559,6 +559,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             function showToast(msg){ const el=document.createElement('div'); el.className='alert alert-info shadow-sm border-0'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); setTimeout(()=>{ try{ el.remove(); }catch(_){ } }, 5000); }
             let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){}}
             function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+            function fmt12(txt){ try{ const s=String(txt||'').trim(); const m=s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/); if(!m) return s; const date=m[1]; const H=parseInt(m[2],10); const mm=m[3]; const ap=(H>=12?'pm':'am'); let h=H%12; if(h===0) h=12; return date+' '+h+':'+mm+ap; } catch(_){ return String(txt||''); } }
 
             let baselineIds = new Set();
             let initialized = false;
@@ -575,7 +576,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     rows.push('<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
                       + '<div class="d-flex w-100 justify-content-between">'
                       +   '<strong>#'+id+'</strong>'
-                      +   '<small class="text-muted">'+escapeHtml(whenTxt)+'</small>'
+                      +   '<small class="text-muted">'+escapeHtml(fmt12(whenTxt))+'</small>'
                       + '</div>'
                       + '<div class="mb-0">'+escapeHtml(user)+' requests '+escapeHtml(nm)+' <span class="badge bg-secondary">x'+qty+'</span></div>'
                       + '</a>');
@@ -588,9 +589,9 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     const st = String(r.status||'');
                     const whenTxt = String(r.processed_at||'');
                     const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
-                    rows.push('<div class="list-group-item d-flex justify-content-between align-items-start"+'
+                    rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
                       + '<div class="me-2">'
-                      +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(whenTxt)+'</small></div>'
+                      +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(fmt12(whenTxt))+'</small></div>'
                       +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
                       + '</div>'
                       + '<div><button type="button" class="btn-close adm-clear-one" aria-label="Clear" data-id="'+id+'"></button></div>'

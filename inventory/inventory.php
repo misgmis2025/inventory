@@ -2360,6 +2360,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 		let fetching = false;
 		function renderCombined(pending, recent){
 			const rows = [];
+			function fmt12(txt){ try{ const s=String(txt||'').trim(); const m=s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/); if(!m) return s; const date=m[1]; const H=parseInt(m[2],10); const mm=m[3]; const ap=(H>=12?'pm':'am'); let h=H%12; if(h===0) h=12; return date+' '+h+':'+mm+ap; } catch(_){ return String(txt||''); } }
 			(pending||[]).forEach(function(r){
 				const id = parseInt(r.id||0,10);
 				const user = String(r.username||'');
@@ -2369,7 +2370,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 				rows.push('<a href="admin_borrow_center.php" class="list-group-item list-group-item-action">'
 					+ '<div class="d-flex w-100 justify-content-between">'
 					+   '<strong>#'+id+'</strong>'
-					+   '<small class="text-muted">'+escapeHtml(when)+'</small>'
+					+   '<small class="text-muted">'+escapeHtml(fmt12(when))+'</small>'
 					+ '</div>'
 					+ '<div class="mb-0">'+escapeHtml(user)+' requests '+escapeHtml(nm)+' <span class="badge bg-secondary">x'+qty+'</span></div>'
 					+ '</a>');
@@ -2384,10 +2385,10 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 					const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
 					rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
 					  + '<div class="me-2">'
-					  +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(when)+'</small></div>'
+					  +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(fmt12(when))+'</small></div>'
 					  +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
 					  + '</div>'
-					  + '<div><button type="button" class="btn btn-sm btn-outline-secondary adm-clear-one" data-id="'+id+'">Clear</button></div>'
+					  + '<div><button type="button" class="btn-close adm-clear-one" aria-label="Clear" data-id="'+id+'"></button></div>'
 					  + '</div>');
 				});
 			}
