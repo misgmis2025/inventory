@@ -2109,14 +2109,17 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           $reqId = (int)($er['id'] ?? 0); if ($reqId<=0) continue;
           $itemName = trim((string)($er['item_name'] ?? '')); if ($itemName==='') continue;
           $reservedMid = (int)($er['reserved_model_id'] ?? 0);
+          $reqLoc = trim((string)($er['request_location'] ?? ''));
           // Prefer the specifically assigned unit if provided
           if ($reservedMid > 0) {
-            $unit = $iiCol->findOneAndUpdate(['id'=>$reservedMid, 'status'=>'Available'], ['$set'=>['status'=>'In Use']], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
+            $set = ['status'=>'In Use']; if ($reqLoc !== '') { $set['location'] = $reqLoc; }
+            $unit = $iiCol->findOneAndUpdate(['id'=>$reservedMid, 'status'=>'Available'], ['$set'=>$set], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
           } else {
             // Find any available unit for this model
+            $set = ['status'=>'In Use']; if ($reqLoc !== '') { $set['location'] = $reqLoc; }
             $unit = $iiCol->findOneAndUpdate([
               'status'=>'Available', '$or'=>[['model'=>$itemName],['item_name'=>$itemName]]
-            ], ['$set'=>['status'=>'In Use']], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
+            ], ['$set'=>$set], ['returnDocument'=>MongoDB\Operation\FindOneAndUpdate::RETURN_DOCUMENT_AFTER]);
           }
           if (!$unit) { continue; }
           $mid = (int)($unit['id'] ?? 0);

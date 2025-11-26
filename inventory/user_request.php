@@ -5686,6 +5686,31 @@ if (!empty($my_requests)) {
       form.submit();
     }
 
+    function submitReserve(){
+      if (!lastData) return;
+      const src = lastData.data || {};
+      const reqLoc = (locInput && locInput.value) ? locInput.value.trim() : '';
+      if (!reqLoc){ setStatus('Request location is required.','text-danger'); return; }
+      const rf = document.getElementById('urResFrom');
+      const rt = document.getElementById('urResTo');
+      const s = rf ? String(rf.value||'').trim() : '';
+      const e = rt ? String(rt.value||'').trim() : '';
+      if (!s || !e){ setStatus('Please set reservation start and end.','text-danger'); return; }
+      const form=document.createElement('form'); form.method='POST'; form.action='user_request.php';
+      const add=(n,v)=>{ const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=String(v); form.appendChild(i); };
+      add('category', (lastData.vr && lastData.vr.category) ? lastData.vr.category : (src.category||'Uncategorized'));
+      add('model', (lastData.vr && lastData.vr.model) ? lastData.vr.model : (src.model||src.item_name||''));
+      add('quantity', 1);
+      add('details', 'Requested via QR scan');
+      add('req_location', reqLoc);
+      add('req_type', 'reservation');
+      add('reserved_from', s);
+      add('reserved_to', e);
+      if (lastData && lastData.serial_no) { add('qr_serial_no', lastData.serial_no); }
+      document.body.appendChild(form);
+      form.submit();
+    }
+
     if (borrowBtn) borrowBtn.addEventListener('click', submitBorrow);
     if (startBtn) startBtn.addEventListener('click', startScan);
     if (stopBtn) stopBtn.addEventListener('click', stopScan);
