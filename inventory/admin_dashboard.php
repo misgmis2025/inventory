@@ -883,23 +883,30 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
     </nav>
     <script>
       (function(){
-        var btn = document.getElementById('bnToggleDash');
-        var nav = document.getElementById('dashBottomNav');
-        if (btn && nav) {
-          btn.addEventListener('click', function(){
-            var hid = nav.classList.toggle('hidden');
-            btn.setAttribute('aria-expanded', String(!hid));
-            if (!hid) {
-              btn.classList.add('raised');
-              btn.title = 'Close menu';
-              var i = btn.querySelector('i'); if (i) { i.className = 'bi bi-x'; }
-            } else {
-              btn.classList.remove('raised');
-              btn.title = 'Open menu';
-              var i2 = btn.querySelector('i'); if (i2) { i2.className = 'bi bi-list'; }
-            }
+        try{
+          var btn = document.getElementById('bnToggleDash');
+          var nav = document.getElementById('dashBottomNav');
+          if (btn && nav) {
+            btn.addEventListener('click', function(){
+              var hid = nav.classList.toggle('hidden');
+              btn.setAttribute('aria-expanded', String(!hid));
+              if (!hid) {
+                btn.classList.add('raised');
+                btn.title = 'Close menu';
+                var i = btn.querySelector('i'); if (i) { i.className = 'bi bi-x'; }
+              } else {
+                btn.classList.remove('raised');
+                btn.title = 'Open menu';
+                var i2 = btn.querySelector('i'); if (i2) { i2.className = 'bi bi-list'; }
+              }
+            });
+          }
+          var p=(location.pathname.split('/').pop()||'').split('?')[0].toLowerCase();
+          document.querySelectorAll('.bottom-nav a[href]').forEach(function(a){
+            var h=(a.getAttribute('href')||'').split('?')[0].toLowerCase();
+            if(h===p){ a.classList.add('active'); a.setAttribute('aria-current','page'); }
           });
-        }
+        }catch(_){ }
       })();
     </script>
   

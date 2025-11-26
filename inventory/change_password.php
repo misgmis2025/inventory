@@ -937,5 +937,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           })();
         </script>
         <?php endif; ?>
-</body>
-</html>
+        <script>
+          (function(){
+            try{
+              var p=(location.pathname.split('/').pop()||'').split('?')[0].toLowerCase();
+              document.querySelectorAll('.bottom-nav a[href]').forEach(function(a){
+                var h=(a.getAttribute('href')||'').split('?')[0].toLowerCase();
+                if(h===p){ a.classList.add('active'); a.setAttribute('aria-current','page'); }
+              });
+            }catch(_){ }
+          })();
+        </script>
+      </body>
+      </html>
