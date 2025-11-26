@@ -3417,6 +3417,18 @@ try {
     }
   }
   $filtered = array_values($pickByTs);
+  $hasLostByModel = [];
+  foreach ($filtered as $l0) {
+    $mid0 = (int)($l0['model_id'] ?? 0);
+    $act0 = (string)($l0['action'] ?? '');
+    if ($mid0 > 0 && $act0 === 'Lost') { $hasLostByModel[$mid0] = true; }
+  }
+  $filtered = array_values(array_filter($filtered, function($l0) use ($hasLostByModel){
+    $mid0 = (int)($l0['model_id'] ?? 0);
+    $act0 = (string)($l0['action'] ?? '');
+    if ($act0 === 'Permanently Lost' && !empty($hasLostByModel[$mid0])) return false;
+    return true;
+  }));
   // Compute last action dates per model (use all logs, including Found/Fixed)
   $lastMap = [];
   foreach ($raw as $l) {
@@ -6378,7 +6390,13 @@ try {
           var tmodel = (tr.getAttribute('data-model') || '').toLowerCase();
           var tcat = (tr.getAttribute('data-category') || '').toLowerCase();
           var ok = true;
-          if (ev && tev !== ev) ok = false;
+          if (ev) {
+            if (ev === 'found' || ev === 'fixed') {
+              if (tcur !== ev) ok = false;
+            } else {
+              if (tev !== ev) ok = false;
+            }
+          }
           if (cur && tcur !== cur) ok = false;
           if (q && !(tmodel.includes(q) || tcat.includes(q))) ok = false;
           tr.style.display = ok ? '' : 'none';
