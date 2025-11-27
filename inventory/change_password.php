@@ -192,7 +192,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return;
                 var wrap = document.getElementById('userPersistentWrap');
                 if (!wrap) return;
-                wrap.style.bottom = open ? '140px' : '96px';
+                wrap.style.bottom = open ? '140px' : '64px';
+                // Keep right edge consistent; avoid horizontal shift
+                wrap.style.right = '8px';
+                // Popup remains non-interactive (click-through)
+                wrap.style.pointerEvents = 'none';
               }catch(_){ }
             }
             if (btn && nav) {
@@ -549,7 +553,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     wrap.style.right = '16px';
                     wrap.style.bottom = '16px';
                     wrap.style.left = '';
-                    wrap.style.zIndex = '1090';
+                    wrap.style.zIndex = '1030';
                     wrap.style.display = 'flex';
                     wrap.style.flexDirection = 'column';
                     wrap.style.gap = '8px';
@@ -583,8 +587,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     wrap.appendChild(el);
                     ding = true;
                 }
-                el.innerHTML = html;
-                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='150px'; el.style.maxWidth='180px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
+                const prev = parseInt(el.getAttribute('data-count')||'-1',10);
+                if (prev !== count) { el.setAttribute('data-count', String(count)); el.innerHTML = html; }
+                try {
+                  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+                    // Fix width to avoid resizing on nav toggle
+                    el.style.minWidth='180px';
+                    el.style.maxWidth='180px';
+                    el.style.padding='4px 6px';
+                    el.style.fontSize='10px';
+                    const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px';
+                  } else {
+                    el.style.minWidth='300px';
+                    el.style.maxWidth='340px';
+                    el.style.padding='';
+                    el.style.fontSize='';
+                  }
+                } catch(_){ }
                 if (ding) playBeep();
             }
             function notifPoll(){
