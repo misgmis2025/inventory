@@ -31,14 +31,127 @@ try {
     $db = get_mongo_db();
     $itemsCol = $db->selectCollection('inventory_items');
     
-    // Compute current total units across entire inventory (ignore date filters)
+    // Compute Total Units using same filter semantics as inventory.php
     $totalUnitsDisplay = 0;
     try {
-        $aggTot = $itemsCol->aggregate([
-            ['$project' => ['q' => ['$ifNull' => ['$quantity', 1]]]],
-            ['$group' => ['_id' => null, 'total' => ['$sum' => '$q']]]
-        ]);
-        foreach ($aggTot as $r) { $totalUnitsDisplay = (int)($r->total ?? 0); break; }
+        $excludedStatuses = ['Permanently Lost','Disposed'];
+        $kpiMatch = [];
+        // Filters from GET (mirror inventory.php)
+        $q = trim($_GET['q'] ?? '');
+        $status = trim($_GET['status'] ?? '');
+        $category = trim($_GET['category'] ?? '');
+        $condition = trim($_GET['condition'] ?? '');
+        $supply = trim($_GET['supply'] ?? '');
+        $locRaw = trim($_GET['loc'] ?? '');
+        $sid_raw = trim($_GET['sid'] ?? '');
+        $mid_raw = trim($_GET['mid'] ?? '');
+        $cat_id_raw = trim($_GET['cat_id'] ?? '');
+        $date_from = trim($_GET['date_from'] ?? '');
+        $date_to   = trim($_GET['date_to'] ?? '');
+
+        if ($q !== '') {
+            $kpiMatch['$or'] = [
+                ['item_name' => ['$regex' => $q, '$options' => 'i']],
+                ['serial_no' => ['$regex' => $q, '$options' => 'i']],
+                ['model' => ['$regex' => $q, '$options' => 'i']],
+            ];
+        }
+        if ($status !== '') {
+            // Mirror inventory.php: never include excluded statuses even if explicitly selected
+            if (in_array($status, $excludedStatuses, true)) { $kpiMatch['status'] = ['$nin' => $excludedStatuses]; }
+            else { $kpiMatch['status'] = $status; }
+        } else {
+            $kpiMatch['status'] = ['$nin' => $excludedStatuses];
+        }
+        if ($category !== '') { $kpiMatch['category'] = $category; }
+        if ($condition !== '') { $kpiMatch['condition'] = $condition; }
+        if ($supply !== '') {
+            if ($supply === 'low') { $kpiMatch['quantity'] = ['$lt' => 10]; }
+            elseif ($supply === 'average') { $kpiMatch['quantity'] = ['$gt' => 10, '$lt' => 50]; }
+            elseif ($supply === 'high') { $kpiMatch['quantity'] = ['$gt' => 50]; }
+        }
+        if ($date_from !== '' && $date_to !== '') { $kpiMatch['date_acquired'] = ['$gte' => $date_from, '$lte' => $date_to]; }
+        elseif ($date_from !== '') { $kpiMatch['date_acquired'] = ['$gte' => $date_from]; }
+        elseif ($date_to !== '') { $kpiMatch['date_acquired'] = ['$lte' => $date_to]; }
+        // Location filter will be applied in PHP with whole-word semantics to mirror inventory.php
+        $locGroups = [];
+        if ($locRaw !== '') {
+            $groups = preg_split('/\s*,\s*/', strtolower($locRaw));
+            foreach ($groups as $g) {
+                $g = trim($g); if ($g === '') continue;
+                $tokens = preg_split('/\s+/', $g);
+                $needles = [];
+                foreach ($tokens as $t) { $t = trim($t); if ($t !== '') { $needles[] = $t; } }
+                if (!empty($needles)) { $locGroups[] = $needles; }
+            }
+        }
+
+        // sid/mid token search (tokens AND within group, groups OR). Match across serial_no | item_name | model
+        $serial_id_search_raw = ($sid_raw !== '') ? $sid_raw : $mid_raw;
+        if ($serial_id_search_raw !== '') {
+            $grpClauses = [];
+            $groups = preg_split('/\s*,\s*/', $serial_id_search_raw);
+            foreach ($groups as $g) {
+                $g = trim($g); if ($g === '') continue;
+                $tokens = preg_split('/\s+/', $g);
+                $andForTokens = [];
+                foreach ($tokens as $t) {
+                    $t = trim($t); if ($t === '') continue;
+                    $orFields = [
+                        ['serial_no' => ['$regex' => $t, '$options' => 'i']],
+                        ['item_name' => ['$regex' => $t, '$options' => 'i']],
+                        ['model' => ['$regex' => $t, '$options' => 'i']],
+                    ];
+                    $andForTokens[] = ['$or' => $orFields];
+                }
+                if (!empty($andForTokens)) { $grpClauses[] = ['$and' => $andForTokens]; }
+            }
+            if (!empty($grpClauses)) {
+                if (isset($kpiMatch['$and'])) { $kpiMatch['$and'][] = ['$or' => $grpClauses]; }
+                else { $kpiMatch['$and'] = [['$or' => $grpClauses]]; }
+            }
+        }
+
+        // cat_id mapping: CAT-001.. based on sorted distinct category names
+        if ($cat_id_raw !== '') {
+            try {
+                $cats = $itemsCol->distinct('category');
+                $names = [];
+                foreach ($cats as $c) { $nm = trim((string)$c) !== '' ? (string)$c : 'Uncategorized'; if (!in_array($nm, $names, true)) { $names[] = $nm; } }
+                natcasesort($names); $names = array_values($names);
+                $wanted = [];
+                $groups = preg_split('/\s*,\s*/', strtolower($cat_id_raw));
+                foreach ($groups as $g) {
+                    $g = trim($g); if ($g === '') continue;
+                    if (preg_match('/^(?:cat-)?(\d{1,})$/i', $g, $m)) {
+                        $num = intval($m[1]); if ($num > 0 && $num <= count($names)) { $wanted[] = $names[$num-1]; }
+                    }
+                }
+                if (!empty($wanted)) { $kpiMatch['category'] = ['$in' => $wanted]; }
+            } catch (Throwable $_cat) { /* ignore mapping error */ }
+        }
+
+        // Fetch by Mongo match, then refine by location groups in PHP to match word-boundary semantics
+        $cursorKpi = $itemsCol->find($kpiMatch, ['projection' => ['location' => 1]]);
+        $cnt = 0;
+        foreach ($cursorKpi as $docK) {
+            if (!empty($locGroups)) {
+                $loc = (string)($docK['location'] ?? '');
+                $okAny = false;
+                foreach ($locGroups as $grp) {
+                    $all = true;
+                    foreach ($grp as $n) {
+                        if ($n === '') continue;
+                        $pat = '/(?<![A-Za-z0-9])' . preg_quote($n, '/') . '(?![A-Za-z0-9])/i';
+                        if (!preg_match($pat, $loc)) { $all = false; break; }
+                    }
+                    if ($all) { $okAny = true; break; }
+                }
+                if (!$okAny) { continue; }
+            }
+            $cnt++;
+        }
+        $totalUnitsDisplay = $cnt;
     } catch (Throwable $_tot) { $totalUnitsDisplay = 0; }
 
     // Build match filter for dates (prefer date_acquired, fallback to created_at)
