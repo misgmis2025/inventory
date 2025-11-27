@@ -2014,8 +2014,10 @@ if (!empty($my_requests)) {
       .page-header .d-flex.align-items-center.gap-3 { flex-wrap: wrap; justify-content: center; gap: 6px 8px; width: 100%; }
       #tableSwitcherBtn, #openSubmitTopBtn, #userQrBtn, #userBellBtn { padding: .25rem .5rem; font-size: .875rem; }
       /* Bell and QR side-by-side centered below header */
-      #userBellWrap { position: static; order: 3; display: inline-flex; align-items: center; justify-content: center; margin-top: 6px; z-index: auto; }
-      #userQrBtn { position: static; order: 3; }
+      #userBellWrap { position: static; order: 3; display: inline-flex; align-items: center; justify-content: center; margin-top: 0; z-index: auto; margin-right: 0 !important; }
+      #userQrBtn { position: static; order: 3; display: inline-flex; align-items: center; }
+      /* Equalize button heights and alignment */
+      #userBellBtn, #userQrBtn { height: 36px; line-height: 1; }
       /* View and Submit buttons below the bell */
       .page-header .btn-group { order: 4; width: 100%; display: flex; justify-content: center; margin-top: 6px; }
       #openSubmitTopBtn { order: 4; }
