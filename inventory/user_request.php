@@ -5360,6 +5360,18 @@ if (!empty($my_requests)) {
         const wrap = ensurePersistentWrap();
         const list = Array.isArray(items) ? items : [];
         const count = list.length;
+        try {
+          let viewing = false;
+          try { if (window.__UR_VISIBLE_SECTION__ === 'section-overdue') viewing = true; } catch(_){ }
+          if (!viewing) {
+            try { const mdl = document.getElementById('userOverdueModal'); if (mdl && mdl.classList && mdl.classList.contains('show')) viewing = true; } catch(_){ }
+          }
+          if (viewing) {
+            const existing = document.getElementById('ov-alert-summary');
+            if (existing) { try{ existing.remove(); }catch(_){ existing.style.display='none'; } }
+            return;
+          }
+        } catch(_){ }
         // keep one summary card only
         const key = 'ov-alert-summary';
         let el = document.getElementById(key);
@@ -5377,7 +5389,8 @@ if (!empty($my_requests)) {
           wrap.appendChild(el);
           first = true;
         }
-        el.innerHTML = html;
+        const prev = parseInt(el.getAttribute('data-count') || '-1', 10);
+        if (prev !== count) { el.setAttribute('data-count', String(count)); el.innerHTML = html; }
         try {
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
             el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px';
