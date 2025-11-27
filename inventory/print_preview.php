@@ -234,6 +234,22 @@ if (!$usedMongo) {
   $categoryOptions = [];
 }
 
+// Normalize: avoid duplicate rows and suppress Permanently Lost unless explicitly requested
+// 1) Exclude Permanently Lost by default so promoting from Lost -> Permanently Lost doesn't duplicate during Lost/Damaged prints
+if ($filter_status !== 'Permanently Lost') {
+  $items = array_values(array_filter($items, function($row){
+    return (string)($row['status'] ?? '') !== 'Permanently Lost';
+  }));
+}
+// 2) Deduplicate by id to avoid duplicates when multiple logs exist for the same unit
+$__seen_ids = [];
+$items = array_values(array_filter($items, function($row) use (&$__seen_ids){
+  $id = isset($row['id']) ? (int)$row['id'] : 0;
+  if ($id <= 0) { return true; }
+  if (isset($__seen_ids[$id])) { return false; }
+  $__seen_ids[$id] = true; return true;
+}));
+
 // Build category ID mapping from current items
 $catNamesTmp = [];
 foreach ($items as $giTmp) {
