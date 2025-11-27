@@ -192,9 +192,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return;
                 var wrap = document.getElementById('userPersistentWrap');
                 if (!wrap) return;
-                wrap.style.bottom = open ? '140px' : '64px';
-                // Keep right edge consistent; avoid horizontal shift
-                wrap.style.right = '8px';
+                // Measure nav height when visible to position popup just above it
+                var nav = document.getElementById('cpBottomNavU');
+                var bottomPx = 28;
+                try {
+                  if (nav && !nav.classList.contains('hidden')) {
+                    var rect = nav.getBoundingClientRect();
+                    var h = Math.round(Math.max(0, window.innerHeight - rect.top));
+                    if (!h || !isFinite(h)) h = 64;
+                    bottomPx = h + 12; // 12px breathing room above nav
+                  }
+                } catch(_){ bottomPx = open ? 140 : 28; }
+                wrap.style.bottom = String(bottomPx)+'px';
+                // Keep right edge consistent and tuck near toggle
+                wrap.style.right = '14px';
                 // Popup remains non-interactive (click-through)
                 wrap.style.pointerEvents = 'none';
               }catch(_){ }
@@ -217,6 +228,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               });
               // Initialize position
               try { var isOpen = !nav.classList.contains('hidden'); setPersistentWrapOffset(isOpen); } catch(_){ }
+              // Observe changes to nav visibility to adjust popup even if toggled elsewhere
+              try {
+                var obs = new MutationObserver(function(){
+                  try { var open = !nav.classList.contains('hidden'); setPersistentWrapOffset(open); } catch(_){}
+                });
+                obs.observe(nav, { attributes: true, attributeFilter: ['class'] });
+              } catch(_){ }
+              // Keep position correct on resize/orientation
+              try { window.addEventListener('resize', function(){ var open = !nav.classList.contains('hidden'); setPersistentWrapOffset(open); }); } catch(_){ }
+              try { window.addEventListener('orientationchange', function(){ var open = !nav.classList.contains('hidden'); setPersistentWrapOffset(open); }); } catch(_){ }
             }
           })();
         </script>
@@ -560,7 +581,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     wrap.style.pointerEvents = 'none';
                     document.body.appendChild(wrap);
                 }
-                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='8px'; if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='64px'; } } } catch(_){ }
+                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='14px'; if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='28px'; } } } catch(_){ }
                 return wrap;
             }
             function addOrUpdateOverdueNotices(items){
