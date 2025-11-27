@@ -790,8 +790,13 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       }
     }
     $rows = [];
+    // Build a history row for each non-resolution log (allow same item multiple times across different timestamps)
     foreach ($logs as $r) {
       $mid = (int)($r['model_id'] ?? 0);
+      if ($mid <= 0) { continue; }
+      $evtCheck = (string)($r['action'] ?? '');
+      // Skip resolution rows (Found/Fixed) in the printed event history
+      if (in_array($evtCheck, ['Found','Fixed'], true)) { continue; }
       $itm = $mid>0 ? $ii->findOne(['id'=>$mid]) : null;
       $currStatus = $itm ? (string)($itm['status'] ?? '') : '';
       if ($statusFilter !== '' && strcasecmp($statusFilter,'All')!==0) {
@@ -860,7 +865,6 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       $markedFull = $resolve($markedUname);
       // Event to display: skip resolution rows (Found/Fixed)
       $evt = (string)($r['action'] ?? '');
-      if (in_array($evt, ['Found','Fixed'], true)) { continue; }
       // Current status text derived from latest action on this model
       $latestAct = $latestByModel[$mid] ?? '';
       $currStatusText = $currStatus;
@@ -880,7 +884,35 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         'status' => $currStatusText,
       ];
     }
-    // Keep original full list order (already sorted by id desc)
+    // De-duplicate only when same Serial ID AND identical timestamp occur; prefer higher severity
+    $priority = function($ev){
+      $e = strtolower(trim((string)$ev));
+      $map = [ 'permanently lost' => 4, 'disposed' => 3, 'disposal' => 3, 'lost' => 2, 'under maintenance' => 1, 'damaged' => 1 ];
+      return isset($map[$e]) ? $map[$e] : 0;
+    };
+    $outRows = [];
+    $idxByKey = [];
+    $prioByKey = [];
+    foreach ($rows as $rw) {
+      $ser = trim((string)($rw['serial'] ?? ''));
+      $when = trim((string)($rw['at'] ?? ''));
+      $key = strtolower($ser).'|'.strtolower($when);
+      $p = $priority($rw['event'] ?? '');
+      if ($ser === '' || $when === '') { $outRows[] = $rw; continue; }
+      if (!isset($idxByKey[$key])) {
+        $idxByKey[$key] = count($outRows);
+        $prioByKey[$key] = $p;
+        $outRows[] = $rw;
+      } else {
+        if ($p > $prioByKey[$key]) {
+          $prioByKey[$key] = $p;
+          $outRows[$idxByKey[$key]] = $rw;
+        }
+        // If same or lower priority, skip as duplicate for this exact time
+      }
+    }
+    $rows = $outRows;
+    // Keep original full list order (already sorted by id desc), with per-time de-dup applied
   } catch (Throwable $e) { $rows = []; }
   ?><!DOCTYPE html>
   <html lang="en"><head>
