@@ -5353,7 +5353,7 @@ if (!empty($my_requests)) {
         try{
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
             wrap.style.right = '8px';
-            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom = '64px'; }
+            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom = '96px'; }
           }
         }catch(_){ }
         return wrap;
