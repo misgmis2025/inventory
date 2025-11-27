@@ -5424,6 +5424,9 @@ if (!empty($my_requests)) {
         const grp=reserveBtn.closest('.row');
         if (grp && grp.parentElement && grp.parentElement.parentElement){ grp.parentElement.parentElement.classList.toggle('d-none', qrMode!=='reservation'); }
       }
+      // Ensure click handlers are bound regardless of which validation branch was taken after scan
+      try { if (borrowBtn) borrowBtn.onclick = function(){ submitBorrow(); }; } catch(_){ }
+      try { if (reserveBtn) reserveBtn.onclick = function(){ submitReserve(); }; } catch(_){ }
       if (qrMode==='reservation') updateReserveState(); else updateBorrowState();
     }
 
@@ -5712,6 +5715,7 @@ if (!empty($my_requests)) {
       const s = rf ? String(rf.value||'').trim() : '';
       const e = rt ? String(rt.value||'').trim() : '';
       if (!s || !e){ setStatus('Please set reservation start and end.','text-danger'); return; }
+      setStatus('Submitting reservation...','text-muted');
       const form=document.createElement('form'); form.method='POST'; form.action='user_request.php';
       const add=(n,v)=>{ const i=document.createElement('input'); i.type='hidden'; i.name=n; i.value=String(v); form.appendChild(i); };
       add('category', (lastData.vr && lastData.vr.category) ? lastData.vr.category : (src.category||'Uncategorized'));
@@ -5739,9 +5743,9 @@ if (!empty($my_requests)) {
           document.getElementById('urInfoCard').classList.add('d-none');
           if (locWrap) locWrap.classList.add('d-none');
           if (locInput) locInput.value='';
-          if (borrowBtn){ borrowBtn.disabled=true; try{ borrowBtn.classList.remove('btn-primary'); borrowBtn.classList.add('btn-secondary'); }catch(_){ } }
+          if (borrowBtn){ borrowBtn.disabled=true; try{ borrowBtn.classList.remove('btn-primary'); borrowBtn.classList.add('btn-outline-secondary'); }catch(_){ } }
           if (reserveWrap) reserveWrap.classList.add('d-none');
-          if (reserveBtn){ reserveBtn.disabled=true; try{ reserveBtn.classList.remove('btn-primary'); reserveBtn.classList.add('btn-secondary'); }catch(_){ } }
+          if (reserveBtn){ reserveBtn.disabled=true; try{ reserveBtn.classList.remove('btn-primary'); reserveBtn.classList.add('btn-outline-secondary'); }catch(_){ } }
           if (readerEl && readerPlaceholder!==''){ readerEl.innerHTML = readerPlaceholder; }
           setReqTypeUI('immediate');
         }catch(_){ }
@@ -5752,6 +5756,11 @@ if (!empty($my_requests)) {
         if (resFrom) resFrom.addEventListener('input', updateReserveState);
         if (resTo) resTo.addEventListener('input', updateReserveState);
         const expEl = document.getElementById('urExpectedReturn'); if (expEl) expEl.addEventListener('input', updateBorrowState);
+        // Robust click binding for reserve
+        if (reserveBtn) {
+          try { reserveBtn.onclick = function(){ submitReserve(); }; } catch(_){ }
+          try { reserveBtn.addEventListener('click', function(ev){ ev.preventDefault(); if (!reserveBtn.disabled) submitReserve(); }); } catch(_){ }
+        }
       });
       modal.addEventListener('hide.bs.modal', ()=>{ stopScan(); });
     }
