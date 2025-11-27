@@ -312,6 +312,21 @@ if (!$USED_MONGO) {
                                     </div>
                                     <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#reservedItemsModal">View</button>
                                 </div>
+                                <?php $___rv_preview = array_slice($reserved_list ?? [], 0, 3); if (!empty($___rv_preview)): ?>
+                                <div class="mt-2">
+                                  <ul class="list-unstyled mb-0 small">
+                                    <?php foreach ($___rv_preview as $rv): $from = isset($rv['reserved_from']) ? strtotime((string)$rv['reserved_from']) : 0; $to = isset($rv['reserved_to']) ? strtotime((string)$rv['reserved_to']) : 0; ?>
+                                      <li class="d-flex justify-content-between">
+                                        <span class="text-truncate me-2" style="max-width: 50%;"><?php echo htmlspecialchars((string)($rv['item_name'] ?? '')); ?></span>
+                                        <span class="text-muted"><?php echo $from ? date('M j, g:i A', $from) : ''; ?><?php echo ($from && $to) ? ' - ' : ''; ?><?php echo $to ? date('M j, g:i A', $to) : ''; ?></span>
+                                      </li>
+                                    <?php endforeach; ?>
+                                    <?php if (count($reserved_list ?? []) > count($___rv_preview)): ?>
+                                      <li class="mt-1"><a href="#" class="small" data-bs-toggle="modal" data-bs-target="#reservedItemsModal">View all...</a></li>
+                                    <?php endif; ?>
+                                  </ul>
+                                </div>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
