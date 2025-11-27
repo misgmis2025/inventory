@@ -732,6 +732,8 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
                 <li><button type="button" id="openPrintModalBtn" class="dropdown-item"><i class="bi bi-printer me-2"></i>Print Inventory</button></li>
                 <li><a class="dropdown-item" target="_blank" rel="noopener" href="qr_print_preview.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING'] ?? '') : ''); ?>"><i class="bi bi-qr-code me-2"></i>Print QR</a></li>
                 <li><a class="dropdown-item" target="_blank" rel="noopener" href="borrow_history_print.php<?php $qs=[]; if (!empty($date_from)) $qs['date_from']=$date_from; if (!empty($date_to)) $qs['date_to']=$date_to; echo !empty($qs)?('?'.htmlspecialchars(http_build_query($qs))):''; ?>"><i class="bi bi-clock-history me-2"></i>Print Borrow History</a></li>
+                <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#ldPrintHeaderModal"><i class="bi bi-exclamation-triangle me-2"></i>Print Lost/Damaged History</button></li>
+                <li><a class="dropdown-item" target="_blank" rel="noopener" href="https://mis-inventory.up.railway.app/inventory/admin_borrow_center.php?action=print_overdue"><i class="bi bi-hourglass-split me-2"></i>Print Overdue Items</a></li>
               </ul>
             </div>
           </div>
@@ -1080,6 +1082,44 @@ $borrowScrollClass = (count($borrow_history) >= 13) ? ' table-scroll' : '';
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-primary" id="confirmPrintBtn">Print</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="ldPrintHeaderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-printer me-2"></i>Print Lost/Damaged History</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="ldPrintHistoryForm" method="GET" action="admin_borrow_center.php" target="_blank">
+          <input type="hidden" name="action" value="print_lost_damaged" />
+          <input type="hidden" name="event" id="ldPrintEvent" value="All" />
+          <input type="hidden" name="status" id="ldPrintStatus" value="All" />
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">Department</label>
+              <input type="text" name="department" class="form-control" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Date</label>
+              <input type="date" name="date" class="form-control" value="<?php echo date('Y-m-d'); ?>" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Prepared by</label>
+              <input type="text" name="prepared_by" class="form-control" value="<?php echo htmlspecialchars($preparedByDefault); ?>" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Checked by</label>
+              <input type="text" name="checked_by" class="form-control" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

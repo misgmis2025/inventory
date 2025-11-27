@@ -4726,9 +4726,6 @@ try {
               </div>
             </div>
             <div class="modal-footer">
-              <a href="admin_borrow_center.php?action=print_overdue" target="_blank" class="btn btn-primary">
-                <i class="bi bi-printer me-1"></i>Print Overdue
-              </a>
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
           </div>
@@ -5869,40 +5866,24 @@ try {
       }
     })();
   </script>
-  <div class="modal fade" id="ldPrintHeaderModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+  <div class="modal fade" id="borrowedDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-printer me-2"></i>Print Header</h5>
+          <h5 class="modal-title"><i class="bi bi-info-circle me-2"></i>Borrowed Item Details</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <form id="ldPrintHistoryForm" method="GET" action="admin_borrow_center.php" target="_blank">
-          <input type="hidden" name="action" value="print_lost_damaged" />
-          <input type="hidden" name="event" id="ldPrintEvent" value="" />
-          <input type="hidden" name="status" id="ldPrintStatus" value="" />
-          <div class="modal-body">
-            <div class="mb-3">
-              <label class="form-label">Department</label>
-              <input type="text" name="department" class="form-control" />
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Date</label>
-              <input type="date" name="date" class="form-control" value="<?php echo date('Y-m-d'); ?>" />
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Prepared by</label>
-              <input type="text" name="prepared_by" class="form-control" value="<?php echo htmlspecialchars($adminFullNameDefault); ?>" />
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Checked by</label>
-              <input type="text" name="checked_by" class="form-control" />
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
-          </div>
-        </form>
+        <div class="modal-body">
+          <div class="mb-2"><strong>User:</strong> <span id="bdUser"></span></div>
+          <div class="mb-2"><strong>Serial ID:</strong> <span id="bdSerial"></span></div>
+          <div class="mb-2"><strong>Item:</strong> <span id="bdModel"></span></div>
+          <div class="mb-2"><strong>Category:</strong> <span id="bdCategory"></span></div>
+          <div class="mb-2"><strong>Location:</strong> <span id="bdLocation"></span></div>
+          <div class="mb-2"><strong>Expected Return:</strong> <span id="bdExpected"></span></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -6207,7 +6188,6 @@ try {
         <div class="modal-header d-flex align-items-center justify-content-between">
           <h5 class="modal-title" id="ldHistoryLabel"><i class="bi bi-clock-history me-2"></i>Lost/Damaged History</h5>
           <div class="d-flex align-items-center gap-2">
-            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#ldPrintHeaderModal"><i class="bi bi-printer me-1"></i>Print</button>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
         </div>
