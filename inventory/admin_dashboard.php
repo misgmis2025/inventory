@@ -30,6 +30,16 @@ try {
     @require_once __DIR__ . '/db/mongo.php';
     $db = get_mongo_db();
     $itemsCol = $db->selectCollection('inventory_items');
+    
+    // Compute current total units across entire inventory (ignore date filters)
+    $totalUnitsDisplay = 0;
+    try {
+        $aggTot = $itemsCol->aggregate([
+            ['$project' => ['q' => ['$ifNull' => ['$quantity', 1]]]],
+            ['$group' => ['_id' => null, 'total' => ['$sum' => '$q']]]
+        ]);
+        foreach ($aggTot as $r) { $totalUnitsDisplay = (int)($r->total ?? 0); break; }
+    } catch (Throwable $_tot) { $totalUnitsDisplay = 0; }
 
     // Build match filter for dates (prefer date_acquired, fallback to created_at)
     $match = [];
@@ -394,7 +404,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                             <div class="d-flex align-items-center justify-content-between">
                                 <div>
                                     <div class="text-muted small">Total Units</div>
-                                    <div class="fs-4 fw-bold"><?php echo (int)$totalUnits; ?></div>
+                                    <div class="fs-4 fw-bold"><?php echo (int)($totalUnitsDisplay ?? $totalUnits); ?></div>
                                 </div>
                                 <i class="bi bi-collection text-info" style="font-size: 1.8rem;"></i>
                             </div>
