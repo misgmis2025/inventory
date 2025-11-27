@@ -2129,12 +2129,9 @@ if (!empty($my_requests)) {
               <div class="d-flex align-items-center mt-2 gap-2">
                 <button type="button" class="btn btn-success d-none" id="urQrRequestBtn">Borrow Item</button>
               </div>
-              <div class="mt-2 row g-2 d-none input-btn-row" id="urReqLocWrap">
-                <div class="col-12 col-md-8">
+              <div class="mt-2 row g-2 d-none" id="urReqLocWrap">
+                <div class="col-12">
                   <input type="text" class="form-control" id="urReqLocation" placeholder="Enter location (room/area)" />
-                </div>
-                <div class="col-12 col-md-4 d-grid">
-                  <button type="button" class="btn btn-outline-secondary h-100" id="urBorrowSubmit" disabled>Borrow Item</button>
                 </div>
                 <div class="col-12">
                   <small class="text-muted">Location is required.</small>
@@ -2145,6 +2142,14 @@ if (!empty($my_requests)) {
                 <div class="col-12 col-md-6">
                   <label class="form-label fw-bold" for="urExpectedReturn">Expected Return</label>
                   <input type="datetime-local" id="urExpectedReturn" class="form-control" />
+                </div>
+                <div class="col-12">
+                  <div class="row g-2 input-btn-row">
+                    <div class="col-12 col-md-8"></div>
+                    <div class="col-12 col-md-4 d-grid">
+                      <button type="button" class="btn btn-outline-secondary h-100" id="urBorrowSubmit" disabled>Borrow Item</button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="mt-1"><small id="urExpectedHint" class="text-danger d-none"></small></div>
