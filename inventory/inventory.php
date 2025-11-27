@@ -1740,6 +1740,8 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 				<!-- Model Table: full details per item/model -->
 				<div class="card mt-4">
 					<div class="card-header d-flex justify-content-between align-items-center">
+						<h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Model Table</h5>
+					</div>
 					<div class="card-body">
 						<form method="POST" id="bulkDeleteForm" class="d-flex flex-column gap-2">
 							<input type="hidden" name="bulk_delete" value="1" />
