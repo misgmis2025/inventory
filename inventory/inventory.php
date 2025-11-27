@@ -1352,7 +1352,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                     <a href="inventory.php" class="list-group-item list-group-item-action bg-transparent fw-bold">
                         <i class="bi bi-box-seam me-2"></i>Inventory
                     </a>
-                    <a href="inventory_print.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING']) : ''); ?>" class="list-group-item list-group-item-action bg-transparent">
+                    <a href="inventory_print.php" class="list-group-item list-group-item-action bg-transparent">
                         <i class="bi bi-printer me-2"></i>Print Inventory
                     </a>
                     

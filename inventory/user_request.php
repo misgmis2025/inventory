@@ -5331,16 +5331,16 @@ if (!empty($my_requests)) {
       }
       window.addEventListener('resize', repositionBellDropdown);
       window.addEventListener('scroll', repositionBellDropdown, true);
-      // Persistent bottom-left overdue popup (behind modals)
+      // Persistent bottom-right overdue popup (behind modals)
       function ensurePersistentWrap(){
         let wrap = document.getElementById('userPersistentWrap');
         if (!wrap){
           wrap = document.createElement('div');
           wrap.id = 'userPersistentWrap';
           wrap.style.position = 'fixed';
-          wrap.style.left = '16px';
+          wrap.style.right = '16px';
           wrap.style.bottom = '16px';
-          wrap.style.right = '';
+          wrap.style.left = '';
           wrap.style.zIndex = '1030'; // behind Bootstrap modal/backdrop
           wrap.style.display = 'flex';
           wrap.style.flexDirection = 'column';
@@ -5350,7 +5350,7 @@ if (!empty($my_requests)) {
         }
         try{
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-            wrap.style.left = '8px';
+            wrap.style.right = '8px';
             if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom = '64px'; }
           }
         }catch(_){ }

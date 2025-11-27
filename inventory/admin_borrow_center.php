@@ -3639,7 +3639,7 @@ try {
       <div class="list-group list-group-flush my-3">
         <a href="admin_dashboard.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
         <a href="inventory.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-box-seam me-2"></i>Inventory</a>
-        <a href="inventory_print.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING']) : ''); ?>" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-printer me-2"></i>Print Inventory</a>
+        <a href="inventory_print.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-printer me-2"></i>Print Inventory</a>
         <a href="generate_qr.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-qr-code me-2"></i>Add Item/Generate QR</a>
         <a href="qr_scanner.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-camera me-2"></i>QR Scanner</a>
         <a href="admin_borrow_center.php" class="list-group-item list-group-item-action bg-transparent fw-bold"><i class="bi bi-clipboard-check me-2"></i>Borrow Requests</a>

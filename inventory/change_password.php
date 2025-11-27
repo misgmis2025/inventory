@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <a href="inventory.php" class="list-group-item list-group-item-action bg-transparent">
                         <i class="bi bi-box-seam me-2"></i>Inventory
                     </a>
-                    <a href="inventory_print.php<?php echo (!empty($_SERVER['QUERY_STRING']) ? '?' . htmlspecialchars($_SERVER['QUERY_STRING']) : ''); ?>" class="list-group-item list-group-item-action bg-transparent">
+                    <a href="inventory_print.php" class="list-group-item list-group-item-action bg-transparent">
                         <i class="bi bi-printer me-2"></i>Print Inventory
                     </a>
                     <a href="generate_qr.php" class="list-group-item list-group-item-action bg-transparent">
@@ -744,6 +744,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             let latestTs = 0;
             let lastSig = '';
             let currentSig = '';
+            // Persistent bottom-right overdue popup (behind modals)
+            function ensurePersistentWrap(){
+                let wrap = document.getElementById('userPersistentWrap');
+                if (!wrap){
+                    wrap = document.createElement('div');
+                    wrap.id = 'userPersistentWrap';
+                    wrap.style.position = 'fixed';
+                    wrap.style.right = '16px';
+                    wrap.style.bottom = '16px';
+                    wrap.style.left = '';
+                    wrap.style.zIndex = '1030'; // below Bootstrap modal/backdrop
+                    wrap.style.display = 'flex';
+                    wrap.style.flexDirection = 'column';
+                    wrap.style.gap = '8px';
+                    wrap.style.pointerEvents = 'none';
+                    document.body.appendChild(wrap);
+                }
+                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ wrap.style.right='8px'; if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='64px'; } } } catch(_){ }
+                return wrap;
+            }
+            function addOrUpdateOverdueNotices(items){
+                const wrap = ensurePersistentWrap();
+                const list = Array.isArray(items) ? items : [];
+                const count = list.length;
+                const key = 'ov-alert-summary';
+                let el = document.getElementById(key);
+                if (count === 0) { if (el){ try{ el.remove(); }catch(_){ el.style.display='none'; } } return; }
+                const html = '<i class="bi bi-exclamation-octagon me-2"></i>' + (count===1 ? 'You have an overdue item, Click to view.' : ('You have overdue items ('+count+'), Click to view.'));
+                let first = false;
+                if (!el){
+                    el = document.createElement('div');
+                    el.id = key;
+                    el.className = 'alert alert-danger shadow-sm border-0';
+                    el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.cursor='pointer';
+                    el.style.margin='0'; el.style.lineHeight='1.25'; el.style.borderRadius='8px';
+                    el.style.pointerEvents='auto';
+                    el.addEventListener('click', function(){ window.location.href='user_request.php?view=overdue'; });
+                    wrap.appendChild(el);
+                    first = true;
+                }
+                el.innerHTML = html;
+                try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
+            }
             if (bellBtn && dropdown) {
                 bellBtn.addEventListener('click', function(e){
                     e.stopPropagation();
@@ -795,6 +838,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     const base=raw.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
                     const ovList=(ov&&Array.isArray(ov.overdue))?ov.overdue:[]; const ovSet=new Set(ovList.map(o=>parseInt(o.request_id||0,10)).filter(n=>n>0)); const ovCount=ovList.length;
                     const built=composeRows(base, dn, ovCount, ovSet);
+                    // Update persistent overdue popup behind modals (bottom-right)
+                    try { addOrUpdateOverdueNotices(ovList); } catch(_){ }
                     try{
                         const lastOpen=parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
                         currentSig=built.sig; lastSig=localStorage.getItem('ud_notif_sig_open')||'';

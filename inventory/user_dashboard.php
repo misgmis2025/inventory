@@ -553,7 +553,7 @@ if (!$USED_MONGO) {
             if (!toastWrap) {
                 toastWrap = document.createElement('div');
                 toastWrap.id = 'userToastWrap';
-                toastWrap.style.position = 'fixed'; toastWrap.style.left = '16px'; toastWrap.style.bottom = '16px'; toastWrap.style.zIndex = '1030';
+                toastWrap.style.position = 'fixed'; toastWrap.style.right = '16px'; toastWrap.style.bottom = '16px'; toastWrap.style.zIndex = '1030';
                 document.body.appendChild(toastWrap);
             }
             function showToast(msg){
@@ -645,9 +645,9 @@ if (!$USED_MONGO) {
                     wrap = document.createElement('div');
                     wrap.id = 'userPersistentWrap';
                     wrap.style.position = 'fixed';
-                    wrap.style.left = '16px';
+                    wrap.style.right = '16px';
                     wrap.style.bottom = '16px';
-                    wrap.style.right = '';
+                    wrap.style.left = '';
                     wrap.style.zIndex = '1030';
                     wrap.style.display = 'flex';
                     wrap.style.flexDirection = 'column';
@@ -657,7 +657,7 @@ if (!$USED_MONGO) {
                 }
                 try {
                   if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-                    wrap.style.left='8px';
+                    wrap.style.right='8px';
                     if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='64px'; }
                   }
                 } catch(_){ }
