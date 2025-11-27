@@ -368,13 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $status = trim($_POST['status'] ?? 'Available');
             $date_acquired = trim($_POST['date_acquired'] ?? '');
             $remarks = trim($_POST['remarks'] ?? '');
-            $serial_no = trim($_POST['serial_no'] ?? '');
             if ($item_name === '' && $model !== '') { $item_name = $model; }
-            // Uniqueness check for serial_no (Mongo)
-            if ($serial_no !== '') {
-                $dup = $itemsCol->countDocuments(['serial_no'=>$serial_no,'id'=>['$ne'=>$id_edit]]) > 0;
-                if ($dup) { http_response_code(400); echo 'Serial ID already exists for another item.'; exit(); }
-            }
             if ($id_edit > 0 && $item_name !== '') {
                 $set = [
                     'item_name' => $item_name,
@@ -384,7 +378,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'location' => $location,
                     'status' => $status,
                     'remarks' => $remarks,
-                    'serial_no' => $serial_no,
                     'updated_at' => date('Y-m-d H:i:s'),
                 ];
                 if ($date_acquired !== '') { $set['date_acquired'] = $date_acquired; }
@@ -451,7 +444,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'marked_by' => (string)($_SESSION['username'] ?? ''),
                             'affected_username' => $affected,
                             'created_at' => $now,
-                            'serial_no' => (string)$serial_no,
+                            'serial_no' => (string)($prev['serial_no'] ?? ''),
                             'model_key' => $model !== '' ? $model : $item_name,
                             'category' => $category !== '' ? $category : 'Uncategorized',
                             'location' => $location,
@@ -755,35 +748,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 if (!empty($needles)) { $tokenGroups[] = $needles; }
             }
             if (!empty($tokenGroups)) {
-                if ($sid_raw !== '') {
-                    // Strict serial-only filtering when sid is used (word-boundary, case-insensitive)
-                    $items = array_values(array_filter($items, function($row) use ($tokenGroups) {
-                        $serial = (string)($row['serial_no'] ?? '');
-                        foreach ($tokenGroups as $grp) {
-                            $all = true;
-                            foreach ($grp as $n) {
-                                if ($n === '') { continue; }
-                                $pat = '/(?<![A-Za-z0-9])' . preg_quote($n, '/') . '(?![A-Za-z0-9])/i';
-                                if (!preg_match($pat, $serial)) { $all = false; break; }
-                            }
-                            if ($all) { return true; }
-                        }
-                        return false;
-                    }));
-                } else {
-                    // Model/name assisted filtering when only mid is used
-                    $items = array_values(array_filter($items, function($row) use ($tokenGroups) {
-                        $serial = strtolower((string)($row['serial_no'] ?? ''));
-                        $name = strtolower((string)($row['item_name'] ?? ''));
-                        $hay = $serial . ' ' . $name;
-                        foreach ($tokenGroups as $grp) {
-                            $all = true;
-                            foreach ($grp as $n) { if ($n !== '' && strpos($hay, $n) === false) { $all = false; break; } }
-                            if ($all) { return true; }
-                        }
-                        return false;
-                    }));
-                }
+                // Search by Serial OR Item Name OR Model (tokens AND within group, OR across groups)
+                $items = array_values(array_filter($items, function($row) use ($tokenGroups) {
+                    $serial = strtolower((string)($row['serial_no'] ?? ''));
+                    $name = strtolower((string)($row['item_name'] ?? ''));
+                    $model = strtolower((string)($row['model'] ?? ''));
+                    $hay = $serial . ' ' . $name . ' ' . $model;
+                    foreach ($tokenGroups as $grp) {
+                        $all = true;
+                        foreach ($grp as $n) { if ($n !== '' && strpos($hay, $n) === false) { $all = false; break; } }
+                        if ($all) { return true; }
+                    }
+                    return false;
+                }));
             }
         }
 
@@ -2543,10 +2520,10 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                 <label class="form-label fw-bold">Location</label>
                 <input type="text" name="location" id="edit_location" class="form-control" />
               </div>
-              <div class="col-md-3">
+              <div class="col-md-3 d-none">
                 <label class="form-label fw-bold">Serial ID</label>
                 <div class="sid-input-wrap">
-                  <input type="text" name="serial_no" id="edit_serial_no" class="form-control" />
+                  <input type="text" name="serial_no" id="edit_serial_no" class="form-control" disabled readonly />
                   <i class="sid-indicator bi" id="edit_sid_icon" style="display:none;"></i>
                 </div>
                 <div class="small" id="edit_sid_msg"></div>
@@ -2609,7 +2586,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
           var qHidden = document.getElementById('edit_quantity_hidden');
           if (qHidden) qHidden.value = qVal;
           document.getElementById('edit_location').value = button.getAttribute('data-location') || '';
-          document.getElementById('edit_serial_no').value = dataAttr(button, 'serial_no') || '';
+          var sidEl = document.getElementById('edit_serial_no'); if (sidEl) { sidEl.value = dataAttr(button, 'serial_no') || ''; }
           
           var currentStatus = button.getAttribute('data-status') || 'Available';
           document.getElementById('edit_status').value = currentStatus;
@@ -2680,8 +2657,8 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
             .then(function(d){ if (d && d.exists) setSidState('bad','Serial already exists in inventory.'); else setSidState('ok','Serial available.'); })
             .catch(function(){ setSidState('clear'); });
         }, 250);
-        if (sidInput){ sidInput.addEventListener('input', runCheck); }
-        if (editForm){ editForm.addEventListener('submit', function(e){ if (hasDup){ e.preventDefault(); e.stopPropagation(); } }); }
+        if (sidInput && !sidInput.disabled){ sidInput.addEventListener('input', runCheck); }
+        if (editForm){ editForm.addEventListener('submit', function(e){ if (!sidInput || sidInput.disabled) { hasDup = false; } if (hasDup){ e.preventDefault(); e.stopPropagation(); } }); }
       }
       // Add modal wiring: sync on input
       var addModelInput = document.getElementById('add_model_input');
