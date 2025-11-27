@@ -2076,6 +2076,14 @@ if (!empty($my_requests)) {
       color: #fff !important;
       opacity: 1 !important;
     }
+    /* QR Scan Modal (Request): align fields and buttons uniformly and mobile-first */
+    #urQrScanModal .input-btn-row { align-items: stretch; }
+    #urQrScanModal .input-btn-row > [class^="col-"],
+    #urQrScanModal .input-btn-row > [class*=" col-"] { display: grid; }
+    #urQrScanModal .input-btn-row .btn { height: 100%; }
+    @media (max-width: 767.98px) {
+      #urQrScanModal .input-btn-row .btn { height: auto; }
+    }
   </style>
       <div class="list-group list-group-flush my-3">
         <a href="user_dashboard.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
@@ -2121,12 +2129,12 @@ if (!empty($my_requests)) {
               <div class="d-flex align-items-center mt-2 gap-2">
                 <button type="button" class="btn btn-success d-none" id="urQrRequestBtn">Borrow Item</button>
               </div>
-              <div class="mt-2 row g-2 d-none" id="urReqLocWrap">
-                <div class="col-8">
+              <div class="mt-2 row g-2 d-none input-btn-row" id="urReqLocWrap">
+                <div class="col-12 col-md-8">
                   <input type="text" class="form-control" id="urReqLocation" placeholder="Enter location (room/area)" />
                 </div>
-                <div class="col-4 d-grid">
-                  <button type="button" class="btn btn-outline-secondary" id="urBorrowSubmit" disabled>Borrow Item</button>
+                <div class="col-12 col-md-4 d-grid">
+                  <button type="button" class="btn btn-outline-secondary h-100" id="urBorrowSubmit" disabled>Borrow Item</button>
                 </div>
                 <div class="col-12">
                   <small class="text-muted">Location is required.</small>
@@ -2151,10 +2159,10 @@ if (!empty($my_requests)) {
                   <input type="datetime-local" id="urResTo" class="form-control" />
                 </div>
                 <div class="col-12">
-                  <div class="row g-2">
-                    <div class="col-8"></div>
-                    <div class="col-4 d-grid">
-                      <button type="button" class="btn btn-outline-secondary" id="urReserveSubmit" disabled>Reserve Item</button>
+                  <div class="row g-2 input-btn-row">
+                    <div class="col-12 col-md-8"></div>
+                    <div class="col-12 col-md-4 d-grid">
+                      <button type="button" class="btn btn-outline-secondary h-100" id="urReserveSubmit" disabled>Reserve Item</button>
                     </div>
                   </div>
                 </div>
