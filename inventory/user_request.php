@@ -4946,8 +4946,8 @@ if (!empty($my_requests)) {
         }
         try {
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-            wrap.style.right='8px';
-            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='64px'; }
+            wrap.style.right='14px';
+            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='28px'; }
           }
         } catch(_){ }
         return wrap;
@@ -5347,8 +5347,8 @@ if (!empty($my_requests)) {
         }
         try{
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-            wrap.style.right = '8px';
-            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom = '96px'; }
+            wrap.style.right = '14px';
+            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom = '28px'; }
           }
         }catch(_){ }
         return wrap;
@@ -5981,7 +5981,7 @@ if (!empty($my_requests)) {
           if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return;
           var wrap = document.getElementById('userPersistentWrap');
           if (!wrap) return;
-          var val = open ? '140px' : '96px';
+          var val = open ? '140px' : '28px';
           wrap.style.bottom = val;
           wrap.setAttribute('data-bottom', val);
         }catch(_){ }
