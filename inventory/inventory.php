@@ -803,9 +803,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             natcasesort($categoryOptions); $categoryOptions = array_values($categoryOptions);
         }
 
-        // Deletion history (enrich with serial_no when missing)
+        // Deletion history (enrich with serial_no when missing and fetch deleter full name)
         $delCol = $db->selectCollection('inventory_delete_log');
         $itemsCol = $db->selectCollection('inventory_items');
+        $usersCol = $db->selectCollection('users');
         $delCur = $delCol->find([], ['sort' => ['deleted_at' => -1, 'id' => -1], 'limit' => 100]);
         foreach ($delCur as $d) {
             $row = (array)$d;
@@ -815,6 +816,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     if ($ii && isset($ii['serial_no'])) { $row['serial_no'] = (string)$ii['serial_no']; }
                 } catch (Throwable $_e) {}
             }
+            // Map username to full name for display
+            try {
+                $uname = isset($row['deleted_by']) ? (string)$row['deleted_by'] : '';
+                if ($uname !== '') {
+                    $udoc = $usersCol->findOne(['username' => $uname], ['projection' => ['full_name' => 1]]);
+                    if ($udoc && isset($udoc['full_name']) && trim((string)$udoc['full_name']) !== '') {
+                        $row['deleted_by_full'] = (string)$udoc['full_name'];
+                    }
+                }
+            } catch (Throwable $_e2) {}
             $deleteHistory[] = $row;
         }
 
@@ -1727,32 +1738,6 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 					<?php endif; ?>
 				<?php endif; ?>
 				<!-- Model Table: full details per item/model -->
-				<div class="card mt-4">
-					<div class="card-header d-flex justify-content-between align-items-center">
-						<h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Model Table</h5>
-						<!-- Model Table search bar removed -->
-					</div>
-					<div class="card-body">
-						<form method="POST" id="bulkDeleteForm" class="d-flex flex-column gap-2">
-							<input type="hidden" name="bulk_delete" value="1" />
-							<input type="hidden" name="delete_reason" id="deleteReasonField" value="" />
-							<div class="d-flex justify-content-end gap-2">
-								<button id="toggleSelectBtn" class="btn btn-sm btn-outline-primary" type="button" onclick="toggleSelectionMode()">
-									<i class="bi bi-check2-square me-1"></i>Select
-								</button>
-								<button id="selectAllTopBtn" class="btn btn-sm btn-outline-primary d-none" type="button">Select All</button>
-								<button id="openBulkDeleteModalBtn" class="btn btn-sm btn-danger d-none" type="button" disabled data-bs-toggle="modal" data-bs-target="#confirmBulkDeleteModal">
-									<i class="bi bi-trash me-1"></i>Delete
-								</button>
-								<button id="openDeleteHistoryBtn" class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#deleteHistoryModal">
-									<i class="bi bi-clock-history me-1"></i>History
-								</button>
-							</div>
-							<div class="table-responsive">
-								<table class="table table-striped table-hover mb-0">
-									<colgroup>
-										<col style="width:60px;" />
-									</colgroup>
 									<thead class="table-light">
 										<tr>
 											<th style="width: 60px;"></th>
@@ -1943,8 +1928,8 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                                   <td><?php echo htmlspecialchars($dh['serial_no'] ?? ''); ?></td>
                                   <td><?php echo htmlspecialchars($dh['item_name'] ?? ($dh['model'] ?? '')); ?></td>
                                   <td><?php echo htmlspecialchars($dh['category'] ?? ''); ?></td>
-                                  <td><?php echo htmlspecialchars(isset($dh['deleted_at']) && $dh['deleted_at'] ? date('Y-m-d h:i A', strtotime($dh['deleted_at'])) : ''); ?></td>
-                                  <td><?php echo htmlspecialchars($dh['deleted_by'] ?? ''); ?></td>
+                                  <td><?php echo htmlspecialchars(isset($dh['deleted_at']) && $dh['deleted_at'] ? date('M d, Y g:ia', strtotime($dh['deleted_at'])) : ''); ?></td>
+                                  <td><?php echo htmlspecialchars(($dh['deleted_by_full'] ?? '') !== '' ? $dh['deleted_by_full'] : ($dh['deleted_by'] ?? '')); ?></td>
                                 </tr>
                               <?php endforeach; endif; ?>
                             </tbody>
