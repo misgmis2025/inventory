@@ -2011,11 +2011,17 @@ if (!empty($my_requests)) {
     @media (max-width: 768px) {
       .page-header { flex-direction: row; align-items: center; text-align: left; padding-top: 10px; padding-bottom: 10px; position: relative; }
       .page-title { text-align: left; }
-      .page-header .d-flex.align-items-center.gap-3 { flex-wrap: nowrap; justify-content: flex-end; gap: 8px !important; width: auto; }
-      #tableSwitcherBtn, #openSubmitTopBtn, #userQrBtn, #userBellBtn { padding: .25rem .5rem; font-size: .875rem; }
+      .page-header .page-title { flex: 1 1 auto !important; }
+      .page-header > .d-flex { flex: 0 0 auto !important; flex-wrap: nowrap !important; justify-content: flex-end !important; gap: 8px !important; width: auto !important; }
+      .page-header .d-flex.align-items-center.gap-3, .page-header .d-flex.align-items-center.gap-2 { flex-wrap: nowrap !important; justify-content: flex-end !important; gap: 8px !important; width: auto !important; }
+      #tableSwitcherBtn, #openSubmitTopBtn, #userQrBtn, #userBellBtn { padding: .25rem .5rem; font-size: .875rem; white-space: nowrap; height: 36px; line-height: 1; }
+      .page-header .btn, .page-header .dropdown-toggle { height: 36px; line-height: 1; }
       #userBellWrap { position: static; display: inline-flex; align-items: center; justify-content: center; margin-top: 0; z-index: auto; margin-right: 0 !important; }
       #userBellBtn, #userQrBtn { height: 36px; line-height: 1; }
-      .page-header .btn-group { order: 0; width: auto; display: inline-flex; justify-content: flex-start; margin-top: 0; }
+      .page-header .btn-group { order: 0; width: auto !important; display: inline-flex !important; justify-content: flex-start; margin-top: 0 !important; }
+      /* Allow the View selector to shrink and truncate to keep items on one row */
+      .page-header .btn-group > .btn { max-width: 52vw; min-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+      .page-header .btn-group > .btn > span, .page-header .btn-group > .btn { display: inline-flex; align-items: center; gap: .25rem; }
       #userBellDropdown { min-width: 0 !important; width: 95vw !important; max-width: 95vw !important; }
       /* Hide left navigation and hamburger on mobile */
       #sidebar-wrapper{ display:none !important; }
