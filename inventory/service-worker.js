@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'inv-pwa-v7';
+const CACHE_NAME = 'inv-pwa-v8';
 const STATIC_ASSETS = [
   'manifest.json',
   'css/style.css',
@@ -49,6 +49,29 @@ self.addEventListener('fetch', (event) => {
     }
   } catch (_) {}
   if (isStatic(req)) {
+    // For CSS/JS, honor query-string versions (e.g., ?v=hash) with network-first
+    try {
+      const u = new URL(req.url);
+      const isCssJs = /\.(css|js)$/i.test(u.pathname);
+      if (isCssJs) {
+        event.respondWith((async () => {
+          const cache = await caches.open(CACHE_NAME);
+          try {
+            const resp = await fetch(req, { cache: 'no-store' });
+            try { await cache.put(req, resp.clone()); } catch(_) {}
+            return resp;
+          } catch(_) {
+            const exact = await caches.match(req);
+            if (exact) return exact;
+            // As a last resort (offline), try a pathname match
+            try { const fb = await caches.match(u.pathname, { ignoreSearch: true }); if (fb) return fb; } catch(_) {}
+            // Final fallback
+            return fetch(req);
+          }
+        })());
+        return;
+      }
+    } catch(_) {}
     event.respondWith((async () => {
       const exact = await caches.match(req);
       if (exact) return exact;
