@@ -1219,18 +1219,40 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
     }));
 }
 
+if (!function_exists('inv_status_badge')) {
+    function inv_status_badge($s) {
+        $t = strtolower(trim((string)$s));
+        $label = htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+        $cls = 'badge-soft-secondary';
+        if ($t === 'available') { $cls = 'badge-soft-success'; }
+        elseif (preg_match('/^in\s*use$/', $t)) { $cls = 'badge-soft-primary'; }
+        elseif (strpos($t, 'reserv') !== false) { $cls = 'badge-soft-warning'; }
+        elseif (in_array($t, ['lost','out of order'])) { $cls = 'badge-soft-danger'; }
+        return '<span class="badge rounded-pill ' . $cls . '">' . $label . '</span>';
+    }
+}
+// KPI counters for header metrics
+$kpi_total_units = 0; $kpi_available = 0; $kpi_in_use = 0; $kpi_reserved = 0;
+if (is_array($items)) {
+    foreach ($items as $kx) {
+        $q = (int)($kx['quantity'] ?? 1); if ($q <= 0) { $q = 1; }
+        $kpi_total_units += $q;
+        $st = strtolower((string)($kx['status'] ?? ''));
+        if (strpos($st, 'avail') === 0) { $kpi_available += $q; }
+        elseif (preg_match('/^in\s*use$/', $st)) { $kpi_in_use += $q; }
+        elseif (strpos($st, 'reserv') !== false) { $kpi_reserved += $q; }
+    }
+}
 ?>
-<!DOCTYPE html>
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Inventory</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory</title>
 	<link href="css/bootstrap.min.css" rel="stylesheet">
 	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 	<link rel="stylesheet" href="css/style.css?v=<?php echo filemtime(__DIR__.'/css/style.css'); ?>">
 	<link rel="icon" type="image/png" href="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" />
-	  <style>
+	<style>
 	/* Extra small button for Select All in selection mode */
 	.btn-xxs { padding: 0.1rem 0.3rem; font-size: 0.7rem; line-height: 1; }
 
@@ -1330,11 +1352,25 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
         #bulkDeleteForm table { min-width: 680px; }
         #bulkDeleteForm table th, #bulkDeleteForm table td { padding: 0.35rem 0.35rem; font-size: 0.9rem; }
     }
-    /* Sticky toolbar and table header for better UX */
-    #bulkDeleteToolbar { position: sticky; top: 0; z-index: 10; background: #fff; }
-    #bulkDeleteForm .table-responsive thead th { position: sticky; top: 0; z-index: 5; background: #f8f9fa; }
-    #bulkDeleteToolbar { border-bottom: 1px solid #e9ecef; }
-  </style>
+
+    /* Soft badge palette */
+    .badge-soft-success{color:#0f5132;background:rgba(25,135,84,.15);border:1px solid rgba(25,135,84,.25)}
+    .badge-soft-primary{color:#084298;background:rgba(13,110,253,.15);border:1px solid rgba(13,110,253,.25)}
+    .badge-soft-warning{color:#664d03;background:rgba(255,193,7,.15);border:1px solid rgba(255,193,7,.35)}
+    .badge-soft-danger{color:#842029;background:rgba(220,53,69,.12);border:1px solid rgba(220,53,69,.25)}
+    .badge-soft-secondary{color:#41464b;background:rgba(108,117,125,.12);border:1px solid rgba(108,117,125,.25)}
+
+    /* KPI metric cards */
+    .metric-card{border:1px solid rgba(0,0,0,.05); border-radius:12px}
+    .metric-label{font-size:.85rem;color:#6c757d}
+    .metric-value{font-weight:700;font-size:1.4rem}
+
+    /* Sticky table headers */
+    .table-sticky thead th{position:sticky;top:0;background:#f8f9fa;z-index:2;box-shadow:inset 0 -1px 0 rgba(0,0,0,.075)}
+
+    /* Group rows */
+    .group-row{background:#eef3ff}
+	</style>
 </head>
 
 <body class="allow-mobile">
@@ -1414,15 +1450,75 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 					<?php endif; ?>
 					<form method="GET" class="d-flex align-items-center gap-2 ms-auto">
 						<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
-							<!-- Filter Offcanvas trigger -->
-							<button class="btn btn-outline-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#filterOffcanvas">
-								<i class="bi bi-funnel me-1"></i>Filter
-							</button>
-							<!-- Preserve multi-field search values when applying main filters -->
-							<input type="hidden" name="mid" value="<?php echo htmlspecialchars($model_id_search_raw ?? ''); ?>" />
-							<input type="hidden" name="cat_id" value="<?php echo htmlspecialchars($cat_id_raw ?? ''); ?>" />
-							<input type="hidden" name="loc" value="<?php echo htmlspecialchars($location_search_raw ?? ''); ?>" />
-						<!-- date_from/date_to are inside the dropdown now -->
+							<!-- Unified Filter dropdown for Admin (search bar removed) -->
+							<div class="dropdown">
+								<button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+									<i class="bi bi-funnel me-1"></i>Filter
+								</button>
+								<div class="dropdown-menu p-3 filter-menu" style="min-width: 280px; max-width: 92vw;">
+									<!-- Keep original selects unchanged, just moved inside dropdown -->
+									<div class="mb-2">
+										<label class="form-label mb-1">Status</label>
+										<select name="status" class="form-select">
+											<option value="">Status</option>
+											<?php
+												$statuses = ['Available','In Use','Reserved','Lost','Maintenance','Out of Order'];
+												foreach ($statuses as $st) {
+													$sel = ($filter_status ?? '') === $st ? 'selected' : '';
+													echo '<option value="'.htmlspecialchars($st).'" '.$sel.'>'.htmlspecialchars($st).'</option>';
+												}
+											?>
+										</select>
+									</div>
+
+									<div class="mb-2">
+										<label class="form-label mb-1">Category</label>
+										<select name="category" class="form-select">
+											<option value="">Category</option>
+											<?php foreach ($categoryOptions as $cat): ?>
+												<option value="<?php echo htmlspecialchars($cat); ?>" <?php echo ($filter_category ?? '') === $cat ? 'selected' : ''; ?>><?php echo htmlspecialchars($cat); ?></option>
+											<?php endforeach; ?>
+										</select>
+									</div>
+									<div class="mb-2">
+										<label class="form-label mb-1">Condition</label>
+										<select name="condition" class="form-select">
+											<option value="">Condition</option>
+											<?php foreach (["Good","Damaged","Need replacement"] as $cond): ?>
+												<option value="<?php echo htmlspecialchars($cond); ?>" <?php echo ($filter_condition ?? '') === $cond ? 'selected' : ''; ?>><?php echo htmlspecialchars($cond); ?></option>
+											<?php endforeach; ?>
+										</select>
+									</div>
+									<div class="mb-2">
+										<label class="form-label mb-1">Supply</label>
+										<select name="supply" class="form-select">
+											<option value="">Supply</option>
+											<option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low (&lt; 10)</option>
+											<option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average (&gt; 10 and &lt; 50)</option>
+											<option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High (&gt; 50)</option>
+										</select>
+									</div>
+									<!-- Date Range (merged from separate form) -->
+									<hr class="my-2" />
+									<div class="mb-2">
+										<label class="form-label mb-1">From</label>
+										<input type="date" name="date_from" class="form-control" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
+									</div>
+									<div class="mb-2">
+										<label class="form-label mb-1">To</label>
+										<input type="date" name="date_to" class="form-control" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
+									</div>
+									<div class="d-flex gap-2">
+										<button type="submit" class="btn btn-primary w-100"><i class="bi bi-check2 me-1"></i>Apply</button>
+										<a href="inventory.php" class="btn btn-outline-secondary w-100">Reset</a>
+									</div>
+								</div>
+								</div>
+								<!-- Preserve multi-field search values when applying main filters -->
+								<input type="hidden" name="mid" value="<?php echo htmlspecialchars($model_id_search_raw ?? ''); ?>" />
+								<input type="hidden" name="cat_id" value="<?php echo htmlspecialchars($cat_id_raw ?? ''); ?>" />
+								<input type="hidden" name="loc" value="<?php echo htmlspecialchars($location_search_raw ?? ''); ?>" />
+							<!-- date_from/date_to are inside the dropdown now -->
 						<?php else: ?>
 							<input type="text" name="q" class="form-control" placeholder="Search Item..." value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
 							<button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
@@ -1450,6 +1546,35 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 					<?php endif; ?>
 				</div>
 			</div>
+
+			<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
+			<div class="row g-3 my-3">
+				<div class="col-6 col-md-3">
+					<div class="card metric-card shadow-sm h-100"><div class="card-body">
+						<div class="metric-label">Total Units</div>
+						<div class="metric-value"><?php echo (int)$kpi_total_units; ?></div>
+					</div></div>
+				</div>
+				<div class="col-6 col-md-3">
+					<div class="card metric-card shadow-sm h-100"><div class="card-body">
+						<div class="metric-label">Available</div>
+						<div class="metric-value text-success"><?php echo (int)$kpi_available; ?></div>
+					</div></div>
+				</div>
+				<div class="col-6 col-md-3">
+					<div class="card metric-card shadow-sm h-100"><div class="card-body">
+						<div class="metric-label">In Use</div>
+						<div class="metric-value text-primary"><?php echo (int)$kpi_in_use; ?></div>
+					</div></div>
+				</div>
+				<div class="col-6 col-md-3">
+					<div class="card metric-card shadow-sm h-100"><div class="card-body">
+						<div class="metric-label">Reserved</div>
+						<div class="metric-value text-warning"><?php echo (int)$kpi_reserved; ?></div>
+					</div></div>
+				</div>
+			</div>
+			<?php endif; ?>
 
 
 
@@ -1520,7 +1645,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 							}
 							?>
 							<div class="table-responsive">
-								<table class="table table-striped table-hover mb-0">
+								<table class="table table-striped table-hover mb-0 align-middle table-sticky">
 									<thead class="table-light">
 										<tr>
 											<th>Category ID</th>
@@ -1558,7 +1683,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 																	<td><?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?></td>
 																	<td><?php echo htmlspecialchars($it['location']); ?></td>
 																	<td><?php echo htmlspecialchars($it['remarks']); ?></td>
-																	<td><?php echo htmlspecialchars($it['status']); ?></td>
+																	<td><?php echo inv_status_badge($it['status']); ?></td>
 																	<td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
 																	<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
 																	<td>
@@ -1572,28 +1697,6 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 																			data-location="<?php echo htmlspecialchars($it['location']); ?>"
 																			data-serial_no="<?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?>"
 																			data-remarks="<?php echo htmlspecialchars($it['remarks']); ?>"
-																			data-status="<?php echo htmlspecialchars($it['status']); ?>"
-																			data-date_acquired="<?php echo htmlspecialchars($it['date_acquired']); ?>">Edit</button>
-																		<?php endif; ?>
-																		<a class="btn btn-sm btn-outline-danger" href="#" onclick="return (function(){
-                                                                            // Open Admin Password modal directly and mark pending single-delete id
-                                                                            window.__pendingDeleteSingle = '<?php echo htmlspecialchars($it['id']); ?>';
-                                                                            try {
-                                                                                var apm = document.getElementById('adminPwModal');
-                                                                                if (apm && window.bootstrap && bootstrap.Modal) {
-                                                                                    var m = bootstrap.Modal.getOrCreateInstance(apm);
-                                                                                    m.show();
-                                                                                    return false;
-                                                                                }
-                                                                            } catch(_) {}
-                                                                            if (window.openAdminPwPrompt) { openAdminPwPrompt(function(pw, reason){}); }
-                                                                            return false;
-                                                                        })();">Delete</a>
-																	</td>
-																	<?php endif; ?>
-																</tr>
-																<?php endforeach; ?>
-															</tbody>
 														</table>
 													</div>
 												</div>
@@ -1605,67 +1708,6 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 							</div>
 						<?php endif; ?>
 					</div>
-				</div>
-
-				<!-- Filters Offcanvas -->
-				<div class="offcanvas offcanvas-end" tabindex="-1" id="filterOffcanvas" aria-labelledby="filterOffcanvasLabel">
-				  <div class="offcanvas-header">
-					<h5 class="offcanvas-title" id="filterOffcanvasLabel"><i class="bi bi-funnel me-2"></i>Filters</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-				  </div>
-				  <div class="offcanvas-body">
-					<form method="GET" class="d-flex flex-column gap-3">
-					  <div>
-						<label class="form-label mb-1">Status</label>
-						<select name="status" class="form-select">
-						  <option value="">Status</option>
-						  <?php $statuses = ['Available','In Use','Reserved','Lost','Maintenance','Out of Order']; foreach ($statuses as $st) { $sel = ($filter_status ?? '') === $st ? 'selected' : ''; echo '<option value="'.htmlspecialchars($st).'" '.$sel.'>'.htmlspecialchars($st).'</option>'; } ?>
-						</select>
-					  </div>
-					  <div>
-						<label class="form-label mb-1">Category</label>
-						<select name="category" class="form-select">
-						  <option value="">Category</option>
-						  <?php foreach ($categoryOptions as $cat) { $sel = ($filter_category ?? '') === $cat ? 'selected' : ''; echo '<option value="'.htmlspecialchars($cat).'" '.$sel.'>'.htmlspecialchars($cat).'</option>'; } ?>
-						</select>
-					  </div>
-					  <div>
-						<label class="form-label mb-1">Condition</label>
-						<select name="condition" class="form-select">
-						  <option value="">Condition</option>
-						  <?php foreach (["Good","Damaged","Need replacement"] as $cond) { $sel = ($filter_condition ?? '') === $cond ? 'selected' : ''; echo '<option value="'.htmlspecialchars($cond).'" '.$sel.'>'.htmlspecialchars($cond).'</option>'; } ?>
-						</select>
-					  </div>
-					  <div>
-						<label class="form-label mb-1">Supply</label>
-						<select name="supply" class="form-select">
-						  <option value="">Supply</option>
-						  <option value="low" <?php echo ($filter_supply ?? '') === 'low' ? 'selected' : ''; ?>>Low (&lt; 10)</option>
-						  <option value="average" <?php echo ($filter_supply ?? '') === 'average' ? 'selected' : ''; ?>>Average (&gt; 10 and &lt; 50)</option>
-						  <option value="high" <?php echo ($filter_supply ?? '') === 'high' ? 'selected' : ''; ?>>High (&gt; 50)</option>
-						</select>
-					  </div>
-					  <div class="row g-2">
-						<div class="col-6">
-						  <label class="form-label mb-1">From</label>
-						  <input type="date" name="date_from" class="form-control" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
-						</div>
-						<div class="col-6">
-						  <label class="form-label mb-1">To</label>
-						  <input type="date" name="date_to" class="form-control" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
-						</div>
-					  </div>
-					  <input type="hidden" name="mid" value="<?php echo htmlspecialchars($model_id_search_raw ?? ''); ?>" />
-					  <input type="hidden" name="cat_id" value="<?php echo htmlspecialchars($cat_id_raw ?? ''); ?>" />
-					  <input type="hidden" name="loc" value="<?php echo htmlspecialchars($location_search_raw ?? ''); ?>" />
-					  <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_q ?? ''); ?>" />
-					  <input type="hidden" name="mtq" value="<?php echo htmlspecialchars($_GET['mtq'] ?? ''); ?>" />
-					  <div class="d-flex gap-2 mt-2">
-						<button type="submit" class="btn btn-primary w-100"><i class="bi bi-check2 me-1"></i>Apply</button>
-						<a href="inventory.php" class="btn btn-outline-secondary w-100">Reset</a>
-					  </div>
-					</form>
-				  </div>
 				</div>
 
 				<!-- Bulk Delete Confirmation Modal -->
@@ -1747,45 +1789,31 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 				<div class="card mt-4">
 					<div class="card-header d-flex justify-content-between align-items-center">
 						<h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Model Table</h5>
-						<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
-						<form method="GET" class="d-none d-md-flex align-items-center gap-2">
-							<input type="text" name="mtq" class="form-control form-control-sm" placeholder="Search model/CAT/loc/cond" value="<?php echo htmlspecialchars($_GET['mtq'] ?? ''); ?>" />
-							<input type="hidden" name="status" value="<?php echo htmlspecialchars($filter_status ?? ''); ?>" />
-							<input type="hidden" name="category" value="<?php echo htmlspecialchars($filter_category ?? ''); ?>" />
-							<input type="hidden" name="condition" value="<?php echo htmlspecialchars($filter_condition ?? ''); ?>" />
-							<input type="hidden" name="supply" value="<?php echo htmlspecialchars($filter_supply ?? ''); ?>" />
-							<input type="hidden" name="date_from" value="<?php echo htmlspecialchars($date_from ?? ''); ?>" />
-							<input type="hidden" name="date_to" value="<?php echo htmlspecialchars($date_to ?? ''); ?>" />
-							<button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
-						</form>
-						<?php endif; ?>
 					</div>
 					<div class="card-body">
 						<form method="POST" id="bulkDeleteForm" class="d-flex flex-column gap-2">
 							<input type="hidden" name="bulk_delete" value="1" />
 							<input type="hidden" name="delete_reason" id="deleteReasonField" value="" />
-							<div id="bulkDeleteToolbar" class="d-flex align-items-center justify-content-end w-100 border-bottom border-secondary border-1 pb-2">
-								<div class="d-flex gap-2">
-									<div class="btn-group">
-										<button id="openBulkDeleteModalBtn" class="btn btn-sm btn-danger d-none" type="button" disabled data-bs-toggle="modal" data-bs-target="#confirmBulkDeleteModal">
-											<i class="bi bi-trash me-1"></i>Delete
-										</button>
-										<button id="selectAllTopBtn" class="btn btn-sm btn-outline-primary d-none" type="button">Select All</button>
-									</div>
-									<button id="toggleSelectBtn" class="btn btn-sm btn-outline-primary" type="button" onclick="toggleSelectionMode()">
-										<i class="bi bi-check2-square me-1"></i>Select
-									</button>
-									<button id="openDeleteHistoryBtn" class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#deleteHistoryModal">
-										<i class="bi bi-clock-history me-1"></i>History
-									</button>
-								</div>
-							</div>
+							<div class="d-flex align-items-center justify-content-end w-100">
+                                <div class="d-flex gap-2">
+                                    <button id="openBulkDeleteModalBtn" class="btn btn-sm btn-danger d-none" type="button" disabled data-bs-toggle="modal" data-bs-target="#confirmBulkDeleteModal">
+                                        <i class="bi bi-trash me-1"></i>Delete
+                                    </button>
+                                    <button id="selectAllTopBtn" class="btn btn-sm btn-outline-primary d-none" type="button">Select All</button>
+                                    <button id="toggleSelectBtn" class="btn btn-sm btn-outline-primary" type="button" onclick="toggleSelectionMode()">
+                                        <i class="bi bi-check2-square me-1"></i>Select
+                                    </button>
+                                    <button id="openDeleteHistoryBtn" class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#deleteHistoryModal">
+                                        <i class="bi bi-clock-history me-1"></i>History
+                                    </button>
+                                </div>
+                            </div>
 							<div class="table-responsive">
-								<table class="table table-striped table-hover mb-0">
+								<table class="table table-striped table-hover mb-0 align-middle table-sticky">
 									<colgroup>
 										<col style="width:60px;" />
 									</colgroup>
-									<thead class="table-light sticky-top">
+									<thead class="table-light">
 									<tr>
 										<th style="width: 60px;"></th>
 										<th>Item Name</th>
@@ -1851,7 +1879,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 												$childIds = array_values(array_filter($childIds, function($v){ return $v > 0; }));
 												$dataIds = implode(',', $childIds);
 												?>
-												            <tr class="table-primary">
+												            <tr class="table-primary group-row">
               <td style="width:60px;">
                 <button class="btn btn-xxs btn-outline-secondary me-1" type="button" data-bs-toggle="collapse" data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false" aria-controls="<?php echo $collapseId; ?>">
                   <i class="bi bi-caret-down"></i>
@@ -1865,7 +1893,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
               <td><?php echo htmlspecialchars($sumQty); ?></td>
               <td><?php echo htmlspecialchars($locShow); ?></td>
               <td><?php echo htmlspecialchars($remarksShow); ?></td>
-              <td><?php $____st = (string)$statShow; $____b = 'secondary'; if (preg_match('/^available$/i',$____st)) { $____b = 'success'; } elseif (preg_match('/^in\s*use$/i',$____st)) { $____b = 'primary'; } elseif (preg_match('/^reserved$/i',$____st)) { $____b = 'info'; } elseif (preg_match('/maintenance/i',$____st)) { $____b = 'warning'; } elseif (preg_match('/out\s*of\s*order/i',$____st)) { $____b = 'danger'; } elseif (preg_match('/lost/i',$____st)) { $____b = 'dark'; } echo '<span class="badge bg-'. $____b .'">'. htmlspecialchars($____st) .'</span>'; ?></td>
+              <td><?php echo inv_status_badge($statShow); ?></td>
               <td><?php echo htmlspecialchars($dateShow); ?></td>
               <td class="text-end">
                	<!-- Keep actions minimal on group row: none to avoid ambiguity -->
