@@ -1697,6 +1697,14 @@ if (is_array($items)) {
 																			data-location="<?php echo htmlspecialchars($it['location']); ?>"
 																			data-serial_no="<?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?>"
 																			data-remarks="<?php echo htmlspecialchars($it['remarks']); ?>"
+																			data-status="<?php echo htmlspecialchars($it['status']); ?>"
+																			data-date_acquired="<?php echo htmlspecialchars($it['date_acquired']); ?>">Edit</button>
+																		<?php endif; ?>
+																	</td>
+																	<?php endif; ?>
+																</tr>
+																<?php endforeach; ?>
+															</tbody>
 														</table>
 													</div>
 												</div>
