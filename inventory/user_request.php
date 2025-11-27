@@ -4942,7 +4942,7 @@ if (!empty($my_requests)) {
           wrap.style.position='fixed';
           wrap.style.right='16px';
           wrap.style.bottom='16px';
-          wrap.style.zIndex='1090';
+          wrap.style.zIndex='1030';
           wrap.style.display='flex';
           wrap.style.flexDirection='column';
           wrap.style.gap='8px';
@@ -5054,12 +5054,13 @@ if (!empty($my_requests)) {
           wrap.appendChild(el);
           ding = true;
         }
-        el.innerHTML = html;
+        const prev = parseInt(el.getAttribute('data-count')||'-1',10);
+        if (prev !== count) { el.setAttribute('data-count', String(count)); el.innerHTML = html; }
         // Mobile sizing
         try {
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-            el.style.minWidth='150px';
-            el.style.maxWidth='180px';
+            el.style.minWidth='160px';
+            el.style.maxWidth='200px';
             el.style.padding='4px 6px';
             el.style.fontSize='10px';
             const icon = el.querySelector('i'); if (icon) icon.style.fontSize = '12px';
@@ -5072,6 +5073,7 @@ if (!empty($my_requests)) {
         } catch(_){ }
         if (ding) { try{ playBeep(); }catch(_){ } }
       }
+      try { window.__UR_updateOverdue = addOrUpdateOverdueNotices; } catch(_){ }
       function notifPoll(){
         fetch('user_request.php?action=user_notifications')
           .then(r=>r.json())
