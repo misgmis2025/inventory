@@ -1219,34 +1219,12 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
     }));
 }
 
-if (!function_exists('inv_status_badge')) {
-    function inv_status_badge($s) {
-        $t = strtolower(trim((string)$s));
-        $label = htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
-        $cls = 'badge-soft-secondary';
-        if ($t === 'available') { $cls = 'badge-soft-success'; }
-        elseif (preg_match('/^in\s*use$/', $t)) { $cls = 'badge-soft-primary'; }
-        elseif (strpos($t, 'reserv') !== false) { $cls = 'badge-soft-warning'; }
-        elseif (in_array($t, ['lost','out of order'])) { $cls = 'badge-soft-danger'; }
-        return '<span class="badge rounded-pill ' . $cls . '">' . $label . '</span>';
-    }
-}
-// KPI counters for header metrics
-$kpi_total_units = 0; $kpi_available = 0; $kpi_in_use = 0; $kpi_reserved = 0;
-if (is_array($items)) {
-    foreach ($items as $kx) {
-        $q = (int)($kx['quantity'] ?? 1); if ($q <= 0) { $q = 1; }
-        $kpi_total_units += $q;
-        $st = strtolower((string)($kx['status'] ?? ''));
-        if (strpos($st, 'avail') === 0) { $kpi_available += $q; }
-        elseif (preg_match('/^in\s*use$/', $st)) { $kpi_in_use += $q; }
-        elseif (strpos($st, 'reserv') !== false) { $kpi_reserved += $q; }
-    }
-}
 ?>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory</title>
+<!DOCTYPE html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Inventory</title>
 	<link href="css/bootstrap.min.css" rel="stylesheet">
 	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
@@ -1352,24 +1330,6 @@ if (is_array($items)) {
         #bulkDeleteForm table { min-width: 680px; }
         #bulkDeleteForm table th, #bulkDeleteForm table td { padding: 0.35rem 0.35rem; font-size: 0.9rem; }
     }
-
-    /* Soft badge palette */
-    .badge-soft-success{color:#0f5132;background:rgba(25,135,84,.15);border:1px solid rgba(25,135,84,.25)}
-    .badge-soft-primary{color:#084298;background:rgba(13,110,253,.15);border:1px solid rgba(13,110,253,.25)}
-    .badge-soft-warning{color:#664d03;background:rgba(255,193,7,.15);border:1px solid rgba(255,193,7,.35)}
-    .badge-soft-danger{color:#842029;background:rgba(220,53,69,.12);border:1px solid rgba(220,53,69,.25)}
-    .badge-soft-secondary{color:#41464b;background:rgba(108,117,125,.12);border:1px solid rgba(108,117,125,.25)}
-
-    /* KPI metric cards */
-    .metric-card{border:1px solid rgba(0,0,0,.05); border-radius:12px}
-    .metric-label{font-size:.85rem;color:#6c757d}
-    .metric-value{font-weight:700;font-size:1.4rem}
-
-    /* Sticky table headers */
-    .table-sticky thead th{position:sticky;top:0;background:#f8f9fa;z-index:2;box-shadow:inset 0 -1px 0 rgba(0,0,0,.075)}
-
-    /* Group rows */
-    .group-row{background:#eef3ff}
 	</style>
 </head>
 
@@ -1470,7 +1430,6 @@ if (is_array($items)) {
 											?>
 										</select>
 									</div>
-
 									<div class="mb-2">
 										<label class="form-label mb-1">Category</label>
 										<select name="category" class="form-select">
@@ -1547,35 +1506,6 @@ if (is_array($items)) {
 				</div>
 			</div>
 
-			<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
-			<div class="row g-3 my-3">
-				<div class="col-6 col-md-3">
-					<div class="card metric-card shadow-sm h-100"><div class="card-body">
-						<div class="metric-label">Total Units</div>
-						<div class="metric-value"><?php echo (int)$kpi_total_units; ?></div>
-					</div></div>
-				</div>
-				<div class="col-6 col-md-3">
-					<div class="card metric-card shadow-sm h-100"><div class="card-body">
-						<div class="metric-label">Available</div>
-						<div class="metric-value text-success"><?php echo (int)$kpi_available; ?></div>
-					</div></div>
-				</div>
-				<div class="col-6 col-md-3">
-					<div class="card metric-card shadow-sm h-100"><div class="card-body">
-						<div class="metric-label">In Use</div>
-						<div class="metric-value text-primary"><?php echo (int)$kpi_in_use; ?></div>
-					</div></div>
-				</div>
-				<div class="col-6 col-md-3">
-					<div class="card metric-card shadow-sm h-100"><div class="card-body">
-						<div class="metric-label">Reserved</div>
-						<div class="metric-value text-warning"><?php echo (int)$kpi_reserved; ?></div>
-					</div></div>
-				</div>
-			</div>
-			<?php endif; ?>
-
 
 
 			<?php if ($id > 0 && $record): ?>
@@ -1645,7 +1575,7 @@ if (is_array($items)) {
 							}
 							?>
 							<div class="table-responsive">
-								<table class="table table-striped table-hover mb-0 align-middle table-sticky">
+								<table class="table table-striped table-hover mb-0">
 									<thead class="table-light">
 										<tr>
 											<th>Category ID</th>
@@ -1683,7 +1613,7 @@ if (is_array($items)) {
 																	<td><?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?></td>
 																	<td><?php echo htmlspecialchars($it['location']); ?></td>
 																	<td><?php echo htmlspecialchars($it['remarks']); ?></td>
-																	<td><?php echo inv_status_badge($it['status']); ?></td>
+																	<td><?php echo htmlspecialchars($it['status']); ?></td>
 																	<td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
 																	<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
 																	<td>
@@ -1700,6 +1630,20 @@ if (is_array($items)) {
 																			data-status="<?php echo htmlspecialchars($it['status']); ?>"
 																			data-date_acquired="<?php echo htmlspecialchars($it['date_acquired']); ?>">Edit</button>
 																		<?php endif; ?>
+																		<a class="btn btn-sm btn-outline-danger" href="#" onclick="return (function(){
+                                                                            // Open Admin Password modal directly and mark pending single-delete id
+                                                                            window.__pendingDeleteSingle = '<?php echo htmlspecialchars($it['id']); ?>';
+                                                                            try {
+                                                                                var apm = document.getElementById('adminPwModal');
+                                                                                if (apm && window.bootstrap && bootstrap.Modal) {
+                                                                                    var m = bootstrap.Modal.getOrCreateInstance(apm);
+                                                                                    m.show();
+                                                                                    return false;
+                                                                                }
+                                                                            } catch(_) {}
+                                                                            if (window.openAdminPwPrompt) { openAdminPwPrompt(function(pw, reason){}); }
+                                                                            return false;
+                                                                        })();">Delete</a>
 																	</td>
 																	<?php endif; ?>
 																</tr>
@@ -1796,8 +1740,6 @@ if (is_array($items)) {
 				<!-- Model Table: full details per item/model -->
 				<div class="card mt-4">
 					<div class="card-header d-flex justify-content-between align-items-center">
-						<h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Model Table</h5>
-					</div>
 					<div class="card-body">
 						<form method="POST" id="bulkDeleteForm" class="d-flex flex-column gap-2">
 							<input type="hidden" name="bulk_delete" value="1" />
@@ -1817,7 +1759,7 @@ if (is_array($items)) {
                                 </div>
                             </div>
 							<div class="table-responsive">
-								<table class="table table-striped table-hover mb-0 align-middle table-sticky">
+								<table class="table table-striped table-hover mb-0">
 									<colgroup>
 										<col style="width:60px;" />
 									</colgroup>
@@ -1887,7 +1829,7 @@ if (is_array($items)) {
 												$childIds = array_values(array_filter($childIds, function($v){ return $v > 0; }));
 												$dataIds = implode(',', $childIds);
 												?>
-												            <tr class="table-primary group-row">
+												            <tr class="table-primary">
               <td style="width:60px;">
                 <button class="btn btn-xxs btn-outline-secondary me-1" type="button" data-bs-toggle="collapse" data-bs-target="#<?php echo $collapseId; ?>" aria-expanded="false" aria-controls="<?php echo $collapseId; ?>">
                   <i class="bi bi-caret-down"></i>
@@ -1901,7 +1843,7 @@ if (is_array($items)) {
               <td><?php echo htmlspecialchars($sumQty); ?></td>
               <td><?php echo htmlspecialchars($locShow); ?></td>
               <td><?php echo htmlspecialchars($remarksShow); ?></td>
-              <td><?php echo inv_status_badge($statShow); ?></td>
+              <td><?php echo htmlspecialchars($statShow); ?></td>
               <td><?php echo htmlspecialchars($dateShow); ?></td>
               <td class="text-end">
                	<!-- Keep actions minimal on group row: none to avoid ambiguity -->
