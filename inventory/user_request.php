@@ -2007,21 +2007,20 @@ if (!empty($my_requests)) {
     #submitRequestModal .compact-form .form-text { margin-top: 0.1rem; font-size: 0.8rem; }
     #submitRequestModal .compact-form .btn-lg { padding: 0.5rem 0.9rem; font-size: 0.95rem; }
     #submitRequestModal .compact-form textarea { resize: none; }
-    /* Mobile header layout: keep actions in one row like dashboard */
+    /* Mobile header layout: center title, small buttons, wrap & fit notifications */
     @media (max-width: 768px) {
-      .page-header { flex-direction: row; align-items: center; text-align: left; padding-top: 10px; padding-bottom: 10px; position: relative; }
-      .page-title { text-align: left; }
-      .page-header .page-title { flex: 1 1 auto !important; }
-      .page-header > .d-flex { flex: 0 0 auto !important; flex-wrap: nowrap !important; justify-content: flex-end !important; gap: 8px !important; width: auto !important; }
-      .page-header .d-flex.align-items-center.gap-3, .page-header .d-flex.align-items-center.gap-2 { flex-wrap: nowrap !important; justify-content: flex-end !important; gap: 8px !important; width: auto !important; }
-      #tableSwitcherBtn, #openSubmitTopBtn, #userQrBtn, #userBellBtn { padding: .25rem .5rem; font-size: .875rem; white-space: nowrap; height: 36px; line-height: 1; }
-      .page-header .btn, .page-header .dropdown-toggle { height: 36px; line-height: 1; }
-      #userBellWrap { position: static; display: inline-flex; align-items: center; justify-content: center; margin-top: 0; z-index: auto; margin-right: 0 !important; }
+      .page-header { flex-direction: column; align-items: center; text-align: center; padding-top: 10px; padding-bottom: 10px; position: relative; }
+      .page-title { text-align: center; }
+      .page-header .d-flex.align-items-center.gap-3 { flex-wrap: wrap; justify-content: center; gap: 6px 8px; width: 100%; }
+      #tableSwitcherBtn, #openSubmitTopBtn, #userQrBtn, #userBellBtn { padding: .25rem .5rem; font-size: .875rem; }
+      /* Bell and QR side-by-side centered below header */
+      #userBellWrap { position: static; order: 3; display: inline-flex; align-items: center; justify-content: center; margin-top: 0; z-index: auto; margin-right: 0 !important; }
+      #userQrBtn { position: static; order: 3; display: inline-flex; align-items: center; }
+      /* Equalize button heights and alignment */
       #userBellBtn, #userQrBtn { height: 36px; line-height: 1; }
-      .page-header .btn-group { order: 0; width: auto !important; display: inline-flex !important; justify-content: flex-start; margin-top: 0 !important; }
-      /* Allow the View selector to shrink and truncate to keep items on one row */
-      .page-header .btn-group > .btn { max-width: 52vw; min-width: 120px; overflow: hidden; text-overflow: ellipsis; }
-      .page-header .btn-group > .btn > span, .page-header .btn-group > .btn { display: inline-flex; align-items: center; gap: .25rem; }
+      /* View and Submit buttons below the bell */
+      .page-header .btn-group { order: 4; width: 100%; display: flex; justify-content: center; margin-top: 6px; }
+      #openSubmitTopBtn { order: 4; }
       #userBellDropdown { min-width: 0 !important; width: 95vw !important; max-width: 95vw !important; }
       /* Hide left navigation and hamburger on mobile */
       #sidebar-wrapper{ display:none !important; }
@@ -2243,7 +2242,7 @@ if (!empty($my_requests)) {
     <div class="p-4" id="page-content-wrapper">
       <div class="page-header d-flex justify-content-between align-items-center">
         <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i class="bi bi-clipboard-plus me-2"></i>Request to Borrow</h2>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-3">
           <div class="btn-group">
             <button id="tableSwitcherBtn" type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" aria-haspopup="true" role="button">
               View: My Recent Requests
@@ -2258,10 +2257,7 @@ if (!empty($my_requests)) {
           <button class="btn btn-primary btn-sm" id="openSubmitTopBtn" data-bs-toggle="modal" data-bs-target="#submitRequestModal">
             <i class="bi bi-pencil-square me-1"></i> Submit Request
           </button>
-          <button class="btn btn-light" id="userQrBtn" title="Scan QR" data-bs-toggle="modal" data-bs-target="#urQrScanModal">
-            <i class="bi bi-qr-code-scan" style="font-size:1.2rem;"></i>
-          </button>
-          <div class="position-relative" id="userBellWrap">
+          <div class="position-relative me-2" id="userBellWrap">
             <button type="button" class="btn btn-light position-relative" id="userBellBtn" title="Notifications">
               <i class="bi bi-bell" style="font-size:1.2rem;"></i>
               <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle d-none" id="userBellDot"></span>
@@ -2292,6 +2288,9 @@ if (!empty($my_requests)) {
               </div>
             </div>
           </div>
+          <button class="btn btn-light" id="userQrBtn" title="Scan QR" data-bs-toggle="modal" data-bs-target="#urQrScanModal">
+            <i class="bi bi-qr-code-scan" style="font-size:1.2rem;"></i>
+          </button>
         </div>
       </div>
       <script>
@@ -4952,8 +4951,8 @@ if (!empty($my_requests)) {
         }
         try {
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-            wrap.style.right='14px';
-            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='28px'; }
+            wrap.style.right='8px';
+            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom='96px'; }
           }
         } catch(_){ }
         return wrap;
@@ -5353,8 +5352,8 @@ if (!empty($my_requests)) {
         }
         try{
           if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-            wrap.style.right = '14px';
-            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom = '28px'; }
+            wrap.style.right = '8px';
+            if (!wrap.getAttribute('data-bottom')) { wrap.style.bottom = '96px'; }
           }
         }catch(_){ }
         return wrap;
@@ -5987,7 +5986,7 @@ if (!empty($my_requests)) {
           if (!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches)) return;
           var wrap = document.getElementById('userPersistentWrap');
           if (!wrap) return;
-          var val = open ? '140px' : '28px';
+          var val = open ? '140px' : '96px';
           wrap.style.bottom = val;
           wrap.setAttribute('data-bottom', val);
         }catch(_){ }
