@@ -1942,11 +1942,12 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                                 <th>Category</th>
                                 <th>Date Deleted</th>
                                 <th>Deleted By</th>
+                                <th>Reason</th>
                               </tr>
                             </thead>
                             <tbody>
                               <?php if (empty($deleteHistory)): ?>
-                                <tr><td colspan="6" class="text-center text-muted">No deletions logged yet.</td></tr>
+                                <tr><td colspan="7" class="text-center text-muted">No deletions logged yet.</td></tr>
                               <?php else: foreach ($deleteHistory as $dh): ?>
                                 <tr>
                                   <td><?php echo htmlspecialchars($dh['status'] ?? ''); ?></td>
@@ -1955,6 +1956,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                                   <td><?php echo htmlspecialchars($dh['category'] ?? ''); ?></td>
                                   <td><?php echo htmlspecialchars(isset($dh['deleted_at']) && $dh['deleted_at'] ? date('M d, Y g:ia', strtotime($dh['deleted_at'])) : ''); ?></td>
                                   <td><?php echo htmlspecialchars(($dh['deleted_by_full'] ?? '') !== '' ? $dh['deleted_by_full'] : ($dh['deleted_by'] ?? '')); ?></td>
+                                  <td><?php echo htmlspecialchars(trim((string)($dh['reason'] ?? ''))); ?></td>
                                 </tr>
                               <?php endforeach; endif; ?>
                             </tbody>
