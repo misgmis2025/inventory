@@ -2126,7 +2126,7 @@ if (!empty($my_requests)) {
                   <input type="text" class="form-control" id="urReqLocation" placeholder="Enter location (room/area)" />
                 </div>
                 <div class="col-4 d-grid">
-                  <button type="button" class="btn btn-primary" id="urBorrowSubmit" disabled>Borrow Item</button>
+                  <button type="button" class="btn btn-outline-secondary" id="urBorrowSubmit" disabled>Borrow Item</button>
                 </div>
                 <div class="col-12">
                   <small class="text-muted">Location is required.</small>
@@ -2154,7 +2154,7 @@ if (!empty($my_requests)) {
                   <div class="row g-2">
                     <div class="col-8"></div>
                     <div class="col-4 d-grid">
-                      <button type="button" class="btn btn-primary" id="urReserveSubmit" disabled>Reserve Item</button>
+                      <button type="button" class="btn btn-outline-secondary" id="urReserveSubmit" disabled>Reserve Item</button>
                     </div>
                   </div>
                 </div>
@@ -2360,7 +2360,6 @@ if (!empty($my_requests)) {
                           <label class="form-label fw-bold" for="expected_return_at">Expected Return Time <span class="text-danger">*</span></label>
                           <input type="datetime-local" id="expected_return_at" name="expected_return_at" class="form-control" required 
                                  min="<?php echo date('Y-m-d\TH:i'); ?>" />
-                          <div class="form-text">Please select when you will return the item (max 24 hours from now)</div>
                           <div id="immediateReserveHint" class="form-text text-danger d-none"></div>
                         </div>
                       </div>
@@ -2377,7 +2376,6 @@ if (!empty($my_requests)) {
                           <label class="form-label fw-bold" for="reserved_to">End Time <span class="text-danger">*</span></label>
                           <input type="datetime-local" id="reserved_to" name="reserved_to" class="form-control" 
                                  min="<?php echo date('Y-m-d\TH:i', strtotime('+1 hour')); ?>" />
-                          <div class="form-text">No fixed reservation duration limit (subject to admin approval)</div>
                         </div>
                       </div>
                     </div>
@@ -5426,7 +5424,7 @@ if (!empty($my_requests)) {
         const grp=reserveBtn.closest('.row');
         if (grp && grp.parentElement && grp.parentElement.parentElement){ grp.parentElement.parentElement.classList.toggle('d-none', qrMode!=='reservation'); }
       }
-      if (qrMode==='reservation') updateReserveState();
+      if (qrMode==='reservation') updateReserveState(); else updateBorrowState();
     }
 
     async function fetchQrReservationStartHint(){
@@ -5461,7 +5459,23 @@ if (!empty($my_requests)) {
         ok = !!(s && !isNaN(s) && e && !isNaN(e) && s>now && e>s && e<=max && ((e-s) <= 24*60*60*1000));
         if (ok && qrEarliest){ const m=new Date(qrEarliest.replace(' ','T')); if (m && !isNaN(m) && s < m) ok=false; }
       } catch(_){ ok=false; }
-      reserveBtn.disabled = !(locOk && ok);
+      // Require a valid scanned item for reservation (any recognized scan)
+      const hasScan = !!(lastData);
+      reserveBtn.disabled = !(hasScan && locOk && ok);
+      const enabled = !reserveBtn.disabled;
+      try { reserveBtn.classList.remove('btn-primary','btn-secondary','btn-outline-secondary'); reserveBtn.classList.add(enabled ? 'btn-primary' : 'btn-outline-secondary'); } catch(_){ }
+    }
+
+    function updateBorrowState(){
+      if (!borrowBtn) return;
+      const locOk = !!(locInput && locInput.value && locInput.value.trim());
+      const expEl = document.getElementById('urExpectedReturn');
+      const expOk = !!(expEl && String(expEl.value||'').trim());
+      // Require a valid scanned item AND that it is allowed for immediate borrow
+      const hasValidScan = !!(lastData && lastData.vr && lastData.vr.allowed);
+      const enabled = !!(hasValidScan && locOk && expOk);
+      borrowBtn.disabled = !enabled;
+      try { borrowBtn.classList.remove('btn-primary','btn-secondary','btn-outline-secondary'); borrowBtn.classList.add(enabled ? 'btn-primary' : 'btn-outline-secondary'); } catch(_){ }
     }
 
     function setStatus(msg, cls){ if (!statusEl) return; statusEl.className = 'small ' + (cls||'text-muted'); statusEl.textContent = String(msg||''); }
@@ -5496,9 +5510,9 @@ if (!empty($my_requests)) {
       try { document.getElementById('urInfoCard').classList.add('d-none'); } catch(_){ }
       if (locWrap) locWrap.classList.add('d-none');
       if (locInput) locInput.value = '';
-      if (borrowBtn) borrowBtn.disabled = true;
+      if (borrowBtn){ borrowBtn.disabled = true; try{ borrowBtn.classList.remove('btn-primary'); borrowBtn.classList.add('btn-secondary'); }catch(_){ } }
       if (reserveWrap) reserveWrap.classList.add('d-none');
-      if (reserveBtn) reserveBtn.disabled = true;
+      if (reserveBtn){ reserveBtn.disabled = true; try{ reserveBtn.classList.remove('btn-primary'); reserveBtn.classList.add('btn-secondary'); }catch(_){ } }
       lastData = null;
       const isLocal = location.hostname==='localhost'||location.hostname==='127.0.0.1'||/^10\.|^192\.168\./.test(location.hostname);
       if(!window.isSecureContext && !isLocal){ setStatus('Camera access requires HTTPS or localhost.','text-danger'); starting=false; return; }
@@ -5588,8 +5602,8 @@ if (!empty($my_requests)) {
         if (vr && vr.allowed){
           setReqTypeUI('immediate');
           const expWrap = document.getElementById('urExpectedWrap'); if (expWrap) expWrap.classList.remove('d-none');
-          if (borrowBtn){ borrowBtn.disabled = !(locInput && locInput.value.trim()); borrowBtn.onclick = function(){ submitBorrow(); }; }
-          if (locInput){ locInput.oninput = function(){ if (borrowBtn) borrowBtn.disabled = !locInput.value.trim(); if (reserveBtn) updateReserveState(); }; try{ locInput.focus(); }catch(_){ } }
+          if (borrowBtn){ borrowBtn.onclick = function(){ submitBorrow(); }; updateBorrowState(); }
+          if (locInput){ locInput.oninput = function(){ updateBorrowState(); if (reserveBtn) updateReserveState(); }; try{ locInput.focus(); }catch(_){ } }
           // Show cutoff hint if item is single-quantity and has an upcoming reservation
           (async function(){ try{
             const hEl = document.getElementById('urExpectedHint'); if (!hEl) return; hEl.classList.add('d-none'); hEl.textContent='';
@@ -5609,7 +5623,7 @@ if (!empty($my_requests)) {
         } else {
           setReqTypeUI('reservation');
           if (reserveWrap) reserveWrap.classList.remove('d-none');
-          if (reserveBtn){ reserveBtn.disabled = true; reserveBtn.onclick = function(){ submitReserve(); }; }
+          if (reserveBtn){ reserveBtn.disabled = true; try{ reserveBtn.classList.remove('btn-primary'); reserveBtn.classList.add('btn-secondary'); }catch(_){ } reserveBtn.onclick = function(){ submitReserve(); }; }
           if (locInput){ locInput.oninput = function(){ updateReserveState(); }; try{ locInput.focus(); }catch(_){ } }
           await fetchQrReservationStartHint();
         }
@@ -5725,9 +5739,9 @@ if (!empty($my_requests)) {
           document.getElementById('urInfoCard').classList.add('d-none');
           if (locWrap) locWrap.classList.add('d-none');
           if (locInput) locInput.value='';
-          if (borrowBtn) borrowBtn.disabled=true;
+          if (borrowBtn){ borrowBtn.disabled=true; try{ borrowBtn.classList.remove('btn-primary'); borrowBtn.classList.add('btn-secondary'); }catch(_){ } }
           if (reserveWrap) reserveWrap.classList.add('d-none');
-          if (reserveBtn) reserveBtn.disabled=true;
+          if (reserveBtn){ reserveBtn.disabled=true; try{ reserveBtn.classList.remove('btn-primary'); reserveBtn.classList.add('btn-secondary'); }catch(_){ } }
           if (readerEl && readerPlaceholder!==''){ readerEl.innerHTML = readerPlaceholder; }
           setReqTypeUI('immediate');
         }catch(_){ }
@@ -5737,6 +5751,7 @@ if (!empty($my_requests)) {
         // React to reservation time changes
         if (resFrom) resFrom.addEventListener('input', updateReserveState);
         if (resTo) resTo.addEventListener('input', updateReserveState);
+        const expEl = document.getElementById('urExpectedReturn'); if (expEl) expEl.addEventListener('input', updateBorrowState);
       });
       modal.addEventListener('hide.bs.modal', ()=>{ stopScan(); });
     }
