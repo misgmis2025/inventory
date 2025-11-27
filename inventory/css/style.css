@@ -1217,6 +1217,17 @@ button[data-bs-target="#addItemModal"],
   pointer-events: none !important;
 }
 
+/* Mobile top safe space and bottom-nav Logout color */
+@media (max-width: 768px) {
+  /* Add small breathing room at very top on allowed mobile pages */
+  body.allow-mobile { padding-top: 10px !important; }
+}
+/* Make Logout in bottom navigation red */
+.bottom-nav a[href="logout.php"],
+.bottom-nav a[href="logout.php"] .bi { color: #dc3545 !important; }
+.bottom-nav a[href="logout.php"]:hover,
+.bottom-nav a[href="logout.php"]:hover .bi { color: #b02a37 !important; }
+
 /* ===== COMPACT DASHBOARD STYLES FOR MOBILE ===== */
 @media (max-width: 768px) {
   /* Apply only to pages explicitly allowed on mobile */
