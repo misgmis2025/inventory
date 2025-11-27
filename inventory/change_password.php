@@ -103,11 +103,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       @media (max-width: 768px) {
         /* Keep notification bells visible on mobile */
         #adminBellWrap, #userBellWrapCP {
-          position: fixed !important;
-          top: 12px !important;
-          right: 12px !important;
-          z-index: 1100 !important;
+          position: static !important;
+          top: auto !important;
+          right: auto !important;
+          z-index: auto !important;
         }
+        .page-header .d-flex.align-items-center.gap-3{ flex-wrap: nowrap; gap: 8px !important; }
+        #userBellBtnCP, #adminBellBtn, .page-header .btn { padding: .25rem .5rem; }
         /* Bottom nav styles (match Request page) */
         .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; transition: transform .2s ease-in-out; }
         .bottom-nav.hidden{ transform: translateY(100%); }
