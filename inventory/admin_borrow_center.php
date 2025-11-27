@@ -871,48 +871,53 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       if (in_array($latestAct, ['Found','Fixed','Disposed','Permanently Lost','Under Maintenance','Lost'], true)) {
         $currStatusText = $latestAct;
       }
+      // Normalize Event display: show base category (Lost or Damaged) regardless of terminal outcome
+      $evtLower = strtolower($evt);
+      $eventBase = in_array($evtLower, ['lost','permanently lost','found']) ? 'Lost'
+                  : (in_array($evtLower, ['under maintenance','damaged','fixed','disposed','disposal']) ? 'Damaged' : $evt);
       $rows[] = [
         'serial' => $itm ? (string)($itm['serial_no'] ?? '') : '',
         'model' => $itm ? ((string)($itm['model'] ?? '') ?: (string)($itm['item_name'] ?? '')) : '',
         'category' => $itm ? ((string)($itm['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized',
         'location' => $itm ? (string)($itm['location'] ?? '') : '',
         'remarks' => $itm ? (string)($itm['remarks'] ?? '') : '',
-        'event' => $evt,
+        'event' => $eventBase,
+        'orig_event' => $evt,
         'lost_damaged_by' => $userFull,
         'marked_by' => $markedFull,
         'at' => (string)($r['created_at'] ?? ''),
         'status' => $currStatusText,
       ];
     }
-    // De-duplicate only when same Serial ID AND identical timestamp occur; prefer higher severity
-    $priority = function($ev){
+    // Deduplicate by Serial ID only: keep the highest severity outcome for each serial
+    $severity = function($ev){
       $e = strtolower(trim((string)$ev));
-      $map = [ 'permanently lost' => 4, 'disposed' => 3, 'disposal' => 3, 'lost' => 2, 'under maintenance' => 1, 'damaged' => 1 ];
+      // Terminal > non-terminal
+      $map = [ 'permanently lost' => 4, 'disposed' => 4, 'disposal' => 4, 'lost' => 2, 'under maintenance' => 1, 'damaged' => 1 ];
       return isset($map[$e]) ? $map[$e] : 0;
     };
-    $outRows = [];
-    $idxByKey = [];
-    $prioByKey = [];
+    $bySerial = [];
     foreach ($rows as $rw) {
-      $ser = trim((string)($rw['serial'] ?? ''));
-      $when = trim((string)($rw['at'] ?? ''));
-      $key = strtolower($ser).'|'.strtolower($when);
-      $p = $priority($rw['event'] ?? '');
-      if ($ser === '' || $when === '') { $outRows[] = $rw; continue; }
-      if (!isset($idxByKey[$key])) {
-        $idxByKey[$key] = count($outRows);
-        $prioByKey[$key] = $p;
-        $outRows[] = $rw;
-      } else {
-        if ($p > $prioByKey[$key]) {
-          $prioByKey[$key] = $p;
-          $outRows[$idxByKey[$key]] = $rw;
-        }
-        // If same or lower priority, skip as duplicate for this exact time
+      $ser = strtolower(trim((string)($rw['serial'] ?? '')));
+      if ($ser === '') { continue; }
+      $p = $severity($rw['orig_event'] ?? $rw['event'] ?? '');
+      if (!isset($bySerial[$ser])) { $bySerial[$ser] = $rw; $bySerial[$ser]['__sev'] = $p; continue; }
+      // Prefer higher severity; if equal severity, prefer the latest timestamp
+      $cur = $bySerial[$ser];
+      $cp = (int)($cur['__sev'] ?? 0);
+      if ($p > $cp) { $rw['__sev'] = $p; $bySerial[$ser] = $rw; }
+      elseif ($p === $cp) {
+        $newTs = strtotime((string)($rw['at'] ?? '')) ?: 0;
+        $oldTs = strtotime((string)($cur['at'] ?? '')) ?: 0;
+        if ($newTs > $oldTs) { $rw['__sev'] = $p; $bySerial[$ser] = $rw; }
       }
     }
-    $rows = $outRows;
-    // Keep original full list order (already sorted by id desc), with per-time de-dup applied
+    $rows = array_values(array_map(function($r){ unset($r['__sev']); return $r; }, $bySerial));
+    // Keep rows order roughly newest first
+    usort($rows, function($a,$b){
+      $ta = strtotime((string)($a['at'] ?? '')) ?: 0; $tb = strtotime((string)($b['at'] ?? '')) ?: 0;
+      if ($ta === $tb) return 0; return ($ta > $tb) ? -1 : 1;
+    });
   } catch (Throwable $e) { $rows = []; }
   ?><!DOCTYPE html>
   <html lang="en"><head>
