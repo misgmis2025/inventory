@@ -1740,30 +1740,26 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 				<!-- Model Table: full details per item/model -->
 				<div class="card mt-4">
 					<div class="card-header d-flex justify-content-between align-items-center">
-						<h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Model Table</h5>
-					</div>
 					<div class="card-body">
 						<form method="POST" id="bulkDeleteForm" class="d-flex flex-column gap-2">
 							<input type="hidden" name="bulk_delete" value="1" />
 							<input type="hidden" name="delete_reason" id="deleteReasonField" value="" />
-							<div class="d-flex align-items-center w-100">
-								<div class="d-flex">
-									<button id="openBulkDeleteModalBtn" class="btn btn-sm btn-danger d-none" type="button" disabled data-bs-toggle="modal" data-bs-target="#confirmBulkDeleteModal">
-										<i class="bi bi-trash me-1"></i>Delete
-									</button>
-								</div>
-								<div class="flex-grow-1 d-flex justify-content-center">
-									<button id="selectAllTopBtn" class="btn btn-sm btn-outline-primary d-none" type="button">Select All</button>
-								</div>
-								<div class="d-flex ms-auto gap-2">
-									<button id="toggleSelectBtn" class="btn btn-sm btn-outline-primary" type="button" onclick="toggleSelectionMode()">
-										<i class="bi bi-check2-square me-1"></i>Select
-									</button>
-									<button id="openDeleteHistoryBtn" class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#deleteHistoryModal">
-										<i class="bi bi-clock-history me-1"></i>History
-									</button>
-								</div>
-							</div>
+							<div class="d-flex align-items-center justify-content-between w-100">
+                                <div class="d-flex">
+                                    <button id="openBulkDeleteModalBtn" class="btn btn-sm btn-danger d-none" type="button" disabled data-bs-toggle="modal" data-bs-target="#confirmBulkDeleteModal">
+                                        <i class="bi bi-trash me-1"></i>Delete
+                                    </button>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button id="toggleSelectBtn" class="btn btn-sm btn-outline-primary" type="button" onclick="toggleSelectionMode()">
+                                        <i class="bi bi-check2-square me-1"></i>Select
+                                    </button>
+                                    <button id="selectAllTopBtn" class="btn btn-sm btn-outline-primary d-none" type="button">Select All</button>
+                                    <button id="openDeleteHistoryBtn" class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#deleteHistoryModal">
+                                        <i class="bi bi-clock-history me-1"></i>History
+                                    </button>
+                                </div>
+                            </div>
 							<div class="table-responsive">
 								<table class="table table-striped table-hover mb-0">
 									<colgroup>
