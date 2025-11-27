@@ -5419,7 +5419,9 @@ if (!empty($my_requests)) {
       const expWrap=document.getElementById('urExpectedWrap');
       if (expWrap) expWrap.classList.toggle('d-none', qrMode!=='immediate');
       if (reserveWrap) reserveWrap.classList.toggle('d-none', qrMode!=='reservation');
-      if (borrowBtn && borrowBtn.parentElement && borrowBtn.parentElement.parentElement) borrowBtn.parentElement.parentElement.classList.toggle('d-none', qrMode!=='immediate');
+      // Always show the location row for both modes; only hide the Borrow button column for reservation
+      if (locWrap) { locWrap.classList.remove('d-none'); }
+      if (borrowBtn && borrowBtn.parentElement) { borrowBtn.parentElement.classList.toggle('d-none', qrMode!=='immediate'); }
       if (reserveBtn){
         const grp=reserveBtn.closest('.row');
         if (grp && grp.parentElement && grp.parentElement.parentElement){ grp.parentElement.parentElement.classList.toggle('d-none', qrMode!=='reservation'); }
