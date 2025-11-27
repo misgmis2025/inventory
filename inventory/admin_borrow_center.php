@@ -123,6 +123,7 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     <title>Overdue Items Print</title>
     <link href="css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="images/logo-removebg.png?v=<?php echo file_exists(__DIR__.'/images/logo-removebg.png') ? (filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png')) : time(); ?>" />
     <style>
       @page { size: A4 portrait; margin: 0.6in 0.25in 0.25in 0.25in; }
       @media print { .no-print { display:none!important } html,body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; } thead{display:table-header-group} tfoot{display:table-footer-group} .print-wrap{ overflow: visible !important; } }
@@ -926,6 +927,7 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     <link href="css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="icon" type="image/png" href="images/logo-removebg.png?v=<?php echo file_exists(__DIR__.'/images/logo-removebg.png') ? (filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png')) : time(); ?>" />
     <style>
       @page { size: A4 portrait; margin: 0.6in 0.25in 0.25in 0.25in; }
       @media print { .no-print { display:none!important } html,body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; } thead{display:table-header-group} tfoot{display:table-footer-group} .print-wrap{ overflow: visible !important; } }
