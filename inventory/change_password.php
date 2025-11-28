@@ -247,6 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               try { window.addEventListener('orientationchange', function(){ var open = !nav.classList.contains('hidden'); setPersistentWrapOffset(open); }); } catch(_){ }
             }
           })();
+        document.addEventListener('click', function(ev){ const x = ev.target && ev.target.closest && ev.target.closest('.u-clear-one'); if (x){ ev.preventDefault(); const key = x.getAttribute('data-key')||''; if(!key) return; const fd=new FormData(); fd.append('key', key); fetch('user_request.php?action=user_notif_clear',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ try{ if (typeof poll === 'function') poll(true); }catch(_){ } }).catch(()=>{}); return; } if (ev.target && ev.target.id === 'uClearAllBtn'){ ev.preventDefault(); const fd=new FormData(); fd.append('limit','300'); fetch('user_request.php?action=user_notif_clear_all',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ try{ if (typeof poll === 'function') poll(true); }catch(_){ } }).catch(()=>{}); } });
         </script>
         <?php endif; ?>
                 <a href="change_password.php" class="list-group-item list-group-item-action bg-transparent fw-bold">
@@ -897,11 +898,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             function escapeHtml(s){ return String(s).replace(/[&<>\"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\\\"":"&quot;","'":"&#39;"}[m])); }
             function composeRows(baseList, dn, ovCount, ovSet){
                 let latest=0; let sigParts=[]; const combined=[]; const ovset=(ovSet instanceof Set)?ovSet:new Set();
+                const clearedKeys = new Set((dn && Array.isArray(dn.cleared_keys)) ? dn.cleared_keys : []);
+                let ephemCount = 0;
                 try{ }catch(_){ }
-                (baseList||[]).forEach(function(r){ const id=parseInt(r.id||0,10); const st=String(r.status||''); sigParts.push(id+'|'+st); const when=r.approved_at||r.rejected_at||r.borrowed_at||r.returned_at||r.created_at; const whenTxt=when?String(when):''; let tsn=0; try{ const d=when?new Date(String(when).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; let disp=st, badge='bg-secondary'; const isOv=ovset.has(id); if(st==='Rejected'||st==='Cancelled'){ disp='Rejected'; badge='bg-danger'; } else if(st==='Returned'){ disp='Returned'; badge='bg-success'; } else if(st==='Approved'||st==='Borrowed'){ disp=isOv?'Overdue':'Approved'; badge=isOv?'bg-warning text-dark':'bg-success'; } const html='<a href="user_request.php" class="list-group-item list-group-item-action"><div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong><small class="text-muted">'+whenTxt+'</small></div><div class="mb-0">Status: <span class="badge '+badge+'">'+escapeHtml(disp||'')+'</span></div></a>'; combined.push({type:'base', id, ts:tsn, html}); });
-                try{ const decisions=(dn&&Array.isArray(dn.decisions))?dn.decisions:[]; decisions.forEach(function(dc){ const rid=parseInt(dc.id||0,10)||0; if(!rid) return; const msg=escapeHtml(String(dc.message||'')); const ts=String(dc.ts||''); let tsn=0; try{ const d=ts?new Date(String(ts).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; const whenHtml=ts?('<small class="text-muted">'+escapeHtml(ts)+'</small>'):''; const html='<div class="list-group-item"><div class="d-flex w-100 justify-content-between"><strong>#'+rid+' Decision</strong>'+whenHtml+'</div><div class="mb-0">'+msg+'</div></div>'; combined.push({type:'extra', id:rid, ts:tsn, html}); }); }catch(_){ }
+                (baseList||[]).filter(function(r){ try{ return !clearedKeys.has('req:'+parseInt(r.id||0,10)); }catch(_){ return true; } }).forEach(function(r){ const id=parseInt(r.id||0,10); const st=String(r.status||''); sigParts.push(id+'|'+st); const when=r.approved_at||r.rejected_at||r.borrowed_at||r.returned_at||r.created_at; const whenTxt=when?String(when):''; let tsn=0; try{ const d=when?new Date(String(when).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; let disp=st, badge='bg-secondary'; const isOv=ovset.has(id); if(st==='Rejected'||st==='Cancelled'){ disp='Rejected'; badge='bg-danger'; } else if(st==='Returned'){ disp='Returned'; badge='bg-success'; } else if(st==='Approved'||st==='Borrowed'){ disp=isOv?'Overdue':'Approved'; badge=isOv?'bg-warning text-dark':'bg-success'; } const key='req:'+id; ephemCount++; const html='<div class="list-group-item d-flex justify-content-between align-items-start">'+'<div class="me-2">'+'<div class="d-flex w-100 justify-content-between">'+'<a href="user_request.php" class="fw-bold text-decoration-none">#'+id+' '+escapeHtml(r.item_name||'')+'</a>'+'<small class="text-muted">'+whenTxt+'</small>'+'</div>'+'<div class="mb-0">Status: <span class="badge '+badge+'">'+escapeHtml(disp||'')+'</span></div>'+'</div>'+'<div><button type="button" class="btn-close u-clear-one" aria-label="Clear" data-key="'+key+'"></button></div>'+'</div>'; combined.push({type:'base', id, ts:tsn, html}); });
+                try{ const decisions=(dn&&Array.isArray(dn.decisions))?dn.decisions:[]; decisions.forEach(function(dc){ const rid=parseInt(dc.id||0,10)||0; if(!rid) return; const msg=escapeHtml(String(dc.message||'')); const ts=String(dc.ts||''); let tsn=0; try{ const d=ts?new Date(String(ts).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; const whenHtml=ts?('<small class="text-muted">'+escapeHtml(ts)+'</small>'):''; const key='decision:'+rid+'|'+escapeHtml(String(dc.status||'')); try{ if (clearedKeys.has(key)) return; }catch(_){ } ephemCount++; const html='<div class="list-group-item d-flex justify-content-between align-items-start">'+'<div class="me-2">'+'<div class="d-flex w-100 justify-content-between">'+'<strong>#'+rid+' Decision</strong>'+whenHtml+'</div>'+'<div class="mb-0">'+msg+'</div>'+'</div>'+'<div><button type="button" class="btn-close u-clear-one" aria-label="Clear" data-key="'+key+'"></button></div>'+'</div>'; combined.push({type:'extra', id:rid, ts:tsn, html}); }); }catch(_){ }
                 combined.sort(function(a,b){ if((a.type==='overdue')!==(b.type==='overdue')) return (a.type==='overdue')?-1:1; if(b.ts!==a.ts) return b.ts-a.ts; return (b.id||0)-(a.id||0); });
-                return { rows: combined.map(x=>x.html), latest, sig: sigParts.join(',') };
+                let rows = combined.map(x=>x.html);
+                try{ if (ephemCount>0){ const header='<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Notifications</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="uClearAllBtn">Clear All</button></div></div>'; rows.splice(0,0,header); } }catch(_){ }
+                return { rows, latest, sig: sigParts.join(',') };
             }
             let fetching=false; let lastHtml='';
             function poll(force){
@@ -934,7 +939,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         })();
         </script>
         <script>
-        // Persistent user notices for admin-initiated returnship requests (non-admin only)
+            document.addEventListener('DOMContentLoaded', function(){
+                const clearAllBtn = document.getElementById('uClearAllBtn');
+                if (clearAllBtn) {
+                    clearAllBtn.addEventListener('click', function(){
+                        const formData = new FormData();
+                        formData.append('ajax', 'clear_all');
+                        fetch('user_request.php?action=user_notif_clear', { method: 'POST', body: formData, credentials: 'same-origin' })
+                            .then(r => r.json())
+                            .then(j => {
+                                if (j && j.ok) {
+                                    const clearedKeys = new Set(j.cleared_keys || []);
+                                    const listItems = listEl ? listEl.children : [];
+                                    for (let i = 0; i < listItems.length; i++) {
+                                        const item = listItems[i];
+                                        const key = item.querySelector('.u-clear-one') ? item.querySelector('.u-clear-one').getAttribute('data-key') : '';
+                                        if (clearedKeys.has(key)) {
+                                            try { item.remove(); } catch (_) { }
+                                        }
+                                    }
+                                    poll(true);
+                                }
+                            })
+                            .catch(() => {});
+                    });
         (function(){
             var isAdmin = <?php echo json_encode($usertype === 'admin'); ?>;
             if (isAdmin) return;

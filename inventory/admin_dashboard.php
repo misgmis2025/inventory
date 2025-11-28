@@ -726,7 +726,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             }
             document.addEventListener('click', function(ev){
                 const one = ev.target && ev.target.closest && ev.target.closest('.adm-clear-one');
-                if (one){
+                if (one){ ev.preventDefault();
                     const rid = parseInt(one.getAttribute('data-id')||'0',10)||0;
                     if (!rid) return;
                     const fd = new FormData(); fd.append('request_id', String(rid));
@@ -734,7 +734,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                       .then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{});
                     return;
                 }
-                if (ev.target && ev.target.id === 'admClearAllBtn'){
+                if (ev.target && ev.target.id === 'admClearAllBtn'){ ev.preventDefault();
                     const fd = new FormData(); fd.append('limit','300');
                     fetch('admin_borrow_center.php?action=admin_notif_clear_all', { method:'POST', body: fd })
                       .then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{});

@@ -28,6 +28,71 @@ try {
   $USED_MONGO = true;
 } catch (Throwable $e) { $USED_MONGO = false; }
 
+// JSON: user clears one notification
+if ($__act === 'user_notif_clear' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  try {
+    if ($USED_MONGO && $mongo_db) {
+      $col = $mongo_db->selectCollection('user_notif_clears');
+      $uname = (string)($_SESSION['username'] ?? '');
+      $key = trim((string)($_POST['key'] ?? ''));
+      if ($uname !== '' && $key !== '') { $col->updateOne(['uname'=>$uname,'key'=>$key], ['$set'=>['uname'=>$uname,'key'=>$key,'created_at'=>date('Y-m-d H:i:s')]], ['upsert'=>true]); }
+      echo json_encode(['ok'=>true]);
+    } else { echo json_encode(['ok'=>false]); }
+  } catch (Throwable $e) { echo json_encode(['ok'=>false]); }
+  exit;
+}
+
+// JSON: user clears all current notifications (best-effort)
+if ($__act === 'user_notif_clear_all' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  try {
+    if ($USED_MONGO && $mongo_db) {
+      $uname = (string)($_SESSION['username'] ?? ''); if ($uname === '') { echo json_encode(['ok'=>false]); exit; }
+      // Build current keys from same sources as user_notifications
+      $allocCol = $mongo_db->selectCollection('request_allocations');
+      $ubCol = $mongo_db->selectCollection('user_borrows');
+      $erCol = $mongo_db->selectCollection('equipment_requests');
+      $iiCol = $mongo_db->selectCollection('inventory_items');
+      $ldCol = $mongo_db->selectCollection('lost_damaged_log');
+      $rsCol = $mongo_db->selectCollection('returnship_requests');
+      $keys = [];
+      try {
+        $allocs = $allocCol->find([], ['sort'=>['id'=>-1], 'limit'=>300]);
+        foreach ($allocs as $al) {
+          $reqId = (int)($al['request_id'] ?? 0); $bid = (int)($al['borrow_id'] ?? 0);
+          if ($reqId<=0 || $bid<=0) continue; $er = $erCol->findOne(['id'=>$reqId, 'username'=>$uname]); if (!$er) continue; $keys[] = 'approval:' . ((int)($al['id'] ?? 0));
+        }
+      } catch (Throwable $_a) {}
+      // Current request rows (Approved/Rejected/Borrowed/Returned)
+      try {
+        $curER = $erCol->find(['username'=>$uname, 'status' => ['$in' => ['Approved','Rejected','Borrowed','Returned']]], ['projection'=>['id'=>1], 'sort'=>['id'=>-1], 'limit'=>300]);
+        foreach ($curER as $erx) { $keys[] = 'req:' . ((int)($erx['id'] ?? 0)); }
+      } catch (Throwable $_er) {}
+      try {
+        $logs = $ldCol->find(['username'=>$uname,'action'=>['$in'=>['Lost','Under Maintenance']]], ['sort'=>['id'=>-1], 'limit'=>300]);
+        foreach ($logs as $l) { $keys[] = 'lost:' . ((int)($l['id'] ?? 0)); }
+      } catch (Throwable $_l) {}
+      try {
+        $rsCur = $rsCol->find(['username'=>$uname, 'status' => ['$in' => ['Pending','Requested']]], ['sort'=>['id'=>-1], 'limit'=>100]);
+        foreach ($rsCur as $rs) { $keys[] = 'returnship:' . ((int)($rs['id'] ?? 0)); }
+      } catch (Throwable $_r) {}
+      // decisions
+      try {
+        $decCol = $mongo_db->selectCollection('user_decisions'); // optional collection; ignore if missing
+        // no-op if absent
+      } catch (Throwable $_d) {}
+      $col = $mongo_db->selectCollection('user_notif_clears');
+      $now = date('Y-m-d H:i:s');
+      $bulk = [];
+      foreach (array_values(array_unique($keys)) as $k) { if ($k==='') continue; $bulk[] = ['updateOne'=>[['uname'=>$uname,'key'=>$k], ['$set'=>['uname'=>$uname,'key'=>$k,'created_at'=>$now]], ['upsert'=>true]]]; }
+      if (!empty($bulk)) { try { $col->bulkWrite($bulk); } catch (Throwable $_bw) {} }
+      echo json_encode(['ok'=>true]);
+    } else { echo json_encode(['ok'=>false]); }
+  } catch (Throwable $e) { echo json_encode(['ok'=>false]); }
+  exit;
+}
+
 // JSON: reservation_start_hint (earliest start time for reservation on single-quantity items)
 if ($__act === 'reservation_start_hint' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');
@@ -424,7 +489,25 @@ if ($__act === 'user_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           }
         }
       } catch (Throwable $_d) { /* ignore */ }
-      echo json_encode(['approvals'=>$approvals,'lostDamaged'=>$lostDamaged,'returnships'=>$returnships,'decisions'=>$decisions]);
+      // Apply user clears
+      $clearedKeysOut = [];
+      try {
+        $clCol = $mongo_db->selectCollection('user_notif_clears');
+        $clears = $clCol->find(['uname'=>$uname], ['projection'=>['key'=>1]]);
+        $cleared = [];
+        foreach ($clears as $c) { $k = (string)($c['key'] ?? ''); if ($k!=='') { $cleared[$k]=true; $clearedKeysOut[] = $k; } }
+        if (!empty($approvals)) { $approvals = array_values(array_filter($approvals, function($a) use ($cleared){ $k='approval:'.((int)($a['alloc_id']??0)); return empty($cleared[$k]) && empty($cleared['req:'.$a['request_id']]); })); }
+        if (!empty($lostDamaged)) { $lostDamaged = array_values(array_filter($lostDamaged, function($l) use ($cleared){ $k='lost:'.((int)($l['log_id']??0)); return empty($cleared[$k]); })); }
+        if (!empty($returnships)) { $returnships = array_values(array_filter($returnships, function($r) use ($cleared){ $k='returnship:'.((int)($r['id']??0)); return empty($cleared[$k]); })); }
+        // decisions array may be provided alongside via a joined endpoint later; keep passthrough
+      } catch (Throwable $_cl) {}
+      echo json_encode([
+        'approvals' => $approvals,
+        'lostDamaged' => $lostDamaged,
+        'returnships' => $returnships,
+        'decisions' => $decisions,
+        'cleared_keys' => $clearedKeysOut,
+      ]);
     } catch (Throwable $e) { echo json_encode(['approvals'=>[], 'lostDamaged'=>[]]); }
   } else {
     $approvals = []; $lostDamaged = [];
@@ -5192,6 +5275,8 @@ if (!empty($my_requests)) {
       // Build full list (base requests + extras) in memory and return rows + metadata
       function composeRows(baseList, dn, ovCount, ovSet){
         let latest=0; let sigParts=[]; const combined=[]; const ovset = (ovSet instanceof Set) ? ovSet : (window.__UR_OVSET__ instanceof Set ? window.__UR_OVSET__ : new Set());
+        const clearedKeys = new Set((dn && Array.isArray(dn.cleared_keys)) ? dn.cleared_keys : []);
+        let ephemCount = 0;
         // Overdue summary always at top when present
         try{
           const oc = parseInt(ovCount||0,10)||0;
@@ -5205,7 +5290,7 @@ if (!empty($my_requests)) {
             combined.push({type:'overdue', id:0, ts: (Date.now()+1000000), html: oh});
           }
         }catch(_){ }
-        (baseList||[]).forEach(function(r){
+        (baseList||[]).filter(function(r){ try{ return !clearedKeys.has('req:'+parseInt(r.id||0,10)); }catch(_){ return true; } }).forEach(function(r){
           const id = parseInt(r.id||0,10);
           const st = String(r.status||'');
           sigParts.push(id+'|'+st);
@@ -5223,13 +5308,18 @@ if (!empty($my_requests)) {
             if (isOverdue) { dispStatus='Overdue'; badgeCls='bg-warning text-dark'; }
             else { dispStatus='Approved'; badgeCls='bg-success'; }
           }
-          const html = '<a href="user_request.php" class="list-group-item list-group-item-action">'
-            + '<div class="d-flex w-100 justify-content-between">'
-            +   '<strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong>'
-            +   '<small class="text-muted">'+whenTxt+'</small>'
+          const key = 'req:'+id;
+          ephemCount++;
+          const html = '<div class="list-group-item d-flex justify-content-between align-items-start">'
+            + '<div class="me-2">'
+            +   '<div class="d-flex w-100 justify-content-between">'
+            +     '<a href="user_request.php" class="fw-bold text-decoration-none">#'+id+' '+escapeHtml(r.item_name||'')+'</a>'
+            +     '<small class="text-muted">'+whenTxt+'</small>'
+            +   '</div>'
+            +   '<div class="mb-0">Status: <span class="badge '+badgeCls+'">'+escapeHtml(dispStatus||'')+'</span></div>'
             + '</div>'
-            + '<div class="mb-0">Status: <span class="badge '+badgeCls+'">'+escapeHtml(dispStatus||'')+'</span></div>'
-            + '</a>';
+            + '<div><button type="button" class="btn-close u-clear-one" aria-label="Clear" data-key="'+key+'"></button></div>'
+            + '</div>';
           combined.push({type:'base', id, ts: tsn, html});
         });
         try{
@@ -5238,15 +5328,21 @@ if (!empty($my_requests)) {
             const rid = parseInt(dc.id||0,10)||0; if (!rid) return;
             const msg = escapeHtml(String(dc.message||''));
             const ts = String(dc.ts||'');
-            let tsn = 0; try { const d = ts ? new Date(String(ts).replace(' ','T')) : null; if (d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } } catch(_){ }
+            let tsn = 0; try { const d = ts ? new Date(String(ts).replace(' ','T')) : null; if (d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ }
             if (tsn>latest) latest=tsn;
             const whenHtml = ts ? ('<small class="text-muted">'+escapeHtml(ts)+'</small>') : '';
-            const html = '<div class="list-group-item">'
-              + '<div class="d-flex w-100 justify-content-between">'
-              +   '<strong>#'+rid+' Decision</strong>'
-              +   whenHtml
+            const key = 'decision:'+rid+'|'+escapeHtml(String(dc.status||''));
+            try{ if (clearedKeys.has(key)) return; }catch(_){ }
+            ephemCount++;
+            const html = '<div class="list-group-item d-flex justify-content-between align-items-start">'
+              + '<div class="me-2">'
+              +   '<div class="d-flex w-100 justify-content-between">'
+              +     '<strong>#'+rid+' Decision</strong>'
+              +     whenHtml
+              +   '</div>'
+              +   '<div class="mb-0">'+msg+'</div>'
               + '</div>'
-              + '<div class="mb-0">'+msg+'</div>'
+              + '<div><button type="button" class="btn-close u-clear-one" aria-label="Clear" data-key="'+key+'"></button></div>'
               + '</div>';
             combined.push({type:'extra', id: rid, ts: tsn, html});
           });
@@ -5257,7 +5353,14 @@ if (!empty($my_requests)) {
           if (b.ts !== a.ts) return b.ts - a.ts;
           return (b.id||0) - (a.id||0);
         });
-        const rows = combined.map(function(x){ return x.html; });
+        let rows = combined.map(function(x){ return x.html; });
+        try {
+          const hasOverdue = (combined.length>0 && combined[0].type==='overdue');
+          if (ephemCount > 0) {
+            const header = '<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Notifications</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="uClearAllBtn">Clear All</button></div></div>';
+            rows.splice(hasOverdue ? 1 : 0, 0, header);
+          }
+        } catch(_){ }
         return { rows, latest, sig: sigParts.join(',') };
       }
       function renderList(items){ const tb=document.getElementById('userNotifList'); if(!tb) return; 
@@ -5464,6 +5567,11 @@ if (!empty($my_requests)) {
       }
       listEl && listEl.addEventListener('click', function(e){ const a=e.target && e.target.closest? e.target.closest('.open-qr-return'):null; if(!a) return; e.preventDefault(); const rid=a.getAttribute('data-reqid')||''; const bid=a.getAttribute('data-borrow_id')||''; const name=a.getAttribute('data-model_name')||''; triggerReturnModal(rid,bid,name); });
       mobileListEl && mobileListEl.addEventListener('click', function(e){ const a=e.target && e.target.closest? e.target.closest('.open-qr-return'):null; if(!a) return; e.preventDefault(); const rid=a.getAttribute('data-reqid')||''; const bid=a.getAttribute('data-borrow_id')||''; const name=a.getAttribute('data-model_name')||''; triggerReturnModal(rid,bid,name); });
+      document.addEventListener('click', function(ev){
+        const x = ev.target && ev.target.closest && ev.target.closest('.u-clear-one');
+        if (x){ ev.preventDefault(); const key = x.getAttribute('data-key') || ''; if (!key) return; const fd = new FormData(); fd.append('key', key); fetch('user_request.php?action=user_notif_clear', { method:'POST', body: fd }).then(r=>r.json()).then(()=>{ poll(true); }).catch(()=>{}); return; }
+        if (ev.target && ev.target.id === 'uClearAllBtn'){ ev.preventDefault(); const fd = new FormData(); fd.append('limit','300'); fetch('user_request.php?action=user_notif_clear_all', { method:'POST', body: fd }).then(r=>r.json()).then(()=>{ poll(true); }).catch(()=>{}); }
+      });
     })();
   </script>
   
