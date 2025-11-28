@@ -3890,30 +3890,31 @@ try {
             toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1030';
             document.body.appendChild(toastWrap);
           }
-          function adjustAdminToastOffset(){
-            try{
-              var tw=document.getElementById('adminToastWrap'); if(!tw) return;
-              var baseRight = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches)?14:16; tw.style.right=baseRight+'px';
-              var bottomPx=16;
+          window.adjustAdminToastOffset = function(){
               try{
-                if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
-                  var nav=document.querySelector('.bottom-nav'); var hidden=nav && nav.classList && nav.classList.contains('hidden');
-                  if (nav && !hidden){
-                    var rect=nav.getBoundingClientRect(); var h=Math.round(Math.max(0, window.innerHeight-rect.top)); if(!h||!isFinite(h)) h=64; bottomPx=h+12; 
-                  } else {
-                    // align above floating toggle button if present
-                    var btn=document.querySelector('.bottom-nav-toggle');
-                    if (btn){ var br=btn.getBoundingClientRect(); var bh=Math.round(Math.max(0, window.innerHeight-br.top)); if(!bh||!isFinite(bh)) bh=64; bottomPx=bh+12; }
-                    else { bottomPx=16; }
+                var tw=document.getElementById('adminToastWrap'); if(!tw) return;
+                var baseRight = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches)?14:16; tw.style.right=baseRight+'px';
+                var bottomPx=16;
+                try{
+                  if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+                    var nav=document.querySelector('.bottom-nav'); var hidden=nav && nav.classList && nav.classList.contains('hidden');
+                    if (nav && !hidden){
+                      var rect=nav.getBoundingClientRect(); var h=Math.round(Math.max(0, window.innerHeight-rect.top)); if(!h||!isFinite(h)) h=64; bottomPx=h+12; 
+                    } else {
+                      // align above floating toggle button if present
+                      var btn=document.querySelector('.bottom-nav-toggle');
+                      if (btn){ var br=btn.getBoundingClientRect(); var bh=Math.round(Math.max(0, window.innerHeight-br.top)); if(!bh||!isFinite(bh)) bh=64; bottomPx=bh+12; }
+                      else { bottomPx=16; }
+                    }
                   }
-                }
-              }catch(_){ bottomPx=64; }
-              tw.style.bottom=String(bottomPx)+'px';
-            }catch(_){ }
+                }catch(_){ bottomPx=64; }
+                tw.style.bottom=String(bottomPx)+'px';
+              }catch(_){ }
           }
-          try{ window.addEventListener('resize', adjustAdminToastOffset); }catch(_){ }
+          try{ window.addEventListener('resize', window.adjustAdminToastOffset); }catch(_){ }
+          try{ window.adjustAdminToastOffset(); }catch(_){ }
           function attachSwipeForToast(el){ try{ var sx=0, sy=0, dx=0, moving=false, removed=false; var onStart=function(ev){ try{ var t=ev.touches?ev.touches[0]:ev; sx=t.clientX; sy=t.clientY; dx=0; moving=true; el.style.willChange='transform,opacity'; el.classList.add('toast-slide'); el.style.transition='none'; }catch(_){}}; var onMove=function(ev){ if(!moving||removed) return; try{ var t=ev.touches?ev.touches[0]:ev; dx=t.clientX - sx; var adx=Math.abs(dx); var od=1 - Math.min(1, adx/140); el.style.transform='translateX('+dx+'px)'; el.style.opacity=String(od); }catch(_){}}; var onEnd=function(){ if(!moving||removed) return; moving=false; try{ el.style.transition='transform 180ms ease, opacity 180ms ease'; var adx=Math.abs(dx); if (adx>80){ removed=true; el.classList.add(dx>0?'toast-remove-right':'toast-remove-left'); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 200); } else { el.style.transform=''; el.style.opacity=''; } }catch(_){ } }; el.addEventListener('touchstart', onStart, {passive:true}); el.addEventListener('touchmove', onMove, {passive:true}); el.addEventListener('touchend', onEnd, {passive:true}); }catch(_){ } }
-          function showToast(msg, cls){ var el=document.createElement('div'); el.className='alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide toast-enter'; el.style.minWidth='300px'; el.style.maxWidth='340px'; try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='180px'; el.style.maxWidth='200px'; el.style.fontSize='12px'; } }catch(_){ } el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); try{ adjustAdminToastOffset(); }catch(_){ } attachSwipeForToast(el); setTimeout(function(){ try{ el.classList.add('toast-fade-out'); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 220); }catch(_){ } }, 5000); }
+          function showToast(msg, cls){ var el=document.createElement('div'); el.className='alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide toast-enter'; el.style.minWidth='300px'; el.style.maxWidth='340px'; try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='180px'; el.style.maxWidth='200px'; el.style.fontSize='12px'; } }catch(_){ } el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); try{ window.adjustAdminToastOffset(); }catch(_){ } attachSwipeForToast(el); setTimeout(function(){ try{ el.classList.add('toast-fade-out'); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 220); }catch(_){ } }, 5000); }
           function playBeep(){ try{ var ctx = new (window.AudioContext||window.webkitAudioContext)(); var o = ctx.createOscillator(); var g = ctx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(880, ctx.currentTime); g.gain.setValueAtTime(0.0001, ctx.currentTime); o.connect(g); g.connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.4); o.stop(ctx.currentTime+0.45); } catch(_e){} }
           var baseVerif = new Set(); var initFeed=false; var feeding=false;
           function pollVerif(){ if (feeding) return; feeding=true;

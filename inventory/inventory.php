@@ -3056,8 +3056,8 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
           var toastWrap = document.getElementById('adminToastWrap');
           if (!toastWrap) {
             toastWrap = document.createElement('div'); toastWrap.id = 'adminToastWrap';
-            toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080';
-            document.body.appendChild(toastWrap);
+            toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px';        	toastWrap.style.zIndex = '1030';
+        			document.body.appendChild(toastWrap);
           }
           function showToast(msg, cls){ var el=document.createElement('div'); el.className='alert '+(cls||'alert-info')+' shadow-sm border-0'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 5000); }
           function playBeep(){ try{ var ctx = new (window.AudioContext||window.webkitAudioContext)(); var o = ctx.createOscillator(); var g = ctx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(880, ctx.currentTime); g.gain.setValueAtTime(0.0001, ctx.currentTime); o.connect(g); g.connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.4); o.stop(ctx.currentTime+0.45); } catch(_e){} }

@@ -1013,6 +1013,9 @@ button[data-bs-target="#addItemModal"],
 }
 .toast-enter { animation: toastIn 220ms ease-out; }
 
+#adminToastWrap { position: fixed; right: 16px; bottom: 16px; z-index: 1030; pointer-events: none; }
+#adminToastWrap .alert { pointer-events: auto; }
+
 /* Admin toasts: keep above bottom navigation on mobile */
 @media (max-width: 768px) {
   #adminToastWrap {

@@ -709,7 +709,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             }
 
             let toastWrap = document.getElementById('adminToastWrap');
-            if (!toastWrap) { toastWrap=document.createElement('div'); toastWrap.id='adminToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080'; document.body.appendChild(toastWrap); }
+            if (!toastWrap) { toastWrap=document.createElement('div'); toastWrap.id='adminToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1030'; document.body.appendChild(toastWrap); }
             function adjustAdminToastOffset(){
                 try{
                     var tw=document.getElementById('adminToastWrap'); if(!tw) return;
