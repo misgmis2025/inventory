@@ -5453,7 +5453,7 @@ if (!empty($my_requests)) {
       // Close behaviors
       document.addEventListener('click', function(ev){
         const t = ev.target;
-        if (t && (t.closest('#userBellDropdown') || t.closest('#userBellBtn') || t.closest('#userBellWrap'))) return;
+        if (t && (t.closest('#userBellDropdown') || t.closest('#userBellBtn') || t.closest('#userBellWrap') || t.closest('#userBellModal'))) return;
         dropdown.classList.remove('show');
         dropdown.style.display='';
         // After closing, refresh once to sync latest

@@ -557,7 +557,11 @@ if (!$USED_MONGO) {
                     } catch(_){ }
                     try { poll(true); } catch(_){ }
                 });
-                document.addEventListener('click', function(){ dropdown.classList.remove('show'); dropdown.style.display=''; closeMobileModal(); });
+                document.addEventListener('click', function(ev){
+                    const t = ev.target;
+                    if (t && t.closest && (t.closest('#userBellDropdown') || t.closest('#userBellBtn') || t.closest('#userBellWrap') || t.closest('#userBellModal'))) return;
+                    dropdown.classList.remove('show'); dropdown.style.display=''; closeMobileModal();
+                });
                 const uBellClose = document.getElementById('userBellClose');
                 if (uBellClose) { uBellClose.addEventListener('click', function(ev){ ev.stopPropagation(); dropdown.classList.remove('show'); dropdown.style.display=''; }); }
                 if (mBackdrop) mBackdrop.addEventListener('click', closeMobileModal);
