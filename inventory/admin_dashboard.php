@@ -404,8 +404,8 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
       }
       @media (max-width: 768px){
         @media (max-width: 768px) {
-          .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; }
-          body{ padding-bottom: 64px; }
+          .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+          body{ padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
           .bottom-nav a{ text-decoration:none; font-size:12px; color:#333; display:flex; flex-direction:column; align-items:center; gap:4px; }
           .bottom-nav a .bi{ font-size:18px; }
         }
