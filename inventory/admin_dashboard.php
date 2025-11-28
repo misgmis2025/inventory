@@ -543,6 +543,12 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         .kpi-mini .text-muted.small{ font-size: 11px !important; }
         .kpi-mini .rowline .label{ font-size:11px !important; }
         .kpi-mini .rowline .value{ font-size:.95rem !important; }
+        .kpi-row-4{ grid-template-columns: repeat(2, 1fr) !important; gap:8px !important; }
+        .kpi-card{ aspect-ratio: 1 / 1; }
+        .kpi-card .card-body{ padding:8px !important; display:flex; align-items:center; justify-content:center; }
+        .kpi-title{ font-size:11px !important; }
+        .kpi-value{ font-size:1rem !important; }
+        .kpi-icon{ font-size:.85rem !important; }
       }
       .kpi-grid{ display: grid; gap: 12px; }
       .kpi-row{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
@@ -554,6 +560,12 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
       .kpi-mini .rowline{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
       .kpi-mini .rowline .label{ font-size:12px; }
       .kpi-mini .rowline .value{ font-size:1rem; line-height:1; }
+      .kpi-row-4{ display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; align-items:stretch; }
+      .kpi-card .card-body{ padding: 10px 12px; }
+      .kpi-rowline{ display:flex; align-items:center; justify-content:space-between; gap:8px; white-space:nowrap; width:100%; }
+      .kpi-title{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .kpi-value{ font-size:1rem; line-height:1; }
+      .kpi-icon{ font-size:.95rem; margin-left:6px; opacity:.7; vertical-align:middle; }
       /* Sidebar visibility: show on desktop, hide on mobile */
       @media (min-width: 769px){
         #sidebar-wrapper { display: block !important; }
@@ -647,68 +659,53 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             </div>
 
             <div class="kpi-grid mb-3">
-              <div class="kpi-row">
-                <div>
-                  <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('total_items')" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                          <div class="text-muted small">Total Items</div>
-                          <div class="fs-4 fw-bold"><?php echo (int)$totalItems; ?></div>
-                        </div>
-                        <i class="bi bi-box-seam text-primary" style="font-size: 1.8rem;"></i>
-                      </div>
+              <div class="kpi-row-4">
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('total_items')" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline">
+                      <span class="kpi-title text-muted">Total Items<i class="bi bi-box-seam kpi-icon text-primary"></i></span>
+                      <span class="kpi-value fw-bold"><?php echo (int)$totalItems; ?></span>
                     </div>
                   </div>
                 </div>
-                <div class="kpi-group kpi-mini">
-                  <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('high')" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="rowline"><span class="label text-muted">High Stock</span><span class="value fw-bold text-success"><?php echo (int)$highCount; ?></span></div>
-                    </div>
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('high')" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline"><span class="kpi-title text-muted">High Stock</span><span class="kpi-value fw-bold text-success"><?php echo (int)$highCount; ?></span></div>
                   </div>
-                  <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('low')" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="rowline"><span class="label text-muted">Low Stock</span><span class="value fw-bold text-warning"><?php echo (int)$lowCount; ?></span></div>
-                    </div>
+                </div>
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('low')" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline"><span class="kpi-title text-muted">Low Stock</span><span class="kpi-value fw-bold text-warning"><?php echo (int)$lowCount; ?></span></div>
                   </div>
-                  <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('out')" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="rowline"><span class="label text-muted">Out of Stock</span><span class="value fw-bold text-danger"><?php echo (int)$outCount; ?></span></div>
-                    </div>
+                </div>
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('out')" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline"><span class="kpi-title text-muted">Out of Stock</span><span class="kpi-value fw-bold text-danger"><?php echo (int)$outCount; ?></span></div>
                   </div>
                 </div>
               </div>
-
-              <div class="kpi-row">
-                <div>
-                  <div id="kpiTotalUnits" class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="window.location.href='inventory.php'" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                          <div class="text-muted small">Total Units</div>
-                          <div class="fs-4 fw-bold"><?php echo (int)($totalUnitsDisplay ?? $totalUnits); ?></div>
-                        </div>
-                        <i class="bi bi-collection text-info" style="font-size: 1.8rem;"></i>
-                      </div>
+              <div class="kpi-row-4">
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="window.location.href='inventory.php'" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline">
+                      <span class="kpi-title text-muted">Total Units<i class="bi bi-collection kpi-icon text-info"></i></span>
+                      <span class="kpi-value fw-bold"><?php echo (int)($totalUnitsDisplay ?? $totalUnits); ?></span>
                     </div>
                   </div>
                 </div>
-                <div class="kpi-group kpi-mini">
-                  <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('available')" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="rowline"><span class="label text-muted">Available</span><span class="value fw-bold text-success"><?php echo (int)($availableCount ?? 0); ?></span></div>
-                    </div>
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('available')" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline"><span class="kpi-title text-muted">Available</span><span class="kpi-value fw-bold text-success"><?php echo (int)($availableCount ?? 0); ?></span></div>
                   </div>
-                  <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('in_use')" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="rowline"><span class="label text-muted">In Use</span><span class="value fw-bold text-primary"><?php echo (int)($inUseCount ?? 0); ?></span></div>
-                    </div>
+                </div>
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('in_use')" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline"><span class="kpi-title text-muted">In Use</span><span class="kpi-value fw-bold text-primary"><?php echo (int)($inUseCount ?? 0); ?></span></div>
                   </div>
-                  <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('reserved')" style="cursor: pointer;">
-                    <div class="card-body">
-                      <div class="rowline"><span class="label text-muted">Reserved</span><span class="value fw-bold text-info"><?php echo (int)($reservedCount ?? 0); ?></span></div>
-                    </div>
+                </div>
+                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('reserved')" style="cursor:pointer;">
+                  <div class="card-body">
+                    <div class="kpi-rowline"><span class="kpi-title text-muted">Reserved</span><span class="kpi-value fw-bold text-info"><?php echo (int)($reservedCount ?? 0); ?></span></div>
                   </div>
                 </div>
               </div>
