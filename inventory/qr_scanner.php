@@ -557,9 +557,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
             if (abClose) abClose.addEventListener('click', closeAdminModal);
             document.addEventListener('click', function(ev){ const t=ev.target; if (t && t.closest && (t.closest('#adminBellDropdown')||t.closest('#adminBellBtn')||t.closest('#adminBellWrap')||t.closest('#adminBellModal'))) return; dropdown.classList.remove('show'); try{ closeAdminModal(); }catch(_){ } });
         }
-        let toastWrap=document.getElementById('adminToastWrap'); if(!toastWrap){ toastWrap=document.createElement('div'); toastWrap.id='adminToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080'; document.body.appendChild(toastWrap);} 
+        let toastWrap=document.getElementById('adminToastWrap'); if(!toastWrap){ toastWrap=document.createElement('div'); toastWrap.id='adminToastWrap'; toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1030'; document.body.appendChild(toastWrap);} 
         function adjustAdminToastOffset(){ try{ var tw=document.getElementById('adminToastWrap'); if(!tw) return; var baseRight=(window.matchMedia&&window.matchMedia('(max-width: 768px)').matches)?14:16; tw.style.right=baseRight+'px'; var bottomPx=16; try{ if(window.matchMedia&&window.matchMedia('(max-width: 768px)').matches){ var nav=document.querySelector('.bottom-nav'); var hidden=nav && nav.classList && nav.classList.contains('hidden'); if(nav && !hidden){ var rect=nav.getBoundingClientRect(); var h=Math.round(Math.max(0, window.innerHeight-rect.top)); if(!h||!isFinite(h)) h=64; bottomPx=h+12; } else { bottomPx=16; } } }catch(_){ bottomPx=64; } tw.style.bottom=String(bottomPx)+'px'; }catch(_){ } }
         try{ window.addEventListener('resize', adjustAdminToastOffset); }catch(_){ }
+        try{
+          // Observe bottom-nav class changes
+          var __adm_nav_observer=null;
+          function observeBottomNav(){ try{ if(__adm_nav_observer){ try{__adm_nav_observer.disconnect();}catch(_){ } __adm_nav_observer=null; } var nav=document.querySelector('.bottom-nav'); if(!nav) return; __adm_nav_observer=new MutationObserver(function(muts){ for(var i=0;i<muts.length;i++){ var m=muts[i]; if(m.type==='attributes' && m.attributeName==='class'){ try{ adjustAdminToastOffset(); }catch(_){ } } } }); __adm_nav_observer.observe(nav,{attributes:true, attributeFilter:['class']}); }catch(_){ } }
+          observeBottomNav();
+        }catch(_){ }
+        try{ adjustAdminToastOffset(); }catch(_){ }
         function attachSwipeForToast(el){ try{ let sx=0, sy=0, dx=0, moving=false, removed=false; const onStart=(ev)=>{ try{ const t=ev.touches?ev.touches[0]:ev; sx=t.clientX; sy=t.clientY; dx=0; moving=true; el.style.willChange='transform,opacity'; el.classList.add('toast-slide'); el.style.transition='none'; }catch(_){}}; const onMove=(ev)=>{ if(!moving||removed) return; try{ const t=ev.touches?ev.touches[0]:ev; dx=t.clientX-sx; const adx=Math.abs(dx); const od=1-Math.min(1, adx/140); el.style.transform='translateX('+dx+'px)'; el.style.opacity=String(od);}catch(_){}}; const onEnd=()=>{ if(!moving||removed) return; moving=false; try{ el.style.transition='transform 180ms ease, opacity 180ms ease'; const adx=Math.abs(dx); if(adx>80){ removed=true; el.classList.add(dx>0?'toast-remove-right':'toast-remove-left'); setTimeout(()=>{ try{ el.remove(); }catch(_){ } },200);} else { el.style.transform=''; el.style.opacity=''; } }catch(_){ } }; el.addEventListener('touchstart', onStart, {passive:true}); el.addEventListener('touchmove', onMove, {passive:true}); el.addEventListener('touchend', onEnd, {passive:true}); }catch(_){ } }
         function showToast(msg){ const el=document.createElement('div'); el.className='alert alert-info shadow-sm border-0 toast-slide toast-enter'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); try{ adjustAdminToastOffset(); }catch(_){ } attachSwipeForToast(el); setTimeout(()=>{ try{ el.classList.add('toast-fade-out'); setTimeout(()=>{ try{ el.remove(); }catch(_){ } },220);}catch(_){ } },5000); }
         let audioCtx=null; function playBeep(){ try{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2,audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){} }
@@ -1382,10 +1389,10 @@ function onScanFailure(error) {
             var toastWrap = document.getElementById('adminToastWrap');
             if (!toastWrap) {
               toastWrap = document.createElement('div'); toastWrap.id = 'adminToastWrap';
-              toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1080';
+              toastWrap.style.position='fixed'; toastWrap.style.right='16px'; toastWrap.style.bottom='16px'; toastWrap.style.zIndex='1030';
               document.body.appendChild(toastWrap);
             }
-            function showToast(msg, cls){ var el=document.createElement('div'); el.className='alert '+(cls||'alert-info')+' shadow-sm border-0'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 5000); }
+            function showToast(msg, cls){ var el=document.createElement('div'); el.className='alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide toast-enter'; el.style.minWidth='280px'; el.style.maxWidth='360px'; el.innerHTML='<i class=\"bi bi-bell me-2\"></i>'+String(msg||''); toastWrap.appendChild(el); try{ if (typeof adjustAdminToastOffset==='function') adjustAdminToastOffset(); }catch(_){ } setTimeout(function(){ try{ el.classList.add('toast-fade-out'); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 220); }catch(_){ } }, 5000); }
             function playBeep(){ try{ var ctx = new (window.AudioContext||window.webkitAudioContext)(); var o = ctx.createOscillator(); var g = ctx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(880, ctx.currentTime); g.gain.setValueAtTime(0.0001, ctx.currentTime); o.connect(g); g.connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.4); o.stop(ctx.currentTime+0.45); } catch(_e){} }
             var baseVerif = new Set(); var initFeed=false; var feeding=false;
             function pollVerif(){ if (feeding) return; feeding=true;
@@ -1403,10 +1410,10 @@ function onScanFailure(error) {
   
   <style>
     @media (max-width: 768px) {
-      .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; transition: transform .2s ease-in-out; }
+      .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-between; gap:6px; flex-wrap:nowrap; overflow-x:hidden; padding:6px 10px; padding-left: calc(10px + constant(safe-area-inset-left)); padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + constant(safe-area-inset-right)); padding-right: calc(10px + env(safe-area-inset-right)); box-sizing: border-box; transition: transform .2s ease-in-out; }
       .bottom-nav.hidden{ transform: translateY(100%); }
-      .bottom-nav a{ text-decoration:none; font-size:12px; color:#333; display:flex; flex-direction:column; align-items:center; gap:4px; }
-      .bottom-nav a .bi{ font-size:18px; }
+      .bottom-nav a{ text-decoration:none; font-size:11px; color:#333; display:flex; flex-direction:column; align-items:center; gap:3px; flex:1 1 0; min-width:0; white-space:nowrap; padding:4px 4px; }
+      .bottom-nav a .bi{ font-size:16px; }
       .bottom-nav-toggle{ position: fixed; right: 14px; bottom: 14px; z-index: 1060; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: bottom .2s ease-in-out; }
       .bottom-nav-toggle.raised{ bottom: 78px; }
       .bottom-nav-toggle .bi{ font-size: 1.2rem; }

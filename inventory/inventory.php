@@ -2317,17 +2317,57 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 			toastWrap.style.position = 'fixed';
 			toastWrap.style.right = '16px';
 			toastWrap.style.bottom = '16px';
-			toastWrap.style.zIndex = '1080';
+			toastWrap.style.zIndex = '1030';
 			document.body.appendChild(toastWrap);
+		}
+		function adjustAdminToastOffset(){
+			try{
+				const tw = document.getElementById('adminToastWrap'); if(!tw) return;
+				const mobile = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+				tw.style.right = mobile ? '14px' : '16px';
+				let bottomPx = 16;
+				if (mobile){
+					const nav = document.querySelector('.bottom-nav');
+					const open = nav && !(nav.classList && nav.classList.contains('hidden'));
+					if (nav && open){
+						const r = nav.getBoundingClientRect();
+						let h = Math.round(Math.max(0, window.innerHeight - r.top));
+						if (!h || !isFinite(h)) h = 64;
+						bottomPx = h + 12;
+					} else {
+						const btn = document.querySelector('.bottom-nav-toggle');
+						if (btn){
+							const br = btn.getBoundingClientRect();
+							let bh = Math.round(Math.max(0, window.innerHeight - br.top));
+							if (!bh || !isFinite(bh)) bh = 64;
+							bottomPx = bh + 12;
+						}
+					}
+				}
+				tw.style.bottom = String(bottomPx) + 'px';
+			}catch(_){ }
+		}
+		try{ window.addEventListener('resize', adjustAdminToastOffset); }catch(_){ }
+		try{
+			let mo=null; const nav=document.querySelector('.bottom-nav'); if(nav){
+				mo=new MutationObserver(()=>{ try{ adjustAdminToastOffset(); }catch(_){ } });
+				try{ mo.observe(nav, { attributes:true, attributeFilter:['class'] }); }catch(_){ }
+			}
+		}catch(_){ }
+		try{ adjustAdminToastOffset(); }catch(_){ }
+		function attachSwipeForToast(el){
+			try{ let sx=0,dx=0,moving=false,removed=false; const onStart=(ev)=>{ try{ const t=ev.touches?ev.touches[0]:ev; sx=t.clientX; dx=0; moving=true; el.style.willChange='transform,opacity'; el.classList.add('toast-slide'); el.style.transition='none'; }catch(_){}}; const onMove=(ev)=>{ if(!moving||removed) return; try{ const t=ev.touches?ev.touches[0]:ev; dx=t.clientX-sx; const adx=Math.abs(dx); const od=1-Math.min(1, adx/140); el.style.transform='translateX('+dx+'px)'; el.style.opacity=String(od);}catch(_){}}; const onEnd=()=>{ if(!moving||removed) return; moving=false; try{ el.style.transition='transform 180ms ease, opacity 180ms ease'; const adx=Math.abs(dx); if(adx>80){ removed=true; el.classList.add(dx>0?'toast-remove-right':'toast-remove-left'); setTimeout(()=>{ try{ el.remove(); }catch(_){ } },200);} else { el.style.transform=''; el.style.opacity=''; } }catch(_){ } }; el.addEventListener('touchstart', onStart,{passive:true}); el.addEventListener('touchmove', onMove,{passive:true}); el.addEventListener('touchend', onEnd,{passive:true}); }catch(_){ }
 		}
 		function showToast(msg){
 			const el = document.createElement('div');
-			el.className = 'alert alert-info shadow-sm border-0';
+			el.className = 'alert alert-info shadow-sm border-0 toast-slide toast-enter';
 			el.style.minWidth = '280px';
 			el.style.maxWidth = '360px';
 			el.innerHTML = '<i class="bi bi-bell me-2"></i>' + String(msg||'');
 			toastWrap.appendChild(el);
-			setTimeout(()=>{ try { el.remove(); } catch(_){} }, 5000);
+			try{ adjustAdminToastOffset(); }catch(_){ }
+			attachSwipeForToast(el);
+			setTimeout(()=>{ try{ el.classList.add('toast-fade-out'); setTimeout(()=>{ try{ el.remove(); }catch(_){ } }, 220); }catch(_){ } }, 5000);
 		}
 
 		let audioCtx = null;

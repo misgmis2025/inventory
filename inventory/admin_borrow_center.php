@@ -6720,10 +6720,10 @@ try {
   </script>
   <style>
     @media (max-width: 768px) {
-      .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:flex-start; gap:10px; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:8px 12px; padding-left: calc(12px + constant(safe-area-inset-left)); padding-left: calc(12px + env(safe-area-inset-left)); padding-right: calc(12px + constant(safe-area-inset-right)); padding-right: calc(12px + env(safe-area-inset-right)); box-sizing: border-box; transition: transform .2s ease-in-out; }
+      .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-between; gap:6px; flex-wrap:nowrap; overflow-x:hidden; padding:6px 10px; padding-left: calc(10px + constant(safe-area-inset-left)); padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + constant(safe-area-inset-right)); padding-right: calc(10px + env(safe-area-inset-right)); box-sizing: border-box; transition: transform .2s ease-in-out; }
       .bottom-nav.hidden{ transform: translateY(100%); }
-      .bottom-nav a{ text-decoration:none; font-size:12px; color:#333; display:flex; flex-direction:column; align-items:center; gap:4px; flex:0 0 auto; white-space:nowrap; padding:4px 6px; }
-      .bottom-nav a .bi{ font-size:18px; }
+      .bottom-nav a{ text-decoration:none; font-size:11px; color:#333; display:flex; flex-direction:column; align-items:center; gap:3px; flex:1 1 0; min-width:0; white-space:nowrap; padding:4px 4px; }
+      .bottom-nav a .bi{ font-size:16px; }
       .bottom-nav-toggle{ position: fixed; right: 14px; bottom: 14px; z-index: 1060; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: bottom .2s ease-in-out; }
       .bottom-nav-toggle.raised{ bottom: 78px; }
       .bottom-nav-toggle .bi{ font-size: 1.2rem; }
