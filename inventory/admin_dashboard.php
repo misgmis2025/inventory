@@ -536,15 +536,15 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         .kpi-compact .text-muted.small{ font-size: 11px !important; }
         .kpi-compact .bi{ font-size: 1.2rem !important; }
         .kpi-row{ grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-        .kpi-group{ grid-template-rows: repeat(3, 1fr) !important; gap: 8px !important; }
+        .kpi-group{ grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
         .kpi-mini .card-body{ padding: 8px 8px !important; }
         .kpi-mini .fs-4{ font-size: .95rem !important; }
         .kpi-mini .text-muted.small{ font-size: 11px !important; }
       }
       .kpi-grid{ display: grid; gap: 12px; }
-      .kpi-row{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
-      .kpi-group{ display: grid; grid-template-rows: repeat(3, 1fr); gap: 12px; height: 100%; }
-      .kpi-group .card{ height: 100%; }
+      .kpi-row{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+      .kpi-group{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      .kpi-group .card{ height: auto; }
       .kpi-mini .card-body{ padding: 10px 12px; }
       .kpi-mini .text-muted.small{ font-size: 12px; }
       .kpi-mini .fs-4{ font-size: 1rem; }
@@ -640,7 +640,6 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 </div>
             </div>
 
-            <!-- Inventory KPIs: 2 rows (L: big card, R: 3 mini cards) -->
             <div class="kpi-grid mb-3">
               <div class="kpi-row">
                 <div>
