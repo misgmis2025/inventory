@@ -492,6 +492,23 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                                 <a href="admin_borrow_center.php" class="btn btn-sm btn-outline-primary">Go to Borrow Requests</a>
                             </div>
                         </div>
+                        <!-- Mobile Admin Bell Modal -->
+                        <div id="adminBellBackdrop" aria-hidden="true"></div>
+                        <div id="adminBellModal" role="dialog" aria-modal="true" aria-labelledby="abmTitle">
+                          <div class="ubm-box">
+                            <div class="ubm-head">
+                              <div id="abmTitle" class="small">Borrow Requests</div>
+                              <button type="button" class="ubm-close" id="abmCloseBtn" aria-label="Close">&times;</button>
+                            </div>
+                            <div class="ubm-body">
+                              <div id="adminNotifListM" class="list-group list-group-flush small"></div>
+                              <div class="text-center small text-muted py-2 d-none" id="adminNotifEmptyM"></div>
+                              <div class="border-top p-2 text-center">
+                                <a href="admin_borrow_center.php" class="btn btn-sm btn-outline-primary">Go to Borrow Requests</a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -651,30 +668,44 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             const dropdown = document.getElementById('adminBellDropdown');
             const listEl = document.getElementById('adminNotifList');
             const emptyEl = document.getElementById('adminNotifEmpty');
+            const abBackdrop = document.getElementById('adminBellBackdrop');
+            const abModal = document.getElementById('adminBellModal');
+            const abClose = document.getElementById('abmCloseBtn');
+            const listElM = document.getElementById('adminNotifListM');
+            const emptyElM = document.getElementById('adminNotifEmptyM');
             if (bellWrap) { bellWrap.classList.remove('d-none'); }
 
             let latestTs = 0;
+            function isMobile(){ try{ return window.matchMedia && window.matchMedia('(max-width: 768px)').matches; } catch(_){ return window.innerWidth <= 768; } }
+            function copyAdminToMobile(){ try{ if (listElM) listElM.innerHTML = listEl ? listEl.innerHTML : ''; if (emptyElM) emptyElM.style.display = emptyEl ? emptyEl.style.display : ''; }catch(_){ } }
+            function openAdminModal(){ if (!abModal || !abBackdrop) return; copyAdminToMobile(); abModal.style.display='flex'; abBackdrop.style.display='block'; try{ document.body.style.overflow='hidden'; }catch(_){ } }
+            function closeAdminModal(){ if (!abModal || !abBackdrop) return; abModal.style.display='none'; abBackdrop.style.display='none'; try{ document.body.style.overflow=''; }catch(_){ } }
             if (bellBtn && dropdown) {
                 bellBtn.addEventListener('click', function(e){
                     e.stopPropagation();
-                    dropdown.classList.toggle('show');
-                    if (window.innerWidth <= 768) {
-                        dropdown.style.position = 'fixed';
-                        dropdown.style.top = '12%';
-                        dropdown.style.left = '50%';
-                        dropdown.style.transform = 'translateX(-50%)';
-                        dropdown.style.right = 'auto';
-                        dropdown.style.maxWidth = '92vw';
+                    if (isMobile()) {
+                        try { const nowTs = latestTs || Date.now(); localStorage.setItem('admin_notif_last_open', String(nowTs)); } catch(_){ }
+                        if (bellDot) bellDot.classList.add('d-none');
+                        try { copyAdminToMobile(); } catch(_){ }
+                        openAdminModal();
                     } else {
+                        dropdown.classList.toggle('show');
                         dropdown.style.position = 'absolute';
                         dropdown.style.transform = 'none';
                         dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
                         dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
+                        if (bellDot) bellDot.classList.add('d-none');
+                        try { const nowTs = latestTs || Date.now(); localStorage.setItem('admin_notif_last_open', String(nowTs)); } catch(_){ }
                     }
-                    if (bellDot) bellDot.classList.add('d-none');
-                    try { const nowTs = latestTs || Date.now(); localStorage.setItem('admin_notif_last_open', String(nowTs)); } catch(_){ }
                 });
-                document.addEventListener('click', function(){ dropdown.classList.remove('show'); });
+                if (abBackdrop) abBackdrop.addEventListener('click', closeAdminModal);
+                if (abClose) abClose.addEventListener('click', closeAdminModal);
+                document.addEventListener('click', function(ev){
+                    const t = ev.target;
+                    if (t && t.closest && (t.closest('#adminBellDropdown') || t.closest('#adminBellBtn') || t.closest('#adminBellWrap') || t.closest('#adminBellModal'))) return;
+                    dropdown.classList.remove('show');
+                    try { closeAdminModal(); }catch(_){ }
+                });
             }
 
             let toastWrap = document.getElementById('adminToastWrap');
@@ -731,13 +762,13 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     if (!rid) return;
                     const fd = new FormData(); fd.append('request_id', String(rid));
                     fetch('admin_borrow_center.php?action=admin_notif_clear', { method:'POST', body: fd })
-                      .then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{});
+                      .then(r=>r.json()).then(()=>{ poll(); try{ if (abModal && abModal.style && abModal.style.display==='flex') copyAdminToMobile(); }catch(_){ } }).catch(()=>{});
                     return;
                 }
                 if (ev.target && ev.target.id === 'admClearAllBtn'){ ev.preventDefault();
                     const fd = new FormData(); fd.append('limit','300');
                     fetch('admin_borrow_center.php?action=admin_notif_clear_all', { method:'POST', body: fd })
-                      .then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{});
+                      .then(r=>r.json()).then(()=>{ poll(); try{ if (abModal && abModal.style && abModal.style.display==='flex') copyAdminToMobile(); }catch(_){ } }).catch(()=>{});
                 }
             });
 
@@ -749,6 +780,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     const pending = (d && Array.isArray(d.pending)) ? d.pending : [];
                     const recent = (d && Array.isArray(d.recent)) ? d.recent : [];
                     renderCombined(pending, recent);
+                    try { if (abModal && abModal.style && abModal.style.display==='flex') copyAdminToMobile(); }catch(_){ }
                     try { const showDot = pending.length > 0; if (bellDot) bellDot.classList.toggle('d-none', !showDot); } catch(_){ if (bellDot) bellDot.classList.toggle('d-none', pending.length===0); }
                     try {
                       const navLink = document.querySelector('a[href="admin_borrow_center.php"]');

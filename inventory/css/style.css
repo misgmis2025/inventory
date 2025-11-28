@@ -952,7 +952,7 @@ button[data-bs-target="#addItemModal"],
     box-shadow: none;
 }
 
-/* ===== NOTIFICATION MODALS & DROPDOWNS ANIMATIONS ===== */
+/* ===== NOTIFICATION MODALS & DROPDOWNS (Mobile) ===== */
 @keyframes ubmPop {
   0% { transform: translateY(8px) scale(0.98); opacity: 0; }
   100% { transform: translateY(0) scale(1); opacity: 1; }
@@ -961,9 +961,16 @@ button[data-bs-target="#addItemModal"],
   0% { opacity: 0; }
   100% { opacity: 1; }
 }
-/* Apply to user bell modals (Request and Change Password) */
-#userBellModal .ubm-box, #userBellModalCP .ubm-box { animation: ubmPop 200ms ease-out; }
-#userBellBackdrop, #userBellBackdropCP { animation: ubmFade 180ms ease-in; }
+/* Base modal/backdrop styles (user + admin) */
+#userBellModal, #adminBellModal { display:none; position:fixed; inset:0; z-index:1095; align-items:center; justify-content:center; padding:16px; }
+#userBellBackdrop, #adminBellBackdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1094; }
+#userBellModal .ubm-box, #adminBellModal .ubm-box { background:#fff; width:92vw; max-width:520px; max-height:80vh; border-radius:8px; overflow:hidden; box-shadow:0 10px 24px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+#userBellModal .ubm-head, #adminBellModal .ubm-head { padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
+#userBellModal .ubm-close, #adminBellModal .ubm-close { background:transparent; border:0; font-size:20px; line-height:1; }
+#userBellModal .ubm-body, #adminBellModal .ubm-body { padding:0; overflow:auto; }
+/* Apply animations to user/admin bell modals */
+#userBellModal .ubm-box, #adminBellModal .ubm-box { animation: ubmPop 200ms ease-out; }
+#userBellBackdrop, #adminBellBackdrop { animation: ubmFade 180ms ease-in; }
 /* Animate dropdown menus (admin/user) for a lively feel */
 .dropdown-menu { opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top right; transition: opacity 180ms ease, transform 180ms ease; }
 .dropdown-menu.show { opacity: 1; transform: translateY(0) scale(1); }
