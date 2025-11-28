@@ -119,6 +119,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .bottom-nav-toggle.raised{ bottom: 78px; }
         .bottom-nav-toggle .bi{ font-size: 1.2rem; }
       }
+      /* Mobile notifications modal (match Request page) */
+      #userBellModalCP{ display:none; position:fixed; inset:0; z-index:1095; align-items:center; justify-content:center; padding:16px; }
+      #userBellBackdropCP{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1094; }
+      #userBellModalCP .ubm-box{ background:#fff; width:92vw; max-width:520px; max-height:80vh; border-radius:8px; overflow:hidden; box-shadow:0 10px 24px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+      #userBellModalCP .ubm-head{ padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
+      #userBellModalCP .ubm-close{ background:transparent; border:0; font-size:20px; line-height:1; }
+      #userBellModalCP .ubm-body{ padding:0; overflow:auto; }
     </style>
 </head>
 <body class="allow-mobile">
@@ -289,6 +296,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <a href="user_request.php" class="btn btn-sm btn-outline-primary">Go to Requests</a>
                             </div>
                         </div>
+                    </div>
+                    <!-- Mobile Notifications Modal -->
+                    <div id="userBellBackdropCP" aria-hidden="true"></div>
+                    <div id="userBellModalCP" role="dialog" aria-modal="true" aria-labelledby="ubmTitleCP">
+                      <div class="ubm-box">
+                        <div class="ubm-head">
+                          <div id="ubmTitleCP" class="small">Request Updates</div>
+                          <button type="button" class="ubm-close" id="ubmCloseBtnCP" aria-label="Close">&times;</button>
+                        </div>
+                        <div class="ubm-body">
+                          <div id="userNotifListMobileCP" class="list-group list-group-flush small"></div>
+                          <div class="text-center small text-muted py-2" id="userNotifEmptyMobileCP">No updates yet.</div>
+                          <div class="border-top p-2 text-center">
+                            <a href="user_request.php" class="btn btn-sm btn-outline-primary">Go to Requests</a>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <?php endif; ?>
                     <span class="text-muted">Welcome, <?php echo htmlspecialchars($username); ?>!</span>
@@ -668,10 +692,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             showToastCustom('The '+String(l.model_id||'')+' '+String(l.model_name||'')+' was marked as '+label, 'alert-danger');
                         }
                     });
-                    fetch('user_request.php?action=my_overdue', { cache:'no-store' })
-                      .then(r=>r.json())
-                      .then(o=>{ const list = (o && Array.isArray(o.overdue)) ? o.overdue : []; try{ sessionStorage.setItem('overdue_prefetch', JSON.stringify({ overdue: list })); }catch(_){ } addOrUpdateOverdueNotices(list); })
-                      .catch(()=>{});
                     if (ding) playBeep();
                     baseAlloc = idsA; baseLogs = idsL;
                   })
@@ -796,6 +816,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const dropdown = document.getElementById('userBellDropdownCP');
             const listEl = document.getElementById('userNotifListCP');
             const emptyEl = document.getElementById('userNotifEmptyCP');
+            const bellModal = document.getElementById('userBellModalCP');
+            const bellBackdrop = document.getElementById('userBellBackdropCP');
+            const mobileCloseBtn = document.getElementById('ubmCloseBtnCP');
             const mList = document.getElementById('userNotifListMobileCP');
             const mEmpty = document.getElementById('userNotifEmptyMobileCP');
             let latestTs = 0;
@@ -844,39 +867,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 el.innerHTML = html;
                 try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='160px'; el.style.maxWidth='200px'; el.style.padding='4px 6px'; el.style.fontSize='10px'; const ic=el.querySelector('i'); if (ic) ic.style.fontSize='12px'; } else { el.style.minWidth='300px'; el.style.maxWidth='340px'; el.style.padding=''; el.style.fontSize=''; } } catch(_){ }
             }
+            function isMobile(){ try{ return window.matchMedia && window.matchMedia('(max-width: 768px)').matches; }catch(_){ return window.innerWidth<=768; } }
+            function copyNotifToMobile(){ try{ if (mList) mList.innerHTML = listEl ? listEl.innerHTML : ''; if (mEmpty) mEmpty.style.display = emptyEl ? emptyEl.style.display : ''; } catch(_){ } }
+            function openMobileModal(){ if (!bellModal || !bellBackdrop) return; copyNotifToMobile(); bellModal.style.display='flex'; bellBackdrop.style.display='block'; try{ document.body.style.overflow='hidden'; }catch(_){ } }
+            function closeMobileModal(){ if (!bellModal || !bellBackdrop) return; bellModal.style.display='none'; bellBackdrop.style.display='none'; try{ document.body.style.overflow=''; }catch(_){ } }
             if (bellBtn && dropdown) {
                 bellBtn.addEventListener('click', function(e){
                     e.stopPropagation();
-                    dropdown.classList.toggle('show');
-                    if (window.innerWidth <= 768) {
-                        dropdown.style.position = 'fixed';
-                        dropdown.style.top = (bellBtn.getBoundingClientRect().bottom + 6) + 'px';
-                        dropdown.style.left = 'auto';
-                        dropdown.style.right = '12px';
-                        dropdown.style.maxWidth = '280px';
+                    if (isMobile()){
+                      e.preventDefault();
+                      try{ if (emptyEl) { const has = !!(listEl && listEl.innerHTML && listEl.innerHTML.trim()!==''); if (!has) listEl.innerHTML = '<div class="text-center text-muted py-2">Loading...</div>'; emptyEl.style.display='none'; } }catch(_){ }
+                      try{ poll(true); }catch(_){ }
+                      setTimeout(()=>{ try{ copyNotifToMobile(); openMobileModal(); }catch(_){ } }, 50);
                     } else {
-                        dropdown.style.position = 'absolute';
-                        dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
-                        dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
-                        dropdown.style.maxWidth = '360px';
+                      dropdown.classList.toggle('show');
+                      dropdown.style.position = 'absolute';
+                      dropdown.style.top = (bellBtn.offsetTop + bellBtn.offsetHeight + 6) + 'px';
+                      dropdown.style.left = (bellBtn.offsetLeft - (dropdown.offsetWidth - bellBtn.offsetWidth)) + 'px';
+                      dropdown.style.maxWidth = '360px';
+                      if (bellDot) bellDot.classList.add('d-none');
+                      try { const ts = (latestTs && !isNaN(latestTs)) ? latestTs : 0; localStorage.setItem('ud_notif_last_open', String(ts)); localStorage.setItem('ud_notif_sig_open', currentSig || ''); } catch(_){ }
+                      try{ poll(true); }catch(_){ }
                     }
-                    if (bellDot) bellDot.classList.add('d-none');
-                    try {
-                        const ts = (latestTs && !isNaN(latestTs)) ? latestTs : 0;
-                        localStorage.setItem('ud_notif_last_open', String(ts));
-                        localStorage.setItem('ud_notif_sig_open', currentSig || '');
-                    } catch(_){ }
-                    try{ poll(true); }catch(_){ }
                 });
-                document.addEventListener('click', function(){ dropdown.classList.remove('show'); });
+                document.addEventListener('click', function(){ dropdown.classList.remove('show'); closeMobileModal(); });
+                if (bellBackdrop) bellBackdrop.addEventListener('click', closeMobileModal);
+                if (mobileCloseBtn) mobileCloseBtn.addEventListener('click', closeMobileModal);
             }
             function escapeHtml(s){ return String(s).replace(/[&<>\"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\\\"":"&quot;","'":"&#39;"}[m])); }
             function composeRows(baseList, dn, ovCount, ovSet){
                 let latest=0; let sigParts=[]; const combined=[]; const ovset=(ovSet instanceof Set)?ovSet:new Set();
-                // Overdue summary first
-                try{
-                  const oc=parseInt(ovCount||0,10)||0; if(oc>0){ const txt=(oc===1)?'You have an overdue item':('You have overdue items ('+oc+')'); combined.push({type:'overdue', id:0, ts:(Date.now()+1000000), html:'<a href="user_request.php?view=overdue" class="list-group-item list-group-item-action"><div class="d-flex w-100 justify-content-between"><strong class="text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>'+txt+'</strong></div></a>'}); }
-                }catch(_){ }
+                try{ }catch(_){ }
                 (baseList||[]).forEach(function(r){ const id=parseInt(r.id||0,10); const st=String(r.status||''); sigParts.push(id+'|'+st); const when=r.approved_at||r.rejected_at||r.borrowed_at||r.returned_at||r.created_at; const whenTxt=when?String(when):''; let tsn=0; try{ const d=when?new Date(String(when).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; let disp=st, badge='bg-secondary'; const isOv=ovset.has(id); if(st==='Rejected'||st==='Cancelled'){ disp='Rejected'; badge='bg-danger'; } else if(st==='Returned'){ disp='Returned'; badge='bg-success'; } else if(st==='Approved'||st==='Borrowed'){ disp=isOv?'Overdue':'Approved'; badge=isOv?'bg-warning text-dark':'bg-success'; } const html='<a href="user_request.php" class="list-group-item list-group-item-action"><div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(r.item_name||'')+'</strong><small class="text-muted">'+whenTxt+'</small></div><div class="mb-0">Status: <span class="badge '+badge+'">'+escapeHtml(disp||'')+'</span></div></a>'; combined.push({type:'base', id, ts:tsn, html}); });
                 try{ const decisions=(dn&&Array.isArray(dn.decisions))?dn.decisions:[]; decisions.forEach(function(dc){ const rid=parseInt(dc.id||0,10)||0; if(!rid) return; const msg=escapeHtml(String(dc.message||'')); const ts=String(dc.ts||''); let tsn=0; try{ const d=ts?new Date(String(ts).replace(' ','T')):null; if(d){ const t=d.getTime(); if(!isNaN(t)) tsn=t; } }catch(_){ } if(tsn>latest) latest=tsn; const whenHtml=ts?('<small class="text-muted">'+escapeHtml(ts)+'</small>'):''; const html='<div class="list-group-item"><div class="d-flex w-100 justify-content-between"><strong>#'+rid+' Decision</strong>'+whenHtml+'</div><div class="mb-0">'+msg+'</div></div>'; combined.push({type:'extra', id:rid, ts:tsn, html}); }); }catch(_){ }
                 combined.sort(function(a,b){ if((a.type==='overdue')!==(b.type==='overdue')) return (a.type==='overdue')?-1:1; if(b.ts!==a.ts) return b.ts-a.ts; return (b.id||0)-(a.id||0); });
@@ -887,16 +908,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (fetching && !force) return; fetching=true;
                 Promise.all([
                     fetch('user_request.php?action=my_requests_status', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
-                    fetch('user_request.php?action=user_notifications', { cache:'no-store' }).then(r=>r.json()).catch(()=>({})),
-                    fetch('user_request.php?action=my_overdue', { cache:'no-store' }).then(r=>r.json()).catch(()=>({}))
+                    fetch('user_request.php?action=user_notifications', { cache:'no-store' }).then(r=>r.json()).catch(()=>({}))
                 ])
-                .then(([d,dn,ov])=>{
+                .then(([d,dn])=>{
                     const raw=(d&&Array.isArray(d.requests))?d.requests:[];
                     const base=raw.filter(r=>['Approved','Rejected','Borrowed','Returned'].includes(String(r.status||'')));
-                    const ovList=(ov&&Array.isArray(ov.overdue))?ov.overdue:[]; const ovSet=new Set(ovList.map(o=>parseInt(o.request_id||0,10)).filter(n=>n>0)); const ovCount=ovList.length;
-                    const built=composeRows(base, dn, ovCount, ovSet);
-                    // Update persistent overdue popup behind modals (bottom-right)
-                    try { addOrUpdateOverdueNotices(ovList); } catch(_){ }
+                    const built=composeRows(base, dn, 0, new Set());
                     try{
                         const lastOpen=parseInt(localStorage.getItem('ud_notif_last_open')||'0',10)||0;
                         currentSig=built.sig; lastSig=localStorage.getItem('ud_notif_sig_open')||'';
@@ -907,6 +924,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     const html=built.rows.join('');
                     if (listEl && html!==lastHtml){ listEl.innerHTML=html; lastHtml=html; }
                     if (emptyEl) emptyEl.style.display=(html && html.trim()!=='')?'none':'block';
+                    try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
                 })
                 .catch(()=>{})
                 .finally(()=>{ fetching=false; });
