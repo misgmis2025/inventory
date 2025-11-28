@@ -536,7 +536,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         .kpi-compact .text-muted.small{ font-size: 11px !important; }
         .kpi-compact .bi{ font-size: 1.2rem !important; }
         .kpi-row{ grid-template-columns: 1fr 1fr !important; gap: 8px !important; align-items: stretch !important; }
-        .kpi-group{ grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; height: 100% !important; }
+        .kpi-group{ grid-template-columns: 1fr !important; grid-template-rows: repeat(3, 1fr) !important; gap: 8px !important; height: 100% !important; }
         .kpi-group .card{ height: 100% !important; }
         .kpi-mini .card-body{ padding: 8px 8px !important; }
         .kpi-mini .fs-4{ font-size: .95rem !important; }
