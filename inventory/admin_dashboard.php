@@ -528,6 +528,10 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         body.allow-mobile table{ font-size: 12px !important; }
         body.allow-mobile table th, body.allow-mobile table td{ padding: 6px 8px !important; }
         #stockChart, #stocksChart{ height: 160px !important; max-height: 160px !important; }
+        .kpi-compact .card-body{ padding: 8px 10px !important; }
+        .kpi-compact .fs-4{ font-size: .95rem !important; }
+        .kpi-compact .text-muted.small{ font-size: 11px !important; }
+        .kpi-compact .bi{ font-size: 1.2rem !important; }
       }
       /* Sidebar visibility: show on desktop, hide on mobile */
       @media (min-width: 769px){
@@ -622,7 +626,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             </div>
 
             <!-- Inventory KPIs -->
-            <div class="row g-2 g-md-3 mb-3">
+            <div class="row g-2 g-md-3 mb-2">
                 <div class="col-6 col-md-3">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('total_items')" style="cursor: pointer;">
                         <div class="card-body">
@@ -649,7 +653,10 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-2">
+            </div>
+
+            <div class="row g-2 g-md-3 mb-3 kpi-compact">
+                <div class="col-4 col-md-2">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('high')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">High Stock</div>
@@ -657,7 +664,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-4 col-md-2">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('low')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">Low Stock</div>
@@ -665,7 +672,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-4 col-md-2">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('out')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">Out of Stock</div>
@@ -675,8 +682,8 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 </div>
             </div>
 
-            <div class="row g-2 g-md-3 mb-4">
-                <div class="col-6 col-md-4">
+            <div class="row g-2 g-md-3 mb-3 kpi-compact">
+                <div class="col-4 col-md-4">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('available')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">Available</div>
@@ -684,7 +691,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-4">
+                <div class="col-4 col-md-4">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('in_use')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">In Use</div>
@@ -692,7 +699,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-4">
+                <div class="col-4 col-md-4">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('reserved')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">Reserved</div>
