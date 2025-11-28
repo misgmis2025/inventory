@@ -1071,13 +1071,29 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
 </script>
     <style>
       @media (max-width: 768px) {
-        .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-between; gap:6px; flex-wrap:nowrap; overflow-x:hidden; padding:6px 10px; padding-left: calc(10px + constant(safe-area-inset-left)); padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + constant(safe-area-inset-right)); padding-right: calc(10px + env(safe-area-inset-right)); box-sizing: border-box; transition: transform .2s ease-in-out; }
+        .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:grid; grid-auto-flow: column; grid-auto-columns: 1fr; column-gap:0; overflow:hidden; padding:0 2px; padding-left: calc(2px + constant(safe-area-inset-left)); padding-left: calc(2px + env(safe-area-inset-left)); padding-right: calc(2px + constant(safe-area-inset-right)); padding-right: calc(2px + env(safe-area-inset-right)); box-sizing: border-box; transition: transform .2s ease-in-out; }
         .bottom-nav.hidden{ transform: translateY(100%); }
-        .bottom-nav a{ text-decoration:none; font-size:11px; color:#333; display:flex; flex-direction:column; align-items:center; gap:3px; flex:1 1 0; min-width:0; white-space:nowrap; padding:4px 4px; }
-        .bottom-nav a .bi{ font-size:16px; }
+        .bottom-nav a{ text-decoration:none; font-size:7.2px; line-height:1.05; letter-spacing:-0.15px; color:#333; display:flex; flex-direction:column; align-items:center; gap:0; min-width:0; white-space:normal; overflow-wrap:anywhere; word-break:break-word; padding:1px 1px; text-align:center; }
+        .bottom-nav a .bi{ font-size:10px; }
         .bottom-nav-toggle{ position: fixed; right: 14px; bottom: 14px; z-index: 1060; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: bottom .2s ease-in-out; }
         .bottom-nav-toggle.raised{ bottom: 78px; }
         .bottom-nav-toggle .bi{ font-size: 1.2rem; }
+      }
+      @media (max-width: 390px) {
+        .bottom-nav a span{ display:none; }
+        .bottom-nav a .bi{ font-size: 12px; }
+      }
+      @media (max-width: 360px) {
+        .bottom-nav{ column-gap:0; padding:0 2px; padding-left: calc(2px + constant(safe-area-inset-left)); padding-left: calc(2px + env(safe-area-inset-left)); padding-right: calc(2px + constant(safe-area-inset-right)); padding-right: calc(2px + env(safe-area-inset-right)); }
+        .bottom-nav a span{ display:none; }
+        .bottom-nav a{ font-size:6.8px; padding:1px 1px; }
+        .bottom-nav a .bi{ font-size:11px; }
+      }
+      @media (max-width: 320px) {
+        .bottom-nav{ column-gap:0; padding:0 1px; padding-left: calc(1px + constant(safe-area-inset-left)); padding-left: calc(1px + env(safe-area-inset-left)); padding-right: calc(1px + constant(safe-area-inset-right)); padding-right: calc(1px + env(safe-area-inset-right)); }
+        .bottom-nav a span{ display:none; }
+        .bottom-nav a{ font-size:6.4px; padding:1px 1px; }
+        .bottom-nav a .bi{ font-size:10px; }
       }
     </style>
     <button type="button" class="btn btn-primary bottom-nav-toggle d-md-none" id="bnToggleDash" aria-controls="dashBottomNav" aria-expanded="false" title="Open menu">
