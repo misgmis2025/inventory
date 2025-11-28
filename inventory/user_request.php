@@ -5066,7 +5066,7 @@ if (!empty($my_requests)) {
         }catch(_){ }
       }
       try{ window.addEventListener('resize', adjustToastOffsets); }catch(_){ }
-      let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2,audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){} }
+      let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); if (audioCtx.state==='suspended'){ try{ audioCtx.resume(); }catch(_e){} } const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='square'; o.frequency.setValueAtTime(880, audioCtx.currentTime); g.gain.setValueAtTime(0.0001, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.35, audioCtx.currentTime+0.03); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.6); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.65);}catch(_){} }
       let baseAlloc = new Set(); let baseLogs = new Set(); let baseDec = new Set(); let initNotifs = false;
       function ensurePersistentWrap(){
         let wrap = document.getElementById('userPersistentWrap');
