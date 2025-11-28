@@ -3898,7 +3898,14 @@ try {
               try{
                 if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
                   var nav=document.querySelector('.bottom-nav'); var hidden=nav && nav.classList && nav.classList.contains('hidden');
-                  if (nav && !hidden){ var rect=nav.getBoundingClientRect(); var h=Math.round(Math.max(0, window.innerHeight-rect.top)); if(!h||!isFinite(h)) h=64; bottomPx=h+12; } else { bottomPx=16; }
+                  if (nav && !hidden){
+                    var rect=nav.getBoundingClientRect(); var h=Math.round(Math.max(0, window.innerHeight-rect.top)); if(!h||!isFinite(h)) h=64; bottomPx=h+12; 
+                  } else {
+                    // align above floating toggle button if present
+                    var btn=document.querySelector('.bottom-nav-toggle');
+                    if (btn){ var br=btn.getBoundingClientRect(); var bh=Math.round(Math.max(0, window.innerHeight-br.top)); if(!bh||!isFinite(bh)) bh=64; bottomPx=bh+12; }
+                    else { bottomPx=16; }
+                  }
                 }
               }catch(_){ bottomPx=64; }
               tw.style.bottom=String(bottomPx)+'px';

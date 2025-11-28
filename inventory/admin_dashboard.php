@@ -727,7 +727,16 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                                 if (!h || !isFinite(h)) h = 64;
                                 bottomPx = h + 12; // 12px breathing room above nav
                             } else {
-                                bottomPx = 16; // nav hidden
+                                // Nav hidden: keep above the floating toggle button
+                                var btn = document.querySelector('.bottom-nav-toggle');
+                                if (btn){
+                                    var br = btn.getBoundingClientRect();
+                                    var bh = Math.round(Math.max(0, window.innerHeight - br.top));
+                                    if (!bh || !isFinite(bh)) bh = 64;
+                                    bottomPx = bh + 12; // above toggle
+                                } else {
+                                    bottomPx = 16;
+                                }
                             }
                         }
                     }catch(_){ bottomPx = 64; }
