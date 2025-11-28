@@ -308,7 +308,7 @@ try {
             }
         } catch (Throwable $_) {}
         try {
-            $curA = $itemsCol->find(['status'=>'Available'], ['projection'=>['item_name'=>1,'model'=>1,'category'=>1,'location'=>1,'remarks'=>1]]);
+            $curA = $itemsCol->find(['status'=>'Available'], ['projection'=>['item_name'=>1,'model'=>1,'category'=>1,'location'=>1,'remarks'=>1,'serial_no'=>1]]);
             foreach ($curA as $docA) {
                 $cat = (string)($docA['category'] ?? ''); $cat = ($cat !== '') ? $cat : 'Uncategorized';
                 $mk = (string)($docA['model'] ?? '');
@@ -321,6 +321,7 @@ try {
                     'category' => $cat,
                     'location' => (string)($docA['location'] ?? ''),
                     'remarks' => (string)($docA['remarks'] ?? ''),
+                    'serial_no' => (string)($docA['serial_no'] ?? ''),
                 ];
                 if (count($availableUnits) >= 500) break;
             }
@@ -332,7 +333,7 @@ try {
             $curU = $ubCol->find(['status'=>'Borrowed'], ['projection'=>['username'=>1,'model_id'=>1]]);
             foreach ($curU as $ubd) {
                 $mid = (int)($ubd['model_id'] ?? 0); if ($mid <= 0) continue;
-                $it = $itemsCol->findOne(['id'=>$mid], ['projection'=>['item_name'=>1,'model'=>1,'location'=>1]]);
+                $it = $itemsCol->findOne(['id'=>$mid], ['projection'=>['item_name'=>1,'model'=>1,'location'=>1,'serial_no'=>1]]);
                 $nm = '';
                 $loc = '';
                 if ($it) { $nm = (string)($it['model'] ?? ''); if ($nm==='') { $nm = (string)($it['item_name'] ?? ''); } $loc = (string)($it['location'] ?? ''); }
@@ -342,7 +343,7 @@ try {
                     $ud = $usersCol->findOne(['username'=>$u], ['projection'=>['full_name'=>1]]);
                     if ($ud && isset($ud['full_name']) && trim((string)$ud['full_name'])!=='') { $full = (string)$ud['full_name']; }
                 }
-                $inUseUnits[] = [ 'item_name'=>$nm, 'location'=>$loc, 'full_name'=>$full ];
+                $inUseUnits[] = [ 'item_name'=>$nm, 'location'=>$loc, 'full_name'=>$full, 'serial_no' => (string)($it['serial_no'] ?? '') ];
                 if (count($inUseUnits) >= 500) break;
             }
         } catch (Throwable $_u) {}
@@ -353,7 +354,7 @@ try {
             $nowStr = date('Y-m-d H:i:s');
             $curR = $erCol->find(
                 ['type'=>'reservation','status'=>'Approved','reserved_model_id'=>['$exists'=>true,'$ne'=>0]],
-                ['projection'=>['id'=>1,'reserved_model_id'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'request_location'=>1], 'sort'=>['reserved_from'=>1]]
+                ['projection'=>['id'=>1,'reserved_model_id'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'request_location'=>1,'reserved_serial_no'=>1], 'sort'=>['reserved_from'=>1]]
             );
             $byUnit = [];
             foreach ($curR as $r) {
@@ -390,7 +391,9 @@ try {
                     if ($ud && isset($ud['full_name']) && trim((string)$ud['full_name'])!=='') { $full = (string)$ud['full_name']; }
                 }
                 $loc = $doc ? (string)($doc['request_location'] ?? '') : '';
-                $reservedUnits[] = [ 'item_name'=>$nm, 'start'=>$rf, 'end'=>$rt, 'count'=>(int)$info['count'], 'location'=>$loc, 'full_name'=>$full ];
+                $serial = $doc ? (string)($doc['reserved_serial_no'] ?? '') : '';
+                if ($serial === '' && isset($it['serial_no'])) { $serial = (string)$it['serial_no']; }
+                $reservedUnits[] = [ 'item_name'=>$nm, 'start'=>$rf, 'end'=>$rt, 'count'=>(int)$info['count'], 'location'=>$loc, 'full_name'=>$full, 'serial_no'=>$serial ];
                 if (count($reservedUnits) >= 500) break;
             }
         } catch (Throwable $_r) {}
@@ -627,7 +630,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
 
             <!-- Inventory KPIs -->
             <div class="row g-2 g-md-3 mb-2">
-                <div class="col-6 col-md-3">
+                <div class="col-6 col-md-6">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('total_items')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="d-flex align-items-center justify-content-between">
@@ -640,7 +643,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-3">
+                <div class="col-6 col-md-6">
                     <div id="kpiTotalUnits" class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="window.location.href='inventory.php'" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="d-flex align-items-center justify-content-between">
@@ -656,7 +659,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             </div>
 
             <div class="row g-2 g-md-3 mb-3 kpi-compact">
-                <div class="col-4 col-md-2">
+                <div class="col-4 col-md-4">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('high')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">High Stock</div>
@@ -664,7 +667,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-4 col-md-2">
+                <div class="col-4 col-md-4">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('low')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">Low Stock</div>
@@ -672,7 +675,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-4 col-md-2">
+                <div class="col-4 col-md-4">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('out')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">Out of Stock</div>
@@ -900,7 +903,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 }catch(_){ }
             }
             function showToast(msg){ const el=document.createElement('div'); el.className='alert alert-info shadow-sm border-0 toast-slide toast-enter'; el.style.minWidth='300px'; el.style.maxWidth='340px'; try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='180px'; el.style.maxWidth='200px'; el.style.fontSize='12px'; } }catch(_){ } el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); adjustAdminToastOffset(); attachSwipeForToast(el); setTimeout(()=>{ try{ el.classList.add('toast-fade-out'); setTimeout(()=>{ try{ el.remove(); }catch(_){ } }, 220); }catch(_){ } }, 5000); }
-            let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){}}
+            let audioCtx = null; function playBeep(){ try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if (audioCtx.state==='suspended'){ try{ audioCtx.resume(); }catch(_e){} } const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='square'; o.frequency.setValueAtTime(880, audioCtx.currentTime); g.gain.setValueAtTime(0.0001, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.35, audioCtx.currentTime+0.03); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.6); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.65);}catch(_){}}
             function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
             function fmt12(txt){ try{ const s=String(txt||'').trim(); const m=s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/); if(!m) return s; const date=m[1]; const H=parseInt(m[2],10); const mm=m[3]; const ap=(H>=12?'pm':'am'); let h=H%12; if(h===0) h=12; return date+' '+h+':'+mm+ap; } catch(_){ return String(txt||''); } }
 
@@ -1110,11 +1113,11 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     if (kind === 'out') {
                         theadRow.innerHTML = '<th>Item</th><th>Category</th><th>Since</th>';
                     } else if (kind === 'available') {
-                        theadRow.innerHTML = '<th>Item</th><th>Category</th><th>Location</th><th>Remarks</th>';
+                        theadRow.innerHTML = '<th>Serial ID</th><th>Item</th><th>Category</th><th>Location</th><th>Remarks</th>';
                     } else if (kind === 'in_use') {
-                        theadRow.innerHTML = '<th>Item</th><th>Location</th><th>User</th>';
+                        theadRow.innerHTML = '<th>Serial ID</th><th>Item</th><th>Location</th><th>User</th>';
                     } else if (kind === 'reserved') {
-                        theadRow.innerHTML = '<th>Item</th><th>Reserve Start</th><th>Reserve End</th><th>Reservations</th><th>Location</th><th>User</th>';
+                        theadRow.innerHTML = '<th>Serial ID</th><th>Item</th><th>Reserve Start</th><th>Reserve End</th><th>Reservations</th><th>Location</th><th>User</th>';
                     } else {
                         theadRow.innerHTML = '<th>Item</th><th class="text-end">Units</th>';
                     }
@@ -1122,7 +1125,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 rows.forEach(r => {
                     const tr = document.createElement('tr');
                     const td1 = document.createElement('td');
-                    td1.textContent = r.item_name || '';
+                    td1.textContent = String(r.item_name ?? '');
                     if (kind === 'out') {
                         const tdCat = document.createElement('td');
                         tdCat.textContent = String(r.category || '');
@@ -1132,25 +1135,36 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         tr.appendChild(tdCat);
                         tr.appendChild(tdDate);
                     } else if (kind === 'available') {
+                        const tdSerial = document.createElement('td');
+                        tdSerial.textContent = String(r.serial_no ?? '');
+                        const tdItem = document.createElement('td'); tdItem.textContent = String(r.item_name ?? '');
                         const tdCat = document.createElement('td');
                         tdCat.textContent = String(r.category || '');
                         const tdLoc = document.createElement('td');
                         tdLoc.textContent = String(r.location || '');
                         const tdRem = document.createElement('td');
                         tdRem.textContent = String(r.remarks || '');
-                        tr.appendChild(td1);
+                        tr.appendChild(tdSerial);
+                        tr.appendChild(tdItem);
                         tr.appendChild(tdCat);
                         tr.appendChild(tdLoc);
                         tr.appendChild(tdRem);
                     } else if (kind === 'in_use') {
+                        const tdSerial = document.createElement('td');
+                        tdSerial.textContent = String(r.serial_no ?? '');
+                        const tdItem = document.createElement('td'); tdItem.textContent = String(r.item_name ?? '');
                         const tdLoc = document.createElement('td');
                         tdLoc.textContent = String(r.location || '');
                         const tdUser = document.createElement('td');
                         tdUser.textContent = String(r.full_name || '');
-                        tr.appendChild(td1);
+                        tr.appendChild(tdSerial);
+                        tr.appendChild(tdItem);
                         tr.appendChild(tdLoc);
                         tr.appendChild(tdUser);
                     } else if (kind === 'reserved') {
+                        const tdSerial = document.createElement('td');
+                        tdSerial.textContent = String(r.serial_no ?? '');
+                        const tdItem = document.createElement('td'); tdItem.textContent = String(r.item_name ?? '');
                         const tdS = document.createElement('td');
                         tdS.textContent = String(r.start || '');
                         const tdE = document.createElement('td');
@@ -1161,7 +1175,8 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         tdL.textContent = String(r.location || '');
                         const tdU = document.createElement('td');
                         tdU.textContent = String(r.full_name || '');
-                        tr.appendChild(td1);
+                        tr.appendChild(tdSerial);
+                        tr.appendChild(tdItem);
                         tr.appendChild(tdS);
                         tr.appendChild(tdE);
                         tr.appendChild(tdC);
