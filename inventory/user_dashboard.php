@@ -577,7 +577,7 @@ if (!$USED_MONGO) {
             }
             function showToast(msg){
                 const el = document.createElement('div');
-                el.className = 'alert alert-info shadow-sm border-0';
+                el.className = 'alert alert-info shadow-sm border-0 toast-slide';
                 // Desktop default
                 el.style.minWidth = '300px'; el.style.maxWidth = '340px';
                 // Mobile compaction
@@ -585,7 +585,8 @@ if (!$USED_MONGO) {
                 el.innerHTML = '<i class="bi bi-bell me-2"></i>' + String(msg||'');
                 toastWrap.appendChild(el);
                 try { adjustToastOffsets(); } catch(_){ }
-                setTimeout(()=>{ try { el.remove(); adjustToastOffsets(); } catch(_){} }, 5000);
+                attachSwipeForToast(el);
+                setTimeout(()=>{ try { el.classList.add('toast-fade-out'); setTimeout(()=>{ try{ el.remove(); adjustToastOffsets(); }catch(_){ } }, 220); } catch(_){} }, 5000);
             }
             function adjustToastOffsets(){
                 try{
@@ -601,6 +602,19 @@ if (!$USED_MONGO) {
                 } catch(_){ }
             }
             try { window.addEventListener('resize', adjustToastOffsets); } catch(_){ }
+            function attachSwipeForToast(el){
+                try{
+                    let sx=0, sy=0, dx=0, moving=false, removed=false;
+                    const onStart=(ev)=>{ try{ const t=ev.touches?ev.touches[0]:ev; sx=t.clientX; sy=t.clientY; dx=0; moving=true; el.style.willChange='transform,opacity'; el.classList.add('toast-slide'); el.style.transition='none'; }catch(_){}};
+                    const onMove=(ev)=>{ if(!moving||removed) return; try{ const t=ev.touches?ev.touches[0]:ev; dx=t.clientX - sx; const adx=Math.abs(dx); const od=1 - Math.min(1, adx/140); el.style.transform='translateX('+dx+'px)'; el.style.opacity=String(od); }catch(_){}};
+                    const onEnd=()=>{ if(!moving||removed) return; moving=false; try{ el.style.transition='transform 180ms ease, opacity 180ms ease'; const adx=Math.abs(dx); if (adx>80){ removed=true; if (dx>0) el.classList.add('toast-remove-right'); else el.classList.add('toast-remove-left'); setTimeout(()=>{ try{ el.remove(); adjustToastOffsets(); }catch(_){ } }, 200); }
+                        else { el.style.transform=''; el.style.opacity=''; }
+                    }catch(_){ }};
+                    el.addEventListener('touchstart', onStart, {passive:true});
+                    el.addEventListener('touchmove', onMove, {passive:true});
+                    el.addEventListener('touchend', onEnd, {passive:true});
+                }catch(_){ }
+            }
             let audioCtx = null; function playBeep(){ try { if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.setValueAtTime(0.0001, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.22); o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.25);}catch(_){}}
 
             let baseline = new Set();
@@ -674,13 +688,14 @@ if (!$USED_MONGO) {
             let initNotifs = false;
             function showToastCustom(msg, cls){
                 const el = document.createElement('div');
-                el.className = 'alert '+(cls||'alert-info')+' shadow-sm border-0';
+                el.className = 'alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide';
                 el.style.minWidth = '300px'; el.style.maxWidth = '340px';
                 try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='180px'; el.style.maxWidth='200px'; el.style.fontSize='12px'; } } catch(_){ }
                 el.innerHTML = '<i class="bi bi-bell me-2"></i>'+String(msg||'');
                 toastWrap.appendChild(el);
                 try { adjustToastOffsets(); } catch(_){ }
-                setTimeout(()=>{ try { el.remove(); adjustToastOffsets(); } catch(_){} }, 5000);
+                attachSwipeForToast(el);
+                setTimeout(()=>{ try { el.classList.add('toast-fade-out'); setTimeout(()=>{ try{ el.remove(); adjustToastOffsets(); }catch(_){ } }, 220); } catch(_){} }, 5000);
             }
             function ensurePersistentWrap(){
                 let wrap = document.getElementById('userPersistentWrap');

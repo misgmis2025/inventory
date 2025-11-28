@@ -986,6 +986,26 @@ button[data-bs-target="#addItemModal"],
   [id$="BellModal"] .ubm-box { animation: ubmSlideUp 220ms ease-out; }
 }
 
+/* Mobile: ensure space at very top (safe-area) so headers don't touch the notch/status bar */
+@media (max-width: 768px) {
+  /* Prefer adding space on the first content block */
+  #page-content-wrapper > *:first-child {
+    margin-top: calc(8px + constant(safe-area-inset-top));
+    margin-top: calc(8px + env(safe-area-inset-top));
+  }
+  /* Common header class across pages */
+  .page-header {
+    margin-top: calc(8px + constant(safe-area-inset-top));
+    margin-top: calc(8px + env(safe-area-inset-top));
+  }
+}
+
+/* Dismissible toast animations */
+.toast-slide { transition: transform 180ms ease, opacity 180ms ease; will-change: transform, opacity; }
+.toast-fade-out { opacity: 0; transform: translateY(6px); }
+.toast-remove-left { transform: translateX(-120%); opacity: 0; }
+.toast-remove-right { transform: translateX(120%); opacity: 0; }
+
 /* ===== AUTH PAGES ===== */
 .auth-container {
     display: flex;
