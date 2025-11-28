@@ -291,6 +291,112 @@ try {
         }
         $outCount = count($outBorrowables);
     } catch (Throwable $_ob) { }
+
+    $availableUnits = [];
+    $inUseUnits = [];
+    $reservedUnits = [];
+    $availableCount = 0; $inUseCount = 0; $reservedCount = 0;
+    try {
+        $borrowableSet = [];
+        try {
+            $bc2 = $db->selectCollection('borrowable_catalog');
+            $curB = $bc2->find(['active'=>1], ['projection'=>['category'=>1,'model_name'=>1]]);
+            foreach ($curB as $b) {
+                $c = (string)($b['category'] ?? ''); $c = ($c !== '') ? $c : 'Uncategorized';
+                $m = trim((string)($b['model_name'] ?? '')); if ($m === '') continue;
+                $borrowableSet[strtolower($c).'|'.strtolower($m)] = true;
+            }
+        } catch (Throwable $_) {}
+        try {
+            $curA = $itemsCol->find(['status'=>'Available'], ['projection'=>['item_name'=>1,'model'=>1,'category'=>1,'location'=>1,'remarks'=>1]]);
+            foreach ($curA as $docA) {
+                $cat = (string)($docA['category'] ?? ''); $cat = ($cat !== '') ? $cat : 'Uncategorized';
+                $mk = (string)($docA['model'] ?? '');
+                $nm = ($mk !== '') ? $mk : (string)($docA['item_name'] ?? '');
+                if ($nm === '') continue;
+                $key = strtolower($cat).'|'.strtolower($nm);
+                if (!isset($borrowableSet[$key])) continue;
+                $availableUnits[] = [
+                    'item_name' => $nm,
+                    'category' => $cat,
+                    'location' => (string)($docA['location'] ?? ''),
+                    'remarks' => (string)($docA['remarks'] ?? ''),
+                ];
+                if (count($availableUnits) >= 500) break;
+            }
+        } catch (Throwable $_a) {}
+        $availableCount = count($availableUnits);
+        try {
+            $ubCol = $db->selectCollection('user_borrows');
+            $usersCol = $db->selectCollection('users');
+            $curU = $ubCol->find(['status'=>'Borrowed'], ['projection'=>['username'=>1,'model_id'=>1]]);
+            foreach ($curU as $ubd) {
+                $mid = (int)($ubd['model_id'] ?? 0); if ($mid <= 0) continue;
+                $it = $itemsCol->findOne(['id'=>$mid], ['projection'=>['item_name'=>1,'model'=>1,'location'=>1]]);
+                $nm = '';
+                $loc = '';
+                if ($it) { $nm = (string)($it['model'] ?? ''); if ($nm==='') { $nm = (string)($it['item_name'] ?? ''); } $loc = (string)($it['location'] ?? ''); }
+                $u = (string)($ubd['username'] ?? '');
+                $full = '';
+                if ($u !== '') {
+                    $ud = $usersCol->findOne(['username'=>$u], ['projection'=>['full_name'=>1]]);
+                    if ($ud && isset($ud['full_name']) && trim((string)$ud['full_name'])!=='') { $full = (string)$ud['full_name']; }
+                }
+                $inUseUnits[] = [ 'item_name'=>$nm, 'location'=>$loc, 'full_name'=>$full ];
+                if (count($inUseUnits) >= 500) break;
+            }
+        } catch (Throwable $_u) {}
+        $inUseCount = count($inUseUnits);
+        try {
+            $erCol = $db->selectCollection('equipment_requests');
+            $usersCol = isset($usersCol) ? $usersCol : $db->selectCollection('users');
+            $nowStr = date('Y-m-d H:i:s');
+            $curR = $erCol->find(
+                ['type'=>'reservation','status'=>'Approved','reserved_model_id'=>['$exists'=>true,'$ne'=>0]],
+                ['projection'=>['id'=>1,'reserved_model_id'=>1,'reserved_from'=>1,'reserved_to'=>1,'username'=>1,'request_location'=>1], 'sort'=>['reserved_from'=>1]]
+            );
+            $byUnit = [];
+            foreach ($curR as $r) {
+                $rmid = (int)($r['reserved_model_id'] ?? 0); if ($rmid <= 0) continue;
+                if (!isset($byUnit[$rmid])) { $byUnit[$rmid] = ['count'=>0, 'upcoming'=>null]; }
+                $byUnit[$rmid]['count']++;
+                $rf = trim((string)($r['reserved_from'] ?? ''));
+                $rt = trim((string)($r['reserved_to'] ?? ''));
+                $isOngoing = ($rf !== '' && $rt !== '' && $rf <= $nowStr && $rt >= $nowStr);
+                $isFuture = ($rf !== '' && $rf > $nowStr);
+                $pick = false;
+                if ($byUnit[$rmid]['upcoming'] === null) { $pick = $isOngoing || $isFuture; }
+                else {
+                    $curr = $byUnit[$rmid]['upcoming'];
+                    $currRf = trim((string)($curr['reserved_from'] ?? ''));
+                    $currRt = trim((string)($curr['reserved_to'] ?? ''));
+                    $currOngoing = ($currRf !== '' && $currRt !== '' && $currRf <= $nowStr && $currRt >= $nowStr);
+                    if ($isOngoing && !$currOngoing) { $pick = true; }
+                    elseif ($isFuture && !$currOngoing) { if ($currRf === '' || $rf < $currRf) { $pick = true; } }
+                }
+                if ($pick) { $byUnit[$rmid]['upcoming'] = $r; }
+            }
+            foreach ($byUnit as $mid => $info) {
+                $it = $itemsCol->findOne(['id'=>(int)$mid], ['projection'=>['item_name'=>1,'model'=>1]]);
+                $nm = '';
+                if ($it) { $nm = (string)($it['model'] ?? ''); if ($nm==='') { $nm = (string)($it['item_name'] ?? ''); } }
+                $doc = $info['upcoming'];
+                $rf = $doc ? (string)($doc['reserved_from'] ?? '') : '';
+                $rt = $doc ? (string)($doc['reserved_to'] ?? '') : '';
+                $u = $doc ? (string)($doc['username'] ?? '') : '';
+                $full = '';
+                if ($u !== '') {
+                    $ud = $usersCol->findOne(['username'=>$u], ['projection'=>['full_name'=>1]]);
+                    if ($ud && isset($ud['full_name']) && trim((string)$ud['full_name'])!=='') { $full = (string)$ud['full_name']; }
+                }
+                $loc = $doc ? (string)($doc['request_location'] ?? '') : '';
+                $reservedUnits[] = [ 'item_name'=>$nm, 'start'=>$rf, 'end'=>$rt, 'count'=>(int)$info['count'], 'location'=>$loc, 'full_name'=>$full ];
+                if (count($reservedUnits) >= 500) break;
+            }
+        } catch (Throwable $_r) {}
+        $reservedCount = count($reservedUnits);
+    } catch (Throwable $_kpi) { $availableUnits=[]; $inUseUnits=[]; $reservedUnits=[]; $availableCount=0; $inUseCount=0; $reservedCount=0; }
+    
     // Chart data: by item (sorted by item name as in SQL)
     usort($itemsAgg, function($a,$b){ return strcasecmp((string)$a['item_name'], (string)$b['item_name']); });
     $chartLabels = array_map(function($r){ return $r['item_name']; }, $itemsAgg);
@@ -360,6 +466,8 @@ if (!$DASH_MONGO_FILLED) { $itemsAgg = []; }
 // Compute stats placeholders when Mongo failed
 if (!$DASH_MONGO_FILLED) {
     $lowCount = 0; $outCount = 0; $highCount = 0; $totalItems = 0; $totalUnits = 0; $outBorrowables = [];
+    $availableUnits = []; $inUseUnits = []; $reservedUnits = [];
+    $availableCount = 0; $inUseCount = 0; $reservedCount = 0;
 }
 
 // Prepare chart data (MySQL fallback)
@@ -514,7 +622,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             </div>
 
             <!-- Inventory KPIs -->
-            <div class="row g-3 mb-4">
+            <div class="row g-2 g-md-3 mb-3">
                 <div class="col-6 col-md-3">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('total_items')" style="cursor: pointer;">
                         <div class="card-body">
@@ -542,6 +650,14 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     </div>
                 </div>
                 <div class="col-6 col-md-2">
+                    <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('high')" style="cursor: pointer;">
+                        <div class="card-body">
+                            <div class="text-muted small">High Stock</div>
+                            <div class="fs-4 fw-bold text-success"><?php echo (int)$highCount; ?></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
                     <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('low')" style="cursor: pointer;">
                         <div class="card-body">
                             <div class="text-muted small">Low Stock</div>
@@ -557,11 +673,30 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-2">
-                    <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('high')" style="cursor: pointer;">
+            </div>
+
+            <div class="row g-2 g-md-3 mb-4">
+                <div class="col-6 col-md-4">
+                    <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('available')" style="cursor: pointer;">
                         <div class="card-body">
-                            <div class="text-muted small">High Stock</div>
-                            <div class="fs-4 fw-bold text-success"><?php echo (int)$highCount; ?></div>
+                            <div class="text-muted small">Available</div>
+                            <div class="fs-4 fw-bold text-success"><?php echo (int)($availableCount ?? 0); ?></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4">
+                    <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('in_use')" style="cursor: pointer;">
+                        <div class="card-body">
+                            <div class="text-muted small">In Use</div>
+                            <div class="fs-4 fw-bold text-primary"><?php echo (int)($inUseCount ?? 0); ?></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4">
+                    <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('reserved')" style="cursor: pointer;">
+                        <div class="card-body">
+                            <div class="text-muted small">Reserved</div>
+                            <div class="fs-4 fw-bold text-info"><?php echo (int)($reservedCount ?? 0); ?></div>
                         </div>
                     </div>
                 </div>
@@ -919,17 +1054,29 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
 
         const aggData = <?php echo json_encode($itemsAgg, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK); ?>;
         const outBorrowables = <?php echo json_encode($outBorrowables, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK); ?>;
+        const availableUnits = <?php echo json_encode($availableUnits, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK); ?>;
+        const inUseUnits = <?php echo json_encode($inUseUnits, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK); ?>;
+        const reservedUnits = <?php echo json_encode($reservedUnits, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK); ?>;
         function openKpi(kind) {
             const titleMap = {
                 total_items: 'All Items',
                 total_units: 'Items Contributing to Total Units',
                 low: 'Low Stock (<10)',
                 out: 'Out of Stock',
-                high: 'High Stock (>50)'
+                high: 'High Stock (>50)',
+                available: 'Available Units (Borrowable)',
+                in_use: 'In Use Units',
+                reserved: 'Reserved Units (Per Unit)'
             };
             const rows = [];
             if (kind === 'out') {
                 (outBorrowables || []).forEach(function(r){ rows.push(r); });
+            } else if (kind === 'available') {
+                (availableUnits || []).forEach(function(r){ rows.push(r); });
+            } else if (kind === 'in_use') {
+                (inUseUnits || []).forEach(function(r){ rows.push(r); });
+            } else if (kind === 'reserved') {
+                (reservedUnits || []).forEach(function(r){ rows.push(r); });
             } else {
                 for (const r of aggData) {
                     const qty = parseInt(r.total_qty || 0, 10);
@@ -955,6 +1102,12 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 if (theadRow) {
                     if (kind === 'out') {
                         theadRow.innerHTML = '<th>Item</th><th>Category</th><th>Since</th>';
+                    } else if (kind === 'available') {
+                        theadRow.innerHTML = '<th>Item</th><th>Category</th><th>Location</th><th>Remarks</th>';
+                    } else if (kind === 'in_use') {
+                        theadRow.innerHTML = '<th>Item</th><th>Location</th><th>User</th>';
+                    } else if (kind === 'reserved') {
+                        theadRow.innerHTML = '<th>Item</th><th>Reserve Start</th><th>Reserve End</th><th>Reservations</th><th>Location</th><th>User</th>';
                     } else {
                         theadRow.innerHTML = '<th>Item</th><th class="text-end">Units</th>';
                     }
@@ -962,7 +1115,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 rows.forEach(r => {
                     const tr = document.createElement('tr');
                     const td1 = document.createElement('td');
-                    td1.textContent = r.item_name;
+                    td1.textContent = r.item_name || '';
                     if (kind === 'out') {
                         const tdCat = document.createElement('td');
                         tdCat.textContent = String(r.category || '');
@@ -971,6 +1124,42 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                         tr.appendChild(td1);
                         tr.appendChild(tdCat);
                         tr.appendChild(tdDate);
+                    } else if (kind === 'available') {
+                        const tdCat = document.createElement('td');
+                        tdCat.textContent = String(r.category || '');
+                        const tdLoc = document.createElement('td');
+                        tdLoc.textContent = String(r.location || '');
+                        const tdRem = document.createElement('td');
+                        tdRem.textContent = String(r.remarks || '');
+                        tr.appendChild(td1);
+                        tr.appendChild(tdCat);
+                        tr.appendChild(tdLoc);
+                        tr.appendChild(tdRem);
+                    } else if (kind === 'in_use') {
+                        const tdLoc = document.createElement('td');
+                        tdLoc.textContent = String(r.location || '');
+                        const tdUser = document.createElement('td');
+                        tdUser.textContent = String(r.full_name || '');
+                        tr.appendChild(td1);
+                        tr.appendChild(tdLoc);
+                        tr.appendChild(tdUser);
+                    } else if (kind === 'reserved') {
+                        const tdS = document.createElement('td');
+                        tdS.textContent = String(r.start || '');
+                        const tdE = document.createElement('td');
+                        tdE.textContent = String(r.end || '');
+                        const tdC = document.createElement('td');
+                        tdC.textContent = String(r.count || 0);
+                        const tdL = document.createElement('td');
+                        tdL.textContent = String(r.location || '');
+                        const tdU = document.createElement('td');
+                        tdU.textContent = String(r.full_name || '');
+                        tr.appendChild(td1);
+                        tr.appendChild(tdS);
+                        tr.appendChild(tdE);
+                        tr.appendChild(tdC);
+                        tr.appendChild(tdL);
+                        tr.appendChild(tdU);
                     } else {
                         const td2 = document.createElement('td');
                         td2.className = 'text-end';
