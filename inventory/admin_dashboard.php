@@ -541,14 +541,19 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         .kpi-mini .card-body{ padding: 8px 8px !important; }
         .kpi-mini .fs-4{ font-size: .95rem !important; }
         .kpi-mini .text-muted.small{ font-size: 11px !important; }
+        .kpi-mini .rowline .label{ font-size:11px !important; }
+        .kpi-mini .rowline .value{ font-size:.95rem !important; }
       }
       .kpi-grid{ display: grid; gap: 12px; }
       .kpi-row{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
       .kpi-group{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
       .kpi-group .card{ height: auto; }
-      .kpi-mini .card-body{ padding: 10px 12px; }
+      .kpi-mini .card-body{ padding: 8px 10px; }
       .kpi-mini .text-muted.small{ font-size: 12px; }
       .kpi-mini .fs-4{ font-size: 1rem; }
+      .kpi-mini .rowline{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+      .kpi-mini .rowline .label{ font-size:12px; }
+      .kpi-mini .rowline .value{ font-size:1rem; line-height:1; }
       /* Sidebar visibility: show on desktop, hide on mobile */
       @media (min-width: 769px){
         #sidebar-wrapper { display: block !important; }
@@ -659,20 +664,17 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 <div class="kpi-group kpi-mini">
                   <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('high')" style="cursor: pointer;">
                     <div class="card-body">
-                      <div class="text-muted small">High Stock</div>
-                      <div class="fs-4 fw-bold text-success"><?php echo (int)$highCount; ?></div>
+                      <div class="rowline"><span class="label text-muted">High Stock</span><span class="value fw-bold text-success"><?php echo (int)$highCount; ?></span></div>
                     </div>
                   </div>
                   <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('low')" style="cursor: pointer;">
                     <div class="card-body">
-                      <div class="text-muted small">Low Stock</div>
-                      <div class="fs-4 fw-bold text-warning"><?php echo (int)$lowCount; ?></div>
+                      <div class="rowline"><span class="label text-muted">Low Stock</span><span class="value fw-bold text-warning"><?php echo (int)$lowCount; ?></span></div>
                     </div>
                   </div>
                   <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('out')" style="cursor: pointer;">
                     <div class="card-body">
-                      <div class="text-muted small">Out of Stock</div>
-                      <div class="fs-4 fw-bold text-danger"><?php echo (int)$outCount; ?></div>
+                      <div class="rowline"><span class="label text-muted">Out of Stock</span><span class="value fw-bold text-danger"><?php echo (int)$outCount; ?></span></div>
                     </div>
                   </div>
                 </div>
@@ -695,20 +697,17 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 <div class="kpi-group kpi-mini">
                   <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('available')" style="cursor: pointer;">
                     <div class="card-body">
-                      <div class="text-muted small">Available</div>
-                      <div class="fs-4 fw-bold text-success"><?php echo (int)($availableCount ?? 0); ?></div>
+                      <div class="rowline"><span class="label text-muted">Available</span><span class="value fw-bold text-success"><?php echo (int)($availableCount ?? 0); ?></span></div>
                     </div>
                   </div>
                   <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('in_use')" style="cursor: pointer;">
                     <div class="card-body">
-                      <div class="text-muted small">In Use</div>
-                      <div class="fs-4 fw-bold text-primary"><?php echo (int)($inUseCount ?? 0); ?></div>
+                      <div class="rowline"><span class="label text-muted">In Use</span><span class="value fw-bold text-primary"><?php echo (int)($inUseCount ?? 0); ?></span></div>
                     </div>
                   </div>
                   <div class="card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="openKpi('reserved')" style="cursor: pointer;">
                     <div class="card-body">
-                      <div class="text-muted small">Reserved</div>
-                      <div class="fs-4 fw-bold text-info"><?php echo (int)($reservedCount ?? 0); ?></div>
+                      <div class="rowline"><span class="label text-muted">Reserved</span><span class="value fw-bold text-info"><?php echo (int)($reservedCount ?? 0); ?></span></div>
                     </div>
                   </div>
                 </div>
