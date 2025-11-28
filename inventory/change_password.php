@@ -265,6 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <i class="bi bi-key me-2"></i>Change Password
                 </h2>
                 <div class="d-flex align-items-center gap-3">
+                    <span class="text-muted">Welcome, <?php echo htmlspecialchars($username); ?>!</span>
                     <?php if ($usertype === 'admin'): ?>
                     <div class="position-relative me-2" id="adminBellWrap">
                         <button class="btn btn-light position-relative" id="adminBellBtn" title="Notifications">
@@ -316,7 +317,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       </div>
                     </div>
                     <?php endif; ?>
-                    <span class="text-muted">Welcome, <?php echo htmlspecialchars($username); ?>!</span>
                 </div>
             </div>
 
@@ -397,46 +397,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       + '<div class="d-flex w-100 justify-content-between">'
                       +   '<strong>#'+id+'</strong>'
                       +   '<small class="text-muted">'+escapeHtml(fmt12(when))+'</small>'
-                      + '</div>'
-                      + '<div class="mb-0">'+escapeHtml(String(r.username||''))+' requests '+escapeHtml(String(r.item_name||''))+' <span class="badge bg-secondary">x'+qty+'</span></div>'
-                      + '</a>');
-                });
-                if ((recent||[]).length){
-                  rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="admClearAllBtn">Clear All</button></div></div>');
-                  (recent||[]).forEach(r=>{
-                    const id=parseInt(r.id||0,10);
-                    const nm=String(r.item_name||'');
-                    const st=String(r.status||'');
-                    const when=String(r.processed_at||'');
-                    const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
-                    rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
-                      + '<div class="me-2">'
-                      +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(fmt12(when))+'</small></div>'
-                      +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
-                      + '</div>'
-                      + '<div><button type="button" class="btn-close adm-clear-one" aria-label="Clear" data-id="'+id+'"></button></div>'
-                      + '</div>');
+                        + '</div>'
+                        + '<div class="mb-0">'+escapeHtml(String(r.username||''))+' requests '+escapeHtml(String(r.item_name||''))+' <span class="badge bg-secondary">x'+qty+'</span></div>'
+                        + '</a>');
                   });
-                }
-                if (listEl) listEl.innerHTML=rows.join(''); if (emptyEl) emptyEl.style.display=rows.length?'none':'block';
-            }
-            document.addEventListener('click', function(ev){
-              const one = ev.target && ev.target.closest && ev.target.closest('.adm-clear-one');
-              if (one){ ev.preventDefault(); const rid=parseInt(one.getAttribute('data-id')||'0',10)||0; if(!rid) return; const fd=new FormData(); fd.append('request_id', String(rid)); fetch('admin_borrow_center.php?action=admin_notif_clear',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); return; }
-              if (ev.target && ev.target.id === 'admClearAllBtn'){ ev.preventDefault(); const fd=new FormData(); fd.append('limit','300'); fetch('admin_borrow_center.php?action=admin_notif_clear_all',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); }
-            });
-            function poll(){
-                if(fetching) return; fetching=true;
-                fetch('admin_borrow_center.php?action=admin_notifications')
-                  .then(r=>r.json())
-                  .then(d=>{
-                    const pending=(d&&Array.isArray(d.pending))? d.pending: [];
-                    const recent=(d&&Array.isArray(d.recent))? d.recent: [];
-                    renderCombined(pending, recent);
-                    try{
-                        const showDot = pending.length > 0;
-                        if (bellDot) bellDot.classList.toggle('d-none', !showDot);
-                    }catch(_){ if (bellDot) bellDot.classList.toggle('d-none', pending.length===0); }
+                  if ((recent||[]).length){
+                    rows.push('<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Processed</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="admClearAllBtn">Clear All</button></div></div>');
+                    (recent||[]).forEach(r=>{
+                      const id=parseInt(r.id||0,10);
+                      const nm=String(r.item_name||'');
+                      const st=String(r.status||'');
+                      const when=String(r.processed_at||'');
+                      const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
+                      rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
+                        + '<div class="me-2">'
+                        +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(fmt12(when))+'</small></div>'
+                        +   '<div class="small">Status: <span class="'+bcls+'">'+escapeHtml(st)+'</span></div>'
+                        + '</div>'
+                        + '<div><button type="button" class="btn-close adm-clear-one" aria-label="Clear" data-id="'+id+'"></button></div>'
+                        + '</div>');
+                    });
+                  }
+                  if (listEl) listEl.innerHTML=rows.join(''); if (emptyEl) emptyEl.style.display=rows.length?'none':'block';
+              }
+              document.addEventListener('click', function(ev){
+                const one = ev.target && ev.target.closest && ev.target.closest('.adm-clear-one');
+                if (one){ ev.preventDefault(); const rid=parseInt(one.getAttribute('data-id')||'0',10)||0; if(!rid) return; const fd=new FormData(); fd.append('request_id', String(rid)); fetch('admin_borrow_center.php?action=admin_notif_clear',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); return; }
+                if (ev.target && ev.target.id === 'admClearAllBtn'){ ev.preventDefault(); const fd=new FormData(); fd.append('limit','300'); fetch('admin_borrow_center.php?action=admin_notif_clear_all',{method:'POST', body:fd}).then(r=>r.json()).then(()=>{ poll(); }).catch(()=>{}); }
+              });
+              function poll(){
+                  if(fetching) return; fetching=true;
+                  fetch('admin_borrow_center.php?action=admin_notifications')
+                    .then(r=>r.json())
+                    .then(d=>{
+                      const pending=(d&&Array.isArray(d.pending))? d.pending: [];
+                      const recent=(d&&Array.isArray(d.recent))? d.recent: [];
+                      renderCombined(pending, recent);
+                      try{
+                          const showDot = pending.length > 0;
+                          if (bellDot) bellDot.classList.toggle('d-none', !showDot);
+                      }catch(_){ if (bellDot) bellDot.classList.toggle('d-none', pending.length===0); }
                     try{
                         const navLink=document.querySelector('a[href="admin_borrow_center.php"]');
                         if(navLink){

@@ -2340,6 +2340,9 @@ if (!empty($my_requests)) {
           <button class="btn btn-primary btn-sm" id="openSubmitTopBtn" data-bs-toggle="modal" data-bs-target="#submitRequestModal">
             <i class="bi bi-pencil-square me-1"></i> Submit Request
           </button>
+          <button class="btn btn-light" id="userQrBtn" title="Scan QR" data-bs-toggle="modal" data-bs-target="#urQrScanModal">
+            <i class="bi bi-qr-code-scan" style="font-size:1.2rem;"></i>
+          </button>
           <div class="position-relative me-2" id="userBellWrap">
             <button type="button" class="btn btn-light position-relative" id="userBellBtn" title="Notifications">
               <i class="bi bi-bell" style="font-size:1.2rem;"></i>
@@ -2371,9 +2374,6 @@ if (!empty($my_requests)) {
               </div>
             </div>
           </div>
-          <button class="btn btn-light" id="userQrBtn" title="Scan QR" data-bs-toggle="modal" data-bs-target="#urQrScanModal">
-            <i class="bi bi-qr-code-scan" style="font-size:1.2rem;"></i>
-          </button>
         </div>
       </div>
       <script>

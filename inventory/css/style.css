@@ -961,6 +961,10 @@ button[data-bs-target="#addItemModal"],
   0% { opacity: 0; }
   100% { opacity: 1; }
 }
+@keyframes ubmSlideUp {
+  0% { transform: translateY(24px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
 /* Base modal/backdrop styles (user + admin) */
 #userBellModal, #adminBellModal { display:none; position:fixed; inset:0; z-index:1095; align-items:center; justify-content:center; padding:16px; }
 #userBellBackdrop, #adminBellBackdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:1094; }
@@ -974,6 +978,13 @@ button[data-bs-target="#addItemModal"],
 /* Animate dropdown menus (admin/user) for a lively feel */
 .dropdown-menu { opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top right; transition: opacity 180ms ease, transform 180ms ease; }
 .dropdown-menu.show { opacity: 1; transform: translateY(0) scale(1); }
+
+/* On mobile, override to slide-in for any *BellModal id (user/admin/variants) */
+@media (max-width: 768px) {
+  #userBellModal .ubm-box,
+  #adminBellModal .ubm-box,
+  [id$="BellModal"] .ubm-box { animation: ubmSlideUp 220ms ease-out; }
+}
 
 /* ===== AUTH PAGES ===== */
 .auth-container {
