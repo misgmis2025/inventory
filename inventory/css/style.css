@@ -1006,6 +1006,22 @@ button[data-bs-target="#addItemModal"],
 .toast-remove-left { transform: translateX(-120%); opacity: 0; }
 .toast-remove-right { transform: translateX(120%); opacity: 0; }
 
+/* Slide-in for new toasts */
+@keyframes toastIn {
+  0% { transform: translateY(12px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.toast-enter { animation: toastIn 220ms ease-out; }
+
+/* Admin toasts: keep above bottom navigation on mobile */
+@media (max-width: 768px) {
+  #adminToastWrap {
+    right: 14px;
+    bottom: calc(64px + constant(safe-area-inset-bottom));
+    bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}
+
 /* ===== AUTH PAGES ===== */
 .auth-container {
     display: flex;

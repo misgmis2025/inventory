@@ -5022,9 +5022,20 @@ if (!empty($my_requests)) {
         toastWrap.style.zIndex='1030';
         document.body.appendChild(toastWrap);
       }
+      function attachSwipeForToast(el){
+        try{
+          let sx=0, sy=0, dx=0, moving=false, removed=false;
+          const onStart=(ev)=>{ try{ const t=ev.touches?ev.touches[0]:ev; sx=t.clientX; sy=t.clientY; dx=0; moving=true; el.style.willChange='transform,opacity'; el.classList.add('toast-slide'); el.style.transition='none'; }catch(_){}};
+          const onMove=(ev)=>{ if(!moving||removed) return; try{ const t=ev.touches?ev.touches[0]:ev; dx=t.clientX - sx; const adx=Math.abs(dx); const od=1 - Math.min(1, adx/140); el.style.transform='translateX('+dx+'px)'; el.style.opacity=String(od); }catch(_){}};
+          const onEnd=()=>{ if(!moving||removed) return; moving=false; try{ el.style.transition='transform 180ms ease, opacity 180ms ease'; const adx=Math.abs(dx); if (adx>80){ removed=true; el.classList.add(dx>0?'toast-remove-right':'toast-remove-left'); setTimeout(()=>{ try{ el.remove(); adjustToastOffsets(); }catch(_){ } }, 200); } else { el.style.transform=''; el.style.opacity=''; } }catch(_){ } };
+          el.addEventListener('touchstart', onStart, {passive:true});
+          el.addEventListener('touchmove', onMove, {passive:true});
+          el.addEventListener('touchend', onEnd, {passive:true});
+        }catch(_){ }
+      }
       function showToastCustom(msg, cls){
         const el=document.createElement('div');
-        el.className='alert '+(cls||'alert-info')+' shadow-sm border-0';
+        el.className='alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide toast-enter';
         // Desktop sizes
         el.style.minWidth='300px';
         el.style.maxWidth='340px';
@@ -5033,7 +5044,8 @@ if (!empty($my_requests)) {
         el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||'');
         toastWrap.appendChild(el);
         try{ adjustToastOffsets(); }catch(_){ }
-        setTimeout(()=>{ try{ el.remove(); adjustToastOffsets(); }catch(_){} }, 5000);
+        attachSwipeForToast(el);
+        setTimeout(()=>{ try{ el.classList.add('toast-fade-out'); setTimeout(()=>{ try{ el.remove(); adjustToastOffsets(); }catch(_){ } }, 220); }catch(_){ } }, 5000);
       }
       function adjustToastOffsets(){
         try{
@@ -6149,11 +6161,13 @@ if (!empty($my_requests)) {
             btn.title = 'Close menu';
             var i = btn.querySelector('i'); if (i) { i.className = 'bi bi-x'; }
             setPersistentWrapOffset(true);
+            try{ adjustToastOffsets(); }catch(_){ }
           } else {
             btn.classList.remove('raised');
             btn.title = 'Open menu';
             var i2 = btn.querySelector('i'); if (i2) { i2.className = 'bi bi-list'; }
             setPersistentWrapOffset(false);
+            try{ adjustToastOffsets(); }catch(_){ }
           }
         });
         // Initialize position

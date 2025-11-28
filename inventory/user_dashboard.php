@@ -577,7 +577,7 @@ if (!$USED_MONGO) {
             }
             function showToast(msg){
                 const el = document.createElement('div');
-                el.className = 'alert alert-info shadow-sm border-0 toast-slide';
+                el.className = 'alert alert-info shadow-sm border-0 toast-slide toast-enter';
                 // Desktop default
                 el.style.minWidth = '300px'; el.style.maxWidth = '340px';
                 // Mobile compaction
@@ -688,7 +688,7 @@ if (!$USED_MONGO) {
             let initNotifs = false;
             function showToastCustom(msg, cls){
                 const el = document.createElement('div');
-                el.className = 'alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide';
+                el.className = 'alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide toast-enter';
                 el.style.minWidth = '300px'; el.style.maxWidth = '340px';
                 try { if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='180px'; el.style.maxWidth='200px'; el.style.fontSize='12px'; } } catch(_){ }
                 el.innerHTML = '<i class="bi bi-bell me-2"></i>'+String(msg||'');
