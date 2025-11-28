@@ -535,20 +535,18 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         .kpi-compact .fs-4{ font-size: .95rem !important; }
         .kpi-compact .text-muted.small{ font-size: 11px !important; }
         .kpi-compact .bi{ font-size: 1.2rem !important; }
-        .kpi-row{ grid-template-columns: 1fr !important; gap: 8px !important; align-items: stretch !important; }
-        .kpi-group{ grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; height: auto !important; }
-        .kpi-group .card{ height: auto !important; }
+        .kpi-row{ grid-template-columns: 1fr 1fr !important; gap: 8px !important; align-items: stretch !important; }
+        .kpi-group{ grid-template-columns: 1fr !important; grid-template-rows: repeat(3, 1fr) !important; gap: 8px !important; height: 100% !important; }
+        .kpi-group .card{ height: 100% !important; }
         .kpi-mini .card-body{ padding: 8px 8px !important; }
         .kpi-mini .fs-4{ font-size: .95rem !important; }
         .kpi-mini .text-muted.small{ font-size: 11px !important; }
         .kpi-mini .rowline .label{ font-size:11px !important; }
         .kpi-mini .rowline .value{ font-size:.95rem !important; }
-        .kpi-grid{ grid-template-columns: repeat(3, 1fr) !important; gap:8px !important; }
-        .kpi-row-4{ display: contents !important; }
+        .kpi-row-4{ grid-template-columns: repeat(3, 1fr) !important; gap:8px !important; }
+        .kpi-row-4 > .kpi-card:nth-child(1){ grid-column: 1 / -1 !important; }
         .kpi-card{ aspect-ratio: auto !important; }
         .kpi-card .card-body{ padding:6px 8px !important; display:block !important; }
-        .kpi-grid > .kpi-card:nth-child(1),
-        .kpi-grid > .kpi-card:nth-child(5){ grid-column: 1 / -1; }
         .kpi-title{ font-size:11px !important; }
         .kpi-value{ font-size:.95rem !important; }
         .kpi-icon{ font-size:.85rem !important; }
