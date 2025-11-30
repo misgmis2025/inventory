@@ -288,6 +288,14 @@ if ($__act === 'returnship_check' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   $reqId = (int)($_POST['request_id'] ?? 0);
   $serial = trim((string)($_POST['serial_no'] ?? ''));
   $borrowId = (int)($_POST['borrow_id'] ?? 0);
+  $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+  if (stripos($ct, 'application/json') !== false) {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true) ?: [];
+    if ($reqId <= 0) { $reqId = (int)($data['request_id'] ?? 0); }
+    if ($serial === '') { $serial = trim((string)($data['serial_no'] ?? '')); }
+    if ($borrowId <= 0) { $borrowId = (int)($data['borrow_id'] ?? 0); }
+  }
   if ($reqId <= 0 || $serial === '') { echo json_encode(['ok'=>false,'reason'=>'Missing parameters']); exit; }
   try {
     if ($USED_MONGO && $mongo_db) {
@@ -336,6 +344,15 @@ if ($__act === 'process_return' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   $borrowId = (int)($_POST['borrow_id'] ?? 0);
   $serial = trim((string)($_POST['serial_no'] ?? ''));
   $location = trim((string)($_POST['location'] ?? ''));
+  $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+  if (stripos($ct, 'application/json') !== false) {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true) ?: [];
+    if ($reqId <= 0) { $reqId = (int)($data['request_id'] ?? 0); }
+    if ($borrowId <= 0) { $borrowId = (int)($data['borrow_id'] ?? 0); }
+    if ($serial === '') { $serial = trim((string)($data['serial_no'] ?? '')); }
+    if ($location === '') { $location = trim((string)($data['location'] ?? '')); }
+  }
   if ($serial === '') { echo json_encode(['success'=>false,'error'=>'Missing serial']); exit; }
   try {
     if ($USED_MONGO && $mongo_db) {
@@ -540,6 +557,15 @@ if ($__act === 'returnship_verify' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   $serial = trim((string)($_POST['serial_no'] ?? ''));
   $location = trim((string)($_POST['location'] ?? ''));
   $borrowId = (int)($_POST['borrow_id'] ?? 0);
+  $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+  if (stripos($ct, 'application/json') !== false) {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true) ?: [];
+    if ($reqId <= 0) { $reqId = (int)($data['request_id'] ?? 0); }
+    if ($serial === '') { $serial = trim((string)($data['serial_no'] ?? '')); }
+    if ($location === '') { $location = trim((string)($data['location'] ?? '')); }
+    if ($borrowId <= 0) { $borrowId = (int)($data['borrow_id'] ?? 0); }
+  }
   if ($reqId <= 0 || $serial === '') { echo json_encode(['ok'=>false,'reason'=>'Missing parameters']); exit; }
   if ($location === '') { echo json_encode(['ok'=>false,'reason'=>'Location required']); exit; }
   try {

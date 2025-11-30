@@ -1654,7 +1654,13 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
     }
 
     if ($act === 'approve') {
-      $id = (int)($_GET['id'] ?? 0);
+      $id = (int)(($_GET['id'] ?? ($_POST['id'] ?? 0)));
+      $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+      if ($id <= 0 && stripos($ct, 'application/json') !== false) {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true) ?: [];
+        $id = (int)($data['id'] ?? 0);
+      }
       $req = $er->findOne(['id'=>$id]);
       if (!$req || (string)($req['status'] ?? '') !== 'Pending') { header('Location: admin_borrow_center.php?error=notpend'); exit(); }
       $user = trim((string)($req['username'] ?? ''));
@@ -1709,6 +1715,14 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $reqId = (int)($_POST['request_id'] ?? 0);
       $serial = trim((string)($_POST['serial_no'] ?? ''));
       $modelIdIn = (int)($_POST['model_id'] ?? 0);
+      $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+      if (stripos($ct, 'application/json') !== false) {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true) ?: [];
+        if ($reqId <= 0) { $reqId = (int)($data['request_id'] ?? 0); }
+        if ($serial === '') { $serial = trim((string)($data['serial_no'] ?? '')); }
+        if ($modelIdIn <= 0) { $modelIdIn = (int)($data['model_id'] ?? 0); }
+      }
       if ($reqId <= 0) { echo json_encode(['ok'=>false,'reason'=>'Missing parameters']); exit; }
       $req = $er->findOne(['id'=>$reqId]);
       if (!$req) { echo json_encode(['ok'=>false,'reason'=>'Request not found']); exit; }
@@ -1732,6 +1746,14 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $reqId = (int)($_POST['request_id'] ?? 0);
       $serial = trim((string)($_POST['serial_no'] ?? ''));
       $modelIdIn = (int)($_POST['model_id'] ?? 0);
+      $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+      if (stripos($ct, 'application/json') !== false) {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true) ?: [];
+        if ($reqId <= 0) { $reqId = (int)($data['request_id'] ?? 0); }
+        if ($serial === '') { $serial = trim((string)($data['serial_no'] ?? '')); }
+        if ($modelIdIn <= 0) { $modelIdIn = (int)($data['model_id'] ?? 0); }
+      }
       if ($reqId <= 0) { header('Location: admin_borrow_center.php?error=return_missing'); exit(); }
       $req = $er->findOne(['id'=>$reqId]);
       if (!$req) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
@@ -1773,6 +1795,13 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $reqId = (int)($_POST['request_id'] ?? 0);
       $serial = trim((string)($_POST['serial_no'] ?? ''));
       if ($reqId <= 0 || $serial === '') { echo json_encode(['ok'=>false,'reason'=>'Missing parameters']); exit; }
+      $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+      if (stripos($ct, 'application/json') !== false) {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true) ?: [];
+        if ($reqId <= 0) { $reqId = (int)($data['request_id'] ?? 0); }
+        if ($serial === '') { $serial = trim((string)($data['serial_no'] ?? '')); }
+      }
       $req = $er->findOne(['id'=>$reqId]);
       if (!$req) { echo json_encode(['ok'=>false,'reason'=>'Request not found']); exit; }
       $unit = $ii->findOne(['serial_no'=>$serial]);
@@ -1790,6 +1819,13 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
     if ($act === 'return_with' && $_SERVER['REQUEST_METHOD'] === 'POST') {
       $reqId = (int)($_POST['request_id'] ?? 0);
       $serial = trim((string)($_POST['serial_no'] ?? ''));
+      $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+      if (stripos($ct, 'application/json') !== false) {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true) ?: [];
+        if ($reqId <= 0) { $reqId = (int)($data['request_id'] ?? 0); }
+        if ($serial === '') { $serial = trim((string)($data['serial_no'] ?? '')); }
+      }
       if ($reqId <= 0 || $serial === '') { header('Location: admin_borrow_center.php?error=return_missing'); exit(); }
       $req = $er->findOne(['id'=>$reqId]);
       if (!$req) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
@@ -1842,6 +1878,12 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
     }
     if ($act === 'approve_returnship' && $_SERVER['REQUEST_METHOD'] === 'POST') {
       $reqId = (int)($_POST['request_id'] ?? 0);
+      $ct = $_SERVER['CONTENT_TYPE'] ?? '';
+      if ($reqId <= 0 && stripos($ct, 'application/json') !== false) {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true) ?: [];
+        $reqId = (int)($data['request_id'] ?? 0);
+      }
       if ($reqId <= 0) { header('Location: admin_borrow_center.php?error=return_missing'); exit(); }
       $reqDoc = $er->findOne(['id'=>$reqId]);
       if (!$reqDoc) { header('Location: admin_borrow_center.php?error=return_req_notfound'); exit(); }
