@@ -18,6 +18,8 @@ if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? '') !== 'admin') 
     exit();
 }
 
+date_default_timezone_set('Asia/Manila');
+
 // Default Prepared by from current admin full name (fallback to username)
 $preparedByDefault = (string)($_SESSION['username'] ?? '');
 try {
@@ -89,6 +91,23 @@ try {
             }
         }
         if ($category === '') { $category = 'Uncategorized'; }
+        // Normalize times
+        $ba = '';
+        $ra = '';
+        try {
+            if (isset($r['borrowed_at']) && $r['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dt = $r['borrowed_at']->toDateTime();
+                $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                $ba = $dt->format('Y-m-d H:i:s');
+            } else { $ba = (string)($r['borrowed_at'] ?? ''); }
+        } catch (Throwable $_t1) { $ba = (string)($r['borrowed_at'] ?? ''); }
+        try {
+            if (isset($r['returned_at']) && $r['returned_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dt2 = $r['returned_at']->toDateTime();
+                $dt2->setTimezone(new DateTimeZone('Asia/Manila'));
+                $ra = $dt2->format('Y-m-d H:i:s');
+            } else { $ra = (string)($r['returned_at'] ?? ''); }
+        } catch (Throwable $_t2) { $ra = (string)($r['returned_at'] ?? ''); }
         $history[] = [
             'user_id' => isset($user_id) ? (string)$user_id : '',
             'school_id' => isset($school_id) ? (string)$school_id : '',
@@ -97,8 +116,8 @@ try {
             'serial_no' => $serial_no,
             'model_name' => $model_name,
             'category' => $category,
-            'borrowed_at' => (string)($r['borrowed_at'] ?? ''),
-            'returned_at' => (string)($r['returned_at'] ?? ''),
+            'borrowed_at' => $ba,
+            'returned_at' => $ra,
         ];
     }
     $usedMongo = true;

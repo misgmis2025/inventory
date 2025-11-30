@@ -2,9 +2,6 @@
 // MongoDB connection helper
 // Usage: $db = get_mongo_db();
 
-// Set default timezone to UTC for database operations
-date_default_timezone_set('UTC');
-
 // Try multiple vendor locations to support both nested layout and promoted web root layout
 $__autoloads = [
     __DIR__ . '/vendor/autoload.php',            // when db/ lives at web root (after Docker promotion)

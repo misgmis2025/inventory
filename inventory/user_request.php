@@ -175,14 +175,25 @@ if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $reqId = (int)($alloc['request_id'] ?? 0);
         // Determine due date: reservation reserved_to > request expected_return_at > borrow expected_return_at
         $due = (string)($ub['expected_return_at'] ?? '');
+        try {
+          if (isset($ub['expected_return_at']) && $ub['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+            $dte = $ub['expected_return_at']->toDateTime();
+            $dte->setTimezone(new DateTimeZone('Asia/Manila'));
+            $due = $dte->format('Y-m-d H:i:s');
+          }
+        } catch (Throwable $_e0) {}
         if ($reqId > 0) {
           $req = $erCol->findOne(['id'=>$reqId], ['projection'=>['type'=>1,'reserved_to'=>1,'expected_return_at'=>1]]);
           if ($req) {
             $reqType = (string)($req['type'] ?? '');
             if (strcasecmp($reqType,'reservation')===0) {
-              $rt = (string)($req['reserved_to'] ?? ''); if ($rt !== '') { $due = $rt; }
+              $rt = (string)($req['reserved_to'] ?? '');
+              try { if (isset($req['reserved_to']) && $req['reserved_to'] instanceof MongoDB\BSON\UTCDateTime) { $dt2=$req['reserved_to']->toDateTime(); $dt2->setTimezone(new DateTimeZone('Asia/Manila')); $rt = $dt2->format('Y-m-d H:i:s'); } } catch (Throwable $_e1) {}
+              if ($rt !== '') { $due = $rt; }
             } else {
-              $rt2 = (string)($req['expected_return_at'] ?? ''); if ($rt2 !== '') { $due = $rt2; }
+              $rt2 = (string)($req['expected_return_at'] ?? '');
+              try { if (isset($req['expected_return_at']) && $req['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) { $dt3=$req['expected_return_at']->toDateTime(); $dt3->setTimezone(new DateTimeZone('Asia/Manila')); $rt2 = $dt3->format('Y-m-d H:i:s'); } } catch (Throwable $_e2) {}
+              if ($rt2 !== '') { $due = $rt2; }
             }
           }
         }
@@ -202,7 +213,7 @@ if ($__act === 'my_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'model_id' => $mid,
           'model' => $dispModel,
           'category' => ($ii ? (string)($ii['category'] ?? '') : 'Uncategorized'),
-          'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
+          'borrowed_at' => (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($ub['borrowed_at']) : (string)($ub['borrowed_at'] ?? '')),
           'expected_return_at' => $due,
           'overdue_days' => $days,
           'type' => ($isQr ? 'QR' : 'Manual'),
@@ -676,7 +687,7 @@ if ($__act === 'my_borrowed' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $rows[] = [
           'borrow_id' => (int)($ub['id'] ?? 0),
           'request_id' => $reqId,
-          'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
+          'borrowed_at' => (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($ub['borrowed_at']) : (string)($ub['borrowed_at'] ?? '')),
           'approved_at' => $approvedAt,
           'approved_by' => $approvedBy,
           'model_id' => $mid,
@@ -740,8 +751,8 @@ if ($__act === 'my_history' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $rows[] = [
           'borrow_id' => (int)($ub['id'] ?? 0),
           'request_id' => (int)($req['id'] ?? 0),
-          'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
-          'returned_at' => (string)($ub['returned_at'] ?? ''),
+          'borrowed_at' => (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($ub['borrowed_at']) : (string)($ub['borrowed_at'] ?? '')),
+          'returned_at' => (isset($ub['returned_at']) && $ub['returned_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($ub['returned_at']) : (string)($ub['returned_at'] ?? '')),
           'status' => (string)($ub['status'] ?? ''),
           'latest_action' => (string)($log['action'] ?? ''),
           'model_id' => $mid,
@@ -1090,7 +1101,7 @@ if ($__act === 'my_requests_status' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'status' => (string)($r['status'] ?? ''),
           'created_at' => (string)($r['created_at'] ?? ''),
           'created_at_display' => $createdLocal,
-          'approved_at' => (string)($r['approved_at'] ?? ''),
+          'approved_at' => (isset($r['approved_at']) && $r['approved_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($r['approved_at']) : (string)($r['approved_at'] ?? '')),
           'approved_by' => (string)($r['approved_by'] ?? ''),
           'rejected_at' => (string)($r['rejected_at'] ?? ''),
           'rejected_by' => (string)($r['rejected_by'] ?? ''),
@@ -1098,8 +1109,8 @@ if ($__act === 'my_requests_status' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'cancelled_at' => (string)($r['cancelled_at'] ?? ''),
           'cancelled_by' => (string)($r['cancelled_by'] ?? ''),
           'cancelled_reason' => (string)($r['cancelled_reason'] ?? ''),
-          'borrowed_at' => (string)($r['borrowed_at'] ?? ''),
-          'returned_at' => (string)($r['returned_at'] ?? ''),
+          'borrowed_at' => (isset($r['borrowed_at']) && $r['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($r['borrowed_at']) : (string)($r['borrowed_at'] ?? '')),
+          'returned_at' => (isset($r['returned_at']) && $r['returned_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($r['returned_at']) : (string)($r['returned_at'] ?? '')),
           'reserved_model_id' => (int)($r['reserved_model_id'] ?? 0),
           'reserved_serial_no' => (string)($r['reserved_serial_no'] ?? ''),
           'edited_at' => (string)($r['edited_at'] ?? ''),
@@ -1919,11 +1930,31 @@ if (!$USED_MONGO && $conn) {
       // Determine QR vs Manual based on request's qr_serial_no
       $qrSer = '';
       if ($reqId > 0) { $rd = $er->findOne(['id'=>$reqId], ['projection'=>['qr_serial_no'=>1]]); if ($rd && isset($rd['qr_serial_no'])) { $qrSer = (string)$rd['qr_serial_no']; } }
+      // Normalize times
+      $ba = '';
+      try {
+        if (isset($b['borrowed_at']) && $b['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dt = $b['borrowed_at']->toDateTime();
+          $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+          $ba = $dt->format('Y-m-d H:i:s');
+        } else { $ba = (string)($b['borrowed_at'] ?? ''); }
+      } catch (Throwable $_) { $ba = (string)($b['borrowed_at'] ?? ''); }
+      $apprAt = '';
+      if ($reqId > 0) {
+        try {
+          $ap = $er->findOne(['id'=>$reqId], ['projection'=>['approved_at'=>1]]);
+          if ($ap && isset($ap['approved_at'])) {
+            if ($ap['approved_at'] instanceof MongoDB\BSON\UTCDateTime) { $d=$ap['approved_at']->toDateTime(); $d->setTimezone(new DateTimeZone('Asia/Manila')); $apprAt = $d->format('Y-m-d H:i:s'); }
+            else { $apprAt = (string)$ap['approved_at']; }
+          }
+        } catch (Throwable $_a) { $apprAt = (string)($ap['approved_at'] ?? ''); }
+      }
       $my_borrowed[]=[
         'borrow_id'=>(int)($b['id']??0),
         'request_id'=>$reqId,
         'model_id'=>$mid,
-        'borrowed_at'=>(string)($b['borrowed_at']??''),
+        'borrowed_at'=>$ba,
+        'approved_at'=>$apprAt,
         'item_name'=>($dispModel!==''?$dispModel:''),
         'model'=>($dispModel!==''?$dispModel:''),
         'model_display'=>($dispModel!==''?$dispModel:''),

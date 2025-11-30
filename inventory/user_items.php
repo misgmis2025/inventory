@@ -4,6 +4,7 @@ if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? 'user') !== 'user
     if (!isset($_SESSION['username'])) { header('Location: index.php'); } else { header('Location: admin_dashboard.php'); }
     exit();
 }
+date_default_timezone_set('Asia/Manila');
 
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/db/mongo.php';
@@ -38,11 +39,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $last = $ubCol->findOne([], ['sort' => ['id' => -1], 'projection' => ['id' => 1]]);
                     $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
+                    // Compute borrowed_at from the user's latest matching request's created_at
+                    $ba = date('Y-m-d H:i:s');
+                    try {
+                        $modelName = (string)($exists['model'] ?? ($exists['item_name'] ?? ''));
+                        $cand = array_values(array_unique(array_filter([$modelName, (string)($exists['item_name'] ?? '')])));
+                        if (!empty($cand)) {
+                            $req = $erCol->findOne([
+                                'username' => (string)$_SESSION['username'],
+                                'item_name' => ['$in' => $cand]
+                            ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['created_at' => 1]]);
+                            if ($req && isset($req['created_at'])) {
+                                if ($req['created_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                                    $dt = $req['created_at']->toDateTime();
+                                    $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                                    $ba = $dt->format('Y-m-d H:i:s');
+                                } else {
+                                    $ba = (string)$req['created_at'];
+                                }
+                            }
+                        }
+                    } catch (Throwable $_c) { /* keep $ba as now */ }
                     $ubCol->insertOne([
                         'id' => $nextId,
                         'username' => (string)$_SESSION['username'],
                         'model_id' => $model_id,
-                        'borrowed_at' => date('Y-m-d H:i:s'),
+                        'borrowed_at' => $ba,
                         'returned_at' => null,
                         'status' => 'Borrowed',
                     ]);
@@ -90,16 +112,26 @@ try {
             'username' => (string)$_SESSION['username'],
             'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))],
         ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
+        $ba = '';
+        try {
+            if (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dt = $ub['borrowed_at']->toDateTime();
+                $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                $ba = $dt->format('Y-m-d H:i:s');
+            } else {
+                $ba = (string)($ub['borrowed_at'] ?? '');
+            }
+        } catch (Throwable $_t) { $ba = (string)($ub['borrowed_at'] ?? ''); }
         $my_borrowed[] = [
             'request_id' => (int)($req['id'] ?? 0),
-            'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
+            'borrowed_at' => $ba,
             'model_id' => $mid,
             'model' => $modelName,
             'item_name' => $itm ? (string)($itm['item_name'] ?? '') : '',
             'category' => ($cat !== '' ? $cat : 'Uncategorized'),
             'condition' => $cond,
             '__status' => 'Borrowed',
-            '__ts' => (string)($ub['borrowed_at'] ?? ''),
+            '__ts' => $ba,
             'row_id' => (int)($req['id'] ?? ($ub['id'] ?? 0)),
         ];
     }
@@ -119,17 +151,33 @@ try {
         $cat = $itm ? (string)($itm['category'] ?? 'Uncategorized') : 'Uncategorized';
         $req = $erCol->findOne([
             'username' => (string)$_SESSION['username'],
-            'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))],
+            'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))]
         ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
         // last status markers
         $last_lost = $ldCol->findOne(['model_id' => $mid, 'action' => 'Lost'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
         $last_found = $ldCol->findOne(['model_id' => $mid, 'action' => 'Found'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
         $last_maint = $ldCol->findOne(['model_id' => $mid, 'action' => 'Under Maintenance'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
         $last_fixed = $ldCol->findOne(['model_id' => $mid, 'action' => 'Fixed'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
+        $ba = '';
+        $ra = '';
+        try {
+            if (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dt = $ub['borrowed_at']->toDateTime();
+                $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                $ba = $dt->format('Y-m-d H:i:s');
+            } else { $ba = (string)($ub['borrowed_at'] ?? ''); }
+        } catch (Throwable $_t1) { $ba = (string)($ub['borrowed_at'] ?? ''); }
+        try {
+            if (isset($ub['returned_at']) && $ub['returned_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dt2 = $ub['returned_at']->toDateTime();
+                $dt2->setTimezone(new DateTimeZone('Asia/Manila'));
+                $ra = $dt2->format('Y-m-d H:i:s');
+            } else { $ra = (string)($ub['returned_at'] ?? ''); }
+        } catch (Throwable $_t2) { $ra = (string)($ub['returned_at'] ?? ''); }
         $my_history[] = [
             'request_id' => (int)($req['id'] ?? 0),
-            'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
-            'returned_at' => (string)($ub['returned_at'] ?? ''),
+            'borrowed_at' => $ba,
+            'returned_at' => $ra,
             'status' => (string)($ub['status'] ?? ''),
             'model_id' => $mid,
             'item_name' => $itm ? (string)($itm['item_name'] ?? '') : '',

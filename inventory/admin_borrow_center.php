@@ -66,6 +66,41 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       $mid = (int)($b['model_id'] ?? 0);
       // Resolve due date: reservation reserved_to > request expected_return_at > borrow expected_return_at
       $dueAt = (string)($b['expected_return_at'] ?? '');
+      try {
+        if (isset($b['expected_return_at']) && $b['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dtE = $b['expected_return_at']->toDateTime();
+          $dtE->setTimezone(new DateTimeZone('Asia/Manila'));
+          $dueAt = $dtE->format('Y-m-d H:i:s');
+        }
+      } catch (Throwable $_) {}
+      try {
+        if (isset($b['expected_return_at']) && $b['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dtE = $b['expected_return_at']->toDateTime();
+          $dtE->setTimezone(new DateTimeZone('Asia/Manila'));
+          $dueAt = $dtE->format('Y-m-d H:i:s');
+        }
+      } catch (Throwable $_d1) { /* ignore */ }
+      try {
+        if (isset($b['expected_return_at']) && $b['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dtE = $b['expected_return_at']->toDateTime();
+          $dtE->setTimezone(new DateTimeZone('Asia/Manila'));
+          $dueAt = $dtE->format('Y-m-d H:i:s');
+        }
+      } catch (Throwable $_) {}
+      try {
+        if (isset($b['expected_return_at']) && $b['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dtE = $b['expected_return_at']->toDateTime();
+          $dtE->setTimezone(new DateTimeZone('Asia/Manila'));
+          $dueAt = $dtE->format('Y-m-d H:i:s');
+        }
+      } catch (Throwable $_) { /* ignore */ }
+      try {
+        if (isset($b['expected_return_at']) && $b['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dtE = $b['expected_return_at']->toDateTime();
+          $dtE->setTimezone(new DateTimeZone('Asia/Manila'));
+          $dueAt = $dtE->format('Y-m-d H:i:s');
+        }
+      } catch (Throwable $_d1) { /* ignore */ }
       $approvedBy = '';
       $reqType = '';
       $borrowerUser = (string)($b['username'] ?? '');
@@ -88,9 +123,11 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           $approvedBy = (string)($req['approved_by'] ?? '');
           if (strcasecmp($reqType,'reservation')===0) {
             $rt = (string)($req['reserved_to'] ?? '');
+            try { if (isset($req['reserved_to']) && $req['reserved_to'] instanceof MongoDB\BSON\UTCDateTime) { $d=$req['reserved_to']->toDateTime(); $d->setTimezone(new DateTimeZone('Asia/Manila')); $rt = $d->format('Y-m-d H:i:s'); } } catch (Throwable $_x) {}
             if ($rt !== '') { $dueAt = $rt; }
           } else {
             $rt2 = (string)($req['expected_return_at'] ?? '');
+            try { if (isset($req['expected_return_at']) && $req['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) { $d2=$req['expected_return_at']->toDateTime(); $d2->setTimezone(new DateTimeZone('Asia/Manila')); $rt2 = $d2->format('Y-m-d H:i:s'); } } catch (Throwable $_y) {}
             if ($rt2 !== '') { $dueAt = $rt2; }
           }
         }
@@ -275,9 +312,11 @@ if ($act === 'overdue_json' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           $approvedBy = (string)($req['approved_by'] ?? '');
           if (strcasecmp($reqType,'reservation')===0) {
             $rt = (string)($req['reserved_to'] ?? '');
+            try { if (isset($req['reserved_to']) && $req['reserved_to'] instanceof MongoDB\BSON\UTCDateTime) { $d=$req['reserved_to']->toDateTime(); $d->setTimezone(new DateTimeZone('Asia/Manila')); $rt = $d->format('Y-m-d H:i:s'); } } catch (Throwable $__) {}
             if ($rt !== '') { $dueAt = $rt; }
           } else {
             $rt2 = (string)($req['expected_return_at'] ?? '');
+            try { if (isset($req['expected_return_at']) && $req['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) { $d2=$req['expected_return_at']->toDateTime(); $d2->setTimezone(new DateTimeZone('Asia/Manila')); $rt2 = $d2->format('Y-m-d H:i:s'); } } catch (Throwable $___) {}
             if ($rt2 !== '') { $dueAt = $rt2; }
           }
         }
@@ -321,13 +360,21 @@ if ($act === 'request_info' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     if ($rid <= 0) { echo json_encode(['ok'=>false,'reason'=>'Missing id']); exit(); }
     $doc = $er->findOne(['id'=>$rid], ['projection'=>['id'=>1,'item_name'=>1,'request_location'=>1,'qr_serial_no'=>1,'status'=>1,'approved_at'=>1]]);
     if (!$doc) { echo json_encode(['ok'=>false,'reason'=>'Not found']); exit(); }
+    $approvedAt = '';
+    try {
+      if (isset($doc['approved_at']) && $doc['approved_at'] instanceof MongoDB\BSON\UTCDateTime) {
+        $dt = $doc['approved_at']->toDateTime();
+        $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+        $approvedAt = $dt->format('Y-m-d H:i:s');
+      } else { $approvedAt = (string)($doc['approved_at'] ?? ''); }
+    } catch (Throwable $_) { $approvedAt = (string)($doc['approved_at'] ?? ''); }
     echo json_encode(['ok'=>true,'request'=>[
       'id' => (int)($doc['id'] ?? 0),
       'item_name' => (string)($doc['item_name'] ?? ''),
       'request_location' => (string)($doc['request_location'] ?? ''),
       'qr_serial_no' => (string)($doc['qr_serial_no'] ?? ''),
       'status' => (string)($doc['status'] ?? ''),
-      'approved_at' => (string)($doc['approved_at'] ?? ''),
+      'approved_at' => $approvedAt,
     ]]);
   } catch (Throwable $e) {
     echo json_encode(['ok'=>false,'reason'=>'DB unavailable']);
@@ -1507,20 +1554,28 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $uc = trim((string)($claimed['category'] ?? '')) !== '' ? (string)$claimed['category'] : 'Uncategorized';
       $match = (strcasecmp(trim($um), trim($dm))===0) && (strcasecmp(trim($uc), trim($dc))===0);
       if (!$match) { $ii->updateOne(['id'=>(int)($claimed['id'] ?? 0)], ['$set'=>['status'=>'Available']]); header('Location: admin_borrow_center.php?error=item_mismatch'); exit(); }
+      $borrowedAtFromReq = '';
+      try {
+        if (isset($req['created_at']) && $req['created_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dtBA = $req['created_at']->toDateTime();
+          $dtBA->setTimezone(new DateTimeZone('Asia/Manila'));
+          $borrowedAtFromReq = $dtBA->format('Y-m-d H:i:s');
+        } else { $borrowedAtFromReq = (string)($req['created_at'] ?? $now); }
+      } catch (Throwable $_ba) { $borrowedAtFromReq = (string)($req['created_at'] ?? $now); }
       $borrowId = $nextId('user_borrows');
       $ub->insertOne([
         'id'=>$borrowId,
         'username'=>$user,
         'model_id'=>(int)($claimed['id'] ?? 0),
         'status'=>'Borrowed',
-        'borrowed_at'=>$now,
+        'borrowed_at'=>$borrowedAtFromReq,
         'expected_return_at'=>$expectedReturn,
       ]);
       $exists = $ra->countDocuments(['request_id'=>$id,'borrow_id'=>$borrowId]);
       if ($exists === 0) { $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]); }
       $allocCount = $ra->countDocuments(['request_id'=>$id]);
       if ($allocCount >= $qty) {
-        $er->updateOne(['id'=>$id, 'status'=>['$in'=>['Pending','Approved']]], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$now,'type'=>'immediate','expected_return_at'=>$expectedReturn]]);
+        $er->updateOne(['id'=>$id, 'status'=>['$in'=>['Pending','Approved']]], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$borrowedAtFromReq,'type'=>'immediate','expected_return_at'=>$expectedReturn]]);
         header('Location: admin_borrow_center.php?approved=1&scroll=borrowed#borrowed-list'); exit();
       } else {
         $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>['approved_at'=>$now,'approved_by'=>$approverName,'type'=>'immediate','expected_return_at'=>$expectedReturn]]);
@@ -1632,10 +1687,18 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $approverUser = isset($_SESSION['username']) ? (string)$_SESSION['username'] : 'system';
       $approverName = $approverUser;
       try { $uDoc = $db->selectCollection('users')->findOne(['username'=>$approverUser], ['projection'=>['full_name'=>1]]); if ($uDoc && isset($uDoc['full_name']) && trim((string)$uDoc['full_name'])!=='') { $approverName = (string)$uDoc['full_name']; } } catch (Throwable $eun) {}
-      $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$now]]);
+      $borrowedAtFromReq = '';
+      try {
+        if (isset($req['created_at']) && $req['created_at'] instanceof MongoDB\BSON\UTCDateTime) {
+          $dtBA = $req['created_at']->toDateTime();
+          $dtBA->setTimezone(new DateTimeZone('Asia/Manila'));
+          $borrowedAtFromReq = $dtBA->format('Y-m-d H:i:s');
+        } else { $borrowedAtFromReq = (string)($req['created_at'] ?? $now); }
+      } catch (Throwable $_ba) { $borrowedAtFromReq = (string)($req['created_at'] ?? $now); }
+      $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$borrowedAtFromReq]]);
       foreach ($picked as $mid) {
         $borrowId = $nextId('user_borrows');
-        $ub->insertOne(['id'=>$borrowId,'username'=>$user,'model_id'=>$mid,'status'=>'Borrowed','borrowed_at'=>$now]);
+        $ub->insertOne(['id'=>$borrowId,'username'=>$user,'model_id'=>$mid,'status'=>'Borrowed','borrowed_at'=>$borrowedAtFromReq]);
         $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]);
       }
       header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
@@ -2162,23 +2225,30 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
           }
           if (!$unit) { continue; }
           $mid = (int)($unit['id'] ?? 0);
-          // Create user_borrows
+          
           $lastUb = $ubCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
           $nextUb = ($lastUb && isset($lastUb['id']) ? (int)$lastUb['id'] : 0) + 1;
+          $borrowedAtFromReq = $nowStr;
+          try {
+            if (isset($er['created_at']) && $er['created_at'] instanceof MongoDB\BSON\UTCDateTime) {
+              $dtBA = $er['created_at']->toDateTime();
+              $dtBA->setTimezone(new DateTimeZone('Asia/Manila'));
+              $borrowedAtFromReq = $dtBA->format('Y-m-d H:i:s');
+            } else { $borrowedAtFromReq = (string)($er['created_at'] ?? $nowStr); }
+          } catch (Throwable $_ba) { $borrowedAtFromReq = (string)($er['created_at'] ?? $nowStr); }
           $ubCol->insertOne([
             'id'=>$nextUb,
             'username'=>(string)($er['username'] ?? ''),
             'model_id'=>$mid,
             'serial_no'=>(string)($unit['serial_no'] ?? ''),
             'status'=>'Borrowed',
-            'borrowed_at'=>$nowStr
+            'borrowed_at'=>$borrowedAtFromReq
           ]);
           // Allocation link
           $lastAl = $allocCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
           $nextAl = ($lastAl && isset($lastAl['id']) ? (int)$lastAl['id'] : 0) + 1;
           $allocCol->insertOne(['id'=>$nextAl,'request_id'=>$reqId,'borrow_id'=>$nextUb,'allocated_at'=>$nowStr]);
-          // Update request
-          $erCol->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Borrowed','borrowed_at'=>$nowStr]]);
+          $erCol->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Borrowed','borrowed_at'=>$borrowedAtFromReq]]);
         }
       } catch (Throwable $_) { /* swallow */ }
       // Now list remaining active reservations (Approved)

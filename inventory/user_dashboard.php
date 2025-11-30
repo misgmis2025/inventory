@@ -2,9 +2,9 @@
 // Align session settings with index.php to ensure continuity across requests
 $__sess_path = ini_get('session.save_path');
 if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
-    $__alt = __DIR__ . '/../tmp_sessions';
-    if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
-    if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
+  $__alt = __DIR__ . '/../tmp_sessions';
+  if (!is_dir($__alt)) { @mkdir($__alt, 0777, true); }
+  if (is_dir($__alt)) { @ini_set('session.save_path', $__alt); }
 }
 @ini_set('session.cookie_secure', '0');
 @ini_set('session.cookie_httponly', '1');
@@ -12,6 +12,7 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 @ini_set('session.cookie_path', '/');
 @ini_set('session.use_strict_mode', '1');
 session_start();
+date_default_timezone_set('Asia/Manila');
 if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'user') {
     // Only users (not admins) should land here
     if (!isset($_SESSION['username'])) {
@@ -127,10 +128,26 @@ try {
         'reserved_from' => ['$gt' => $nowStr],
     ], ['sort' => ['reserved_from' => 1, 'id' => -1], 'limit' => 100, 'projection'=>['item_name'=>1,'reserved_from'=>1,'reserved_to'=>1]]);
     foreach ($curRes as $rr) {
+        $rf = '';
+        $rt = '';
+        try {
+            if (isset($rr['reserved_from']) && $rr['reserved_from'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dt = $rr['reserved_from']->toDateTime();
+                $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                $rf = $dt->format('Y-m-d H:i:s');
+            } else { $rf = (string)($rr['reserved_from'] ?? ''); }
+        } catch (Throwable $_) { $rf = (string)($rr['reserved_from'] ?? ''); }
+        try {
+            if (isset($rr['reserved_to']) && $rr['reserved_to'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dt2 = $rr['reserved_to']->toDateTime();
+                $dt2->setTimezone(new DateTimeZone('Asia/Manila'));
+                $rt = $dt2->format('Y-m-d H:i:s');
+            } else { $rt = (string)($rr['reserved_to'] ?? ''); }
+        } catch (Throwable $_2) { $rt = (string)($rr['reserved_to'] ?? ''); }
         $reserved_list[] = [
             'item_name' => (string)($rr['item_name'] ?? ''),
-            'reserved_from' => (string)($rr['reserved_from'] ?? ''),
-            'reserved_to' => (string)($rr['reserved_to'] ?? ''),
+            'reserved_from' => $rf,
+            'reserved_to' => $rt,
         ];
     }
     $reserved_count = count($reserved_list);
@@ -381,9 +398,18 @@ if (!$USED_MONGO) {
                     'username' => (string)$_SESSION['username'],
                     'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))],
                 ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id'=>1]]);
+                // Normalize borrowed_at
+                $ba = '';
+                try {
+                    if (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                        $dt = $ub['borrowed_at']->toDateTime();
+                        $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                        $ba = $dt->format('Y-m-d H:i:s');
+                    } else { $ba = (string)($ub['borrowed_at'] ?? ''); }
+                } catch (Throwable $_b) { $ba = (string)($ub['borrowed_at'] ?? ''); }
                 $borrowed_list[] = [
                     'request_id' => (int)($req['id'] ?? 0),
-                    'borrowed_at' => (string)($ub['borrowed_at'] ?? ''),
+                    'borrowed_at' => $ba,
                     'model_id' => $mid,
                     'model_name' => $modelName,
                     'category' => ($cat !== '' ? $cat : 'Uncategorized'),
