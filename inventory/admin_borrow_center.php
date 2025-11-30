@@ -4243,7 +4243,9 @@ try {
           if (!camSelect) return;
           camSelect.innerHTML = '';
           if (typeof Html5Qrcode === 'undefined' || !Html5Qrcode.getCameras) return;
-          Html5Qrcode.getCameras().then(function(cams){
+          var p = null;
+          try { if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) { p = navigator.mediaDevices.getUserMedia({ video: true }); } } catch(_){ }
+          (p ? p.then(function(){ return Html5Qrcode.getCameras(); }) : Html5Qrcode.getCameras()).then(function(cams){
             camsCache = cams || [];
             camsCache.forEach(function(c, idx){
               var opt = document.createElement('option');
@@ -4272,7 +4274,13 @@ try {
             localStorage.setItem('rs_camera', id);
             scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
               .then(()=>{ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
-              .catch(err=>{ setStatus('Camera error: '+(err?.message||'start failure'),'text-danger'); });
+              .catch(function(err){
+                try {
+                  scanner.start({ facingMode: 'environment' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+                    .then(function(){ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+                    .catch(function(e2){ setStatus('Camera error: '+((e2&&e2.message)||'start failure'),'text-danger'); });
+                } catch(e3){ setStatus('Camera error: '+((err&&err.message)||'start failure'),'text-danger'); }
+              });
           } catch(e){ setStatus('Scanner init failed','text-danger'); }
         }
         function validateCurrentId(){
@@ -6212,7 +6220,8 @@ try {
         if (!camSelect) return;
         camSelect.innerHTML = '';
         if (typeof Html5Qrcode === 'undefined' || !Html5Qrcode.getCameras) return;
-        Html5Qrcode.getCameras().then(function(cams){
+        var p = null; try { if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) { p = navigator.mediaDevices.getUserMedia({ video: true }); } } catch(_){ }
+        (p ? p.then(function(){ return Html5Qrcode.getCameras(); }) : Html5Qrcode.getCameras()).then(function(cams){
           camsCache = cams || [];
           camsCache.forEach(function(c, idx){
             var opt = document.createElement('option');
@@ -6234,7 +6243,13 @@ try {
           localStorage.setItem('as_camera', id);
           scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
             .then(()=>{ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
-            .catch(err=>{ setStatus('Camera error: '+(err?.message||'start failure'),'text-danger'); });
+            .catch(function(err){
+              try {
+                scanner.start({ facingMode: 'environment' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+                  .then(function(){ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+                  .catch(function(e2){ setStatus('Camera error: '+((e2&&e2.message)||'start failure'),'text-danger'); });
+              } catch(e3){ setStatus('Camera error: '+((err&&err.message)||'start failure'),'text-danger'); }
+            });
         } catch(e){ setStatus('Scanner init failed','text-danger'); }
       }
       function validateCurrentId(modelId){
@@ -6312,19 +6327,13 @@ try {
           if (stopBtn) stopBtn.style.display='none';
           (function(){ var img = document.getElementById('asImageFile'); if (img) { var w = img.closest('.mt-2'); if (w) w.classList.remove('d-none'); } })();
           setStatus('You can scan a QR or enter ID manually.','text-muted');
-          if (camWrap) camWrap.style.display = isMobile ? 'none' : 'block';
-          if (isMobile) {
-            if (startBtn) startBtn.disabled = true;
-            if (stopBtn) stopBtn.disabled = true;
-            setStatus('Live camera scanning is available on desktop only. Use image upload or enter Serial ID.','text-muted');
-          } else {
-            listCams();
-            if (startBtn) startBtn.disabled = false;
-            if (stopBtn) stopBtn.disabled = false;
-          }
+          if (camWrap) camWrap.style.display = isMobile ? 'block' : 'block';
+          listCams();
+          if (startBtn) startBtn.disabled = false;
+          if (stopBtn) stopBtn.disabled = false;
         }
       });
-      startBtn && startBtn.addEventListener('click', function(){ if (isMobile) return; startWithSelected(); });
+      startBtn && startBtn.addEventListener('click', function(){ startWithSelected(); });
       stopBtn && stopBtn.addEventListener('click', function(){ stop(); });
       form && form.addEventListener('submit', function(){ stop(); /* server uses request values; hidden fields already set for compatibility */ });
       inputId && inputId.addEventListener('input', function(){ approveBtn && (approveBtn.disabled = true); if (this.value.trim()) { validateCurrentId(); } else { setStatus('You can scan a QR or enter ID manually.','text-muted'); } });

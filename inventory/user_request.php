@@ -2880,6 +2880,7 @@ if (!empty($my_requests)) {
           
   <script>
     (function(){
+      try { if (window.__uqr_init_guard) { return; } window.__uqr_init_guard = true; return; } catch(_){ }
       function q(id){ return document.getElementById(id); }
       let scanner = null, scanning = false, lastSerial = '';
       let serialValid = false, currentCameraId = null;
@@ -2935,7 +2936,11 @@ if (!empty($my_requests)) {
       
       // Initialize the scanner with the selected camera
       async function startScan() {
-        if (scanning || !currentCameraId) return;
+        if (scanning) return;
+        if (!currentCameraId) {
+          try { const devs = await Html5Qrcode.getCameras(); if (devs && devs.length) { currentCameraId = devs[0].id; } } catch(_){ }
+        }
+        if (!currentCameraId) { setStatus('Please select a camera', 'text-warning'); return; }
         
         const readerEl = q('uqrReader');
         if (!readerEl) {
@@ -2956,11 +2961,7 @@ if (!empty($my_requests)) {
           // Start scanning
           await scanner.start(
             currentCameraId,
-            { 
-              fps: 10, 
-              qrbox: { width: 250, height: 250 },
-              aspectRatio: 1.0
-            },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
             onScan,
             (errorMessage) => {
               // Handle specific error cases
@@ -2996,23 +2997,36 @@ if (!empty($my_requests)) {
         } catch (err) {
           console.error('Scanner error:', err);
           
-          let errorMsg = 'Error starting camera: ' + (err.message || 'Unknown error');
-          if (err.message && err.message.includes('Could not start video source')) {
-            errorMsg = 'Could not access camera. It may be in use by another application.';
+          // Fallback: try facingMode environment
+          try {
+            await scanner.start(
+              { facingMode: 'environment' },
+              { fps: 10, qrbox: { width: 250, height: 250 } },
+              onScan,
+              ()=>{}
+            );
+            scanning = true;
+            const startBtn = q('uqrStart'); const stopBtn = q('uqrStop'); const cameraSelect = q('uqrCamera'); const refreshBtn = q('uqrRefreshCams');
+            if (startBtn) startBtn.style.display = 'none';
+            if (stopBtn) stopBtn.style.display = 'inline-block';
+            if (cameraSelect) cameraSelect.disabled = true;
+            if (refreshBtn) refreshBtn.disabled = true;
+            setStatus('Scanning for QR code...', 'text-primary');
+          } catch (e2) {
+            let errorMsg = 'Error starting camera: ' + ((err && err.message) || (e2 && e2.message) || 'Unknown error');
+            setStatus(errorMsg, 'text-danger');
+            
+            // Reset UI
+            const startBtn = q('uqrStart');
+            const stopBtn = q('uqrStop');
+            const cameraSelect = q('uqrCamera');
+            const refreshBtn = q('uqrRefreshCams');
+            
+            if (startBtn) startBtn.style.display = 'inline-block';
+            if (stopBtn) stopBtn.style.display = 'none';
+            if (cameraSelect) cameraSelect.disabled = false;
+            if (refreshBtn) refreshBtn.disabled = false;
           }
-          
-          setStatus(errorMsg, 'text-danger');
-          
-          // Reset UI
-          const startBtn = q('uqrStart');
-          const stopBtn = q('uqrStop');
-          const cameraSelect = q('uqrCamera');
-          const refreshBtn = q('uqrRefreshCams');
-          
-          if (startBtn) startBtn.style.display = 'inline-block';
-          if (stopBtn) stopBtn.style.display = 'none';
-          if (cameraSelect) cameraSelect.disabled = false;
-          if (refreshBtn) refreshBtn.disabled = false;
         }
       }
       
@@ -3797,7 +3811,7 @@ if (!empty($my_requests)) {
           <div class="mb-2"><strong>Request ID:</strong> <span id="uqrReq"></span></div>
           <div class="mb-2"><strong>Item:</strong> <span id="uqrModel"></span></div>
           <div class="mb-2"><small id="uqrStatus" class="text-muted">Scan the item's QR.</small></div>
-          <div id="uqrReader" class="border rounded p-2 mb-2" style="max-width:360px;"></div>
+          <div id="uqrReader" class="border rounded p-2 mb-2" style="max-width:360px; min-height:280px;"></div>
           <div class="mb-2 d-flex align-items-center gap-2">
             <label for="uqrCamera" class="form-label small mb-0">Camera</label>
             <select id="uqrCamera" class="form-select form-select-sm" style="max-width: 320px;"></select>
@@ -3821,7 +3835,6 @@ if (!empty($my_requests)) {
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
     // User preferences for camera
     const USER_PREFS_KEY = 'qrReturnPrefs';
