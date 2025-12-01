@@ -1612,7 +1612,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 																<tr>
 																	<td><?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?></td>
 																	<td><?php echo htmlspecialchars($it['location']); ?></td>
-																	<td><?php echo htmlspecialchars($it['remarks']); ?></td>
+																	<td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($it['remarks']); ?>"><?php echo htmlspecialchars($it['remarks']); ?></td>
 																	<td><?php echo htmlspecialchars($it['status']); ?></td>
 																	<td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
 																	<?php if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin'): ?>
@@ -1836,16 +1836,16 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                 </button>
                 <input type="checkbox" class="form-check-input group-select d-none" data-ids="<?php echo htmlspecialchars($dataIds); ?>" title="Select all items in this model">
               </td>
-              <?php $modelDisp = trim((string)($rows[0]['model'] ?? '')); if ($modelDisp === '') { $modelDisp = (string)$modelName; } ?>
-              <td><?php echo htmlspecialchars($modelDisp); ?></td>
-              <td><?php echo htmlspecialchars($catId); ?></td>
-              <td><?php echo htmlspecialchars($cat); ?></td>
-              <td><?php echo htmlspecialchars($sumQty); ?></td>
-              <td><?php echo htmlspecialchars($locShow); ?></td>
-              <td><?php echo htmlspecialchars($remarksShow); ?></td>
-              <td><?php echo htmlspecialchars($statShow); ?></td>
-              <td><?php echo htmlspecialchars($dateShow); ?></td>
-              <td class="text-end">
+              										<?php $modelDisp = trim((string)($rows[0]['model'] ?? '')); if ($modelDisp === '') { $modelDisp = (string)$modelName; } ?>
+										<td><?php echo htmlspecialchars($modelDisp); ?></td>
+										<td><?php echo htmlspecialchars($catId); ?></td>
+										<td><?php echo htmlspecialchars($cat); ?></td>
+										<td><?php echo htmlspecialchars($sumQty); ?></td>
+										<td><?php echo htmlspecialchars($locShow); ?></td>
+										<td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($remarksShow); ?>"><?php echo htmlspecialchars($remarksShow); ?></td>
+										<td><?php echo htmlspecialchars($statShow); ?></td>
+										<td><?php echo htmlspecialchars($dateShow); ?></td>
+										<td class="text-end">
                	<!-- Keep actions minimal on group row: none to avoid ambiguity -->
               </td>
             </tr>
@@ -1885,7 +1885,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
 															<td><?php echo htmlspecialchars($cat); ?></td>
 															<td><?php echo htmlspecialchars($it['quantity']); ?></td>
 															<td><?php echo htmlspecialchars($it['location']); ?></td>
-															<td><?php echo htmlspecialchars($it['remarks']); ?></td>
+															<td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo htmlspecialchars($it['remarks']); ?>"><?php echo htmlspecialchars($it['remarks']); ?></td>
 															<td><?php echo htmlspecialchars($it['status']); ?></td>
 															<td><?php echo htmlspecialchars($it['date_acquired']); ?></td>
 																		<td class="text-end">
