@@ -4359,6 +4359,14 @@ if (!empty($my_requests)) {
               if (exists) { selectedId = userPrefs.cameraId; }
             }
           } catch(_){ }
+          if (!selectedId) {
+            try {
+              const borrowPref = localStorage.getItem('ur_camera');
+              if (borrowPref && devices.some(d => d.id === borrowPref)) {
+                selectedId = borrowPref;
+              }
+            } catch(_){ }
+          }
           if (!selectedId && devices && devices.length) {
             const pref = devices.find(d => /back|rear|environment/i.test(String(d.label||'')));
             selectedId = (pref && pref.id) ? pref.id : devices[0].id;
