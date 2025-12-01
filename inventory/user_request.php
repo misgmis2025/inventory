@@ -3147,6 +3147,7 @@ if (!empty($my_requests)) {
             if (savedCam) {
               cameraSelect.value = savedCam.value;
               currentCameraId = savedCam.value;
+              try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
             }
           }
           
@@ -3154,6 +3155,7 @@ if (!empty($my_requests)) {
           if (!currentCameraId && devices.length > 0) {
             cameraSelect.value = devices[0].id;
             currentCameraId = devices[0].id;
+            try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
           }
           
           setStatus('Ready to scan', 'text-muted');
@@ -3563,51 +3565,39 @@ if (!empty($my_requests)) {
       // Load cameras once DOM is ready and again on modal open
       loadCameras();
       mdl.addEventListener('shown.bs.modal', function(){ loadCameras(); });
-      submitBtn.addEventListener('click', function(){
+      submitBtn.addEventListener('click', async function(){
         if (!currentReqId || !lastSerial) { setStatus('Missing data','text-danger'); return; }
-        const body = 'request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId)+'&serial_no='+encodeURIComponent(lastSerial)+'&location='+encodeURIComponent(locInput?.value||'');
-        submitBtn.disabled = true; (function(){ const gray=document.getElementById('uqrSubmitGray'); if (gray){ gray.disabled=true; } })(); setStatus('Verifying...','text-info');
-        fetch('user_request.php?action=returnship_verify', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body })
-          .then(r=>r.json())
-          .then(function(resp){
-            if (resp && resp.ok){
-              setStatus('Verified. Admin can now approve your return.','text-success');
-              submitBtn.disabled = true; submitBtn.className='btn btn-primary';
-              try{
-                // Stop camera/scanner, then hide modal; let hidden.bs.modal do the cleanup
-                stop();
-                if (window.bootstrap && mdl){
-                  var inst = bootstrap.Modal.getOrCreateInstance(mdl);
-                  inst.hide();
-                  // Safety: ensure backdrop/body class are cleared shortly after hide
-                  setTimeout(function(){
-                    try { document.querySelectorAll('.modal-backdrop').forEach(function(el){ el.remove(); }); } catch(_){ }
-                    try { document.body.classList.remove('modal-open'); document.body.style.removeProperty('padding-right'); } catch(_){ }
-                    // Hide any Return via QR buttons for this request immediately
-                    try {
-                      var sel = 'button[data-bs-target="#userQrReturnModal"][data-reqid="'+ String(currentReqId) +'"]';
-                      document.querySelectorAll(sel).forEach(function(btn){ btn.style.display='none'; btn.disabled = true; });
-                    } catch(_){ }
-                    // Refresh the page to fully restore scroll state and update tables
-                    try { setTimeout(function(){ window.location.reload(); }, 150); } catch(_){ }
-                  }, 300);
-                } else {
-                  // Non-bootstrap env fallback
-                  cleanupBackdrops();
-                  // Also hide buttons and refresh
-                  try {
-                    var sel2 = 'button[data-bs-target="#userQrReturnModal"][data-reqid="'+ String(currentReqId) +'"]';
-                    document.querySelectorAll(sel2).forEach(function(btn){ btn.style.display='none'; btn.disabled = true; });
-                  } catch(_){ }
-                  try { setTimeout(function(){ window.location.reload(); }, 150); } catch(_){ }
-                }
-              }catch(_){ }
-            } else {
-              setStatus(resp && resp.reason ? resp.reason : 'Verification failed','text-danger');
-              submitBtn.disabled = false; submitBtn.className='btn btn-secondary';
-            }
-          })
-          .catch(function(){ setStatus('Network error','text-danger'); submitBtn.disabled = false; submitBtn.className='btn btn-secondary'; });
+        const location = (locInput && locInput.value) ? locInput.value.trim() : '';
+        if (!location) { setStatus('Please enter a return location','text-warning'); return; }
+        const fd = new FormData();
+        fd.append('request_id', String(currentReqId));
+        fd.append('borrow_id', String(currentBorrowId||''));
+        fd.append('serial_no', String(lastSerial));
+        fd.append('location', String(location));
+        submitBtn.disabled = true;
+        (function(){ const gray=document.getElementById('uqrSubmitGray'); if (gray){ gray.disabled=true; } })();
+        setStatus('Processing return...','text-info');
+        try {
+          const response = await fetch('user_request.php?action=process_return', { method:'POST', body: fd });
+          const result = await response.json().catch(()=>({success:false,error:'Response error'}));
+          if (result && result.success) {
+            setStatus('✓ Return processed successfully!','text-success');
+            try{ stop(); }catch(_){ }
+            try{
+              if (window.bootstrap && mdl){
+                const inst = bootstrap.Modal.getOrCreateInstance(mdl);
+                inst.hide();
+              }
+            }catch(_){ }
+            setTimeout(function(){ try{ window.location.reload(); }catch(_){ } }, 300);
+          } else {
+            setStatus(result && result.error ? result.error : 'Failed to process return','text-danger');
+            submitBtn.disabled = false;
+          }
+        } catch(e) {
+          setStatus('Network error','text-danger');
+          submitBtn.disabled = false;
+        }
       });
     })();
   </script>
@@ -4008,7 +3998,22 @@ if (!empty($my_requests)) {
               try{ sb.focus(); }catch(_){ } 
             }
           }catch(_){ }
-          try{ await stopScan(); }catch(_){ }
+          try{
+            if (locInput) {
+              const existing = String(locInput.value||'').trim();
+              if (existing === '' || String(locInput.getAttribute('data-autofilled')||'') === '1') {
+                try {
+                  const infoRes = await fetch('inventory.php?action=item_by_serial&sid='+encodeURIComponent(serial), { cache:'no-store' });
+                  const info = await infoRes.json().catch(()=>({success:false}));
+                  if (info && info.success && info.item && typeof info.item.location === 'string') {
+                    locInput.value = info.item.location;
+                  }
+                } catch(_){ }
+                locInput.removeAttribute('data-autofilled'); 
+              }
+            }
+          }catch(_){ }
+          await stopScan(); 
         }catch(e){ 
           setStatus('Scan error','text-danger'); 
         }
@@ -4086,6 +4091,7 @@ if (!empty($my_requests)) {
           if (stopBtn) stopBtn.style.display = 'inline-block';
           if (cameraSelect) cameraSelect.disabled = true;
           if (refreshBtn) refreshBtn.disabled = true;
+          try { if (currentCameraId) { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } } catch(_){ }
           
           setStatus('Scanning for QR code...', 'text-primary');
           try{ var v=document.querySelector('#uqrReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ }
@@ -4444,9 +4450,10 @@ if (!empty($my_requests)) {
           submitBtn.disabled = true;
         }
         
-        // Restore last used location
         if (locInput) {
-          locInput.value = userPrefs.lastLocation || '';
+          const pref = userPrefs.lastLocation || '';
+          locInput.value = pref;
+          try { if (pref) { locInput.setAttribute('data-autofilled','1'); } else { locInput.removeAttribute('data-autofilled'); } } catch(_){ }
           locInput.disabled = false;
         }
         
