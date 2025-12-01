@@ -4035,6 +4035,14 @@ if (!empty($my_requests)) {
           return;
         }
         
+        // Sync currentCameraId from the dropdown (be accurate to user's choice)
+        try {
+          if (cameraSelect && cameraSelect.value) {
+            currentCameraId = cameraSelect.value;
+            try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
+          }
+        } catch(_){ }
+
         // Clear previous scanner if exists
         if (scanner) {
           try { 
@@ -4065,7 +4073,7 @@ if (!empty($my_requests)) {
           };
           const configLite = { fps: 10, qrbox: { width: 250, height: 250 } };
           let started = false;
-          // Prefer an explicit selected camera id if available
+          // Prefer an explicit selected camera id if available (do not silently switch to another lens)
           if (currentCameraId) {
             try {
               await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
@@ -4076,9 +4084,8 @@ if (!empty($my_requests)) {
                 started = true;
               } catch(e1b){ started = false; }
             }
-          }
-          // Fallback: try environment-facing constraints when device id fails or is not set
-          if (!started) {
+          } else {
+            // No specific device selected: try environment-facing fallbacks
             try {
               await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
               started = true;
@@ -4087,11 +4094,16 @@ if (!empty($my_requests)) {
                 await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
                 started = true;
               } catch(e3){
-                await scanner.start({ facingMode: 'user' }, configLite, onReturnScan, handleScannerError);
-                started = true;
+                try {
+                  await scanner.start({ facingMode: 'user' }, configLite, onReturnScan, handleScannerError);
+                  started = true;
+                } catch(e4){ started = false; }
               }
             }
           }
+
+          // If still not started here, throw to error handler
+          if (!started) { throw new Error('Failed to start selected camera'); }
 
           // Update UI state
           scanning = true;
