@@ -934,7 +934,9 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                     const nm = String(r.item_name||'');
                     const st = String(r.status||'');
                     const whenTxt = String(r.processed_at||'');
-                    const bcls = (st==='Approved') ? 'badge bg-success' : 'badge bg-danger';
+                    let bcls = 'badge bg-secondary';
+                    if (st==='Approved' || st==='Returned') bcls = 'badge bg-success';
+                    else if (st==='Rejected') bcls = 'badge bg-danger';
                     rows.push('<div class="list-group-item d-flex justify-content-between align-items-start">'
                       + '<div class="me-2">'
                       +   '<div class="d-flex w-100 justify-content-between"><strong>#'+id+' '+escapeHtml(nm)+'</strong><small class="text-muted">'+escapeHtml(fmt12(whenTxt))+'</small></div>'
@@ -998,6 +1000,17 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
             }
             poll();
             setInterval(()=>{ if (document.visibilityState === 'visible') poll(); }, 1000);
+            // Also poll user self-return feed (return_events) for side toasts
+            let retBase = new Set(); let retInit=false; let retFetching=false;
+            function pollUserReturns(){ if (retFetching) return; retFetching = true;
+              fetch('admin_borrow_center.php?action=return_feed')
+                .then(r=>r.json())
+                .then(d=>{ const list=(d&&d.ok&&Array.isArray(d.returns))?d.returns:[]; const ids=new Set(list.map(v=>parseInt(v.id||0,10)).filter(n=>n>0)); if(!retInit){ retBase=ids; retInit=true; return; } let ding=false; list.forEach(v=>{ const id=parseInt(v.id||0,10); if(!retBase.has(id)){ ding=true; const name=String(v.model_name||''); const sn=String(v.qr_serial_no||''); const loc=String(v.location||''); showToast('User returned '+(name?name+' ':'')+(sn?('['+sn+']'):'')+(loc?(' @ '+loc):''), 'alert-success'); } }); if(ding){ try{ playBeep(); }catch(_){ } } retBase=ids; })
+                .catch(()=>{})
+                .finally(()=>{ retFetching=false; });
+            }
+            pollUserReturns();
+            setInterval(()=>{ if (document.visibilityState === 'visible') pollUserReturns(); }, 2000);
         })();
 
         function toggleSidebar() {

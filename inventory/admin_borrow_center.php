@@ -1396,7 +1396,7 @@ if (in_array($act, ['mark_returned','mark_lost','mark_maintenance'], true) && is
     header('Location: admin_borrow_center.php?error=mark'); exit();
   }
 }
-if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial','approve','validate_return_id','return_with','returnship_status','request_returnship','approve_returnship','returnship_feed'], true)) {
+if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial','approve','validate_return_id','return_with','returnship_status','request_returnship','approve_returnship','returnship_feed','return_feed'], true)) {
   @require_once __DIR__ . '/../vendor/autoload.php';
   @require_once __DIR__ . '/db/mongo.php';
   try {
@@ -1948,6 +1948,28 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         ];
       }
       echo json_encode(['ok'=>true,'verifications'=>$out]); exit;
+    }
+    // Recent user returns feed (self returns via QR)
+    if ($act === 'return_feed' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+      header('Content-Type: application/json');
+      try {
+        $rfCol = $db->selectCollection('return_events');
+        $cur = $rfCol->find([], ['sort'=>['id'=>-1], 'limit'=>80]);
+        $rows = [];
+        foreach ($cur as $e) {
+          $rows[] = [
+            'id' => (int)($e['id'] ?? 0),
+            'request_id' => (int)($e['request_id'] ?? 0),
+            'model_name' => (string)($e['model_name'] ?? ''),
+            'qr_serial_no' => (string)($e['qr_serial_no'] ?? ''),
+            'location' => (string)($e['location'] ?? ''),
+            'username' => (string)($e['username'] ?? ''),
+            'created_at' => (string)($e['created_at'] ?? ''),
+          ];
+        }
+        echo json_encode(['ok'=>true,'returns'=>$rows]);
+      } catch (Throwable $e) { echo json_encode(['ok'=>false,'returns'=>[]]); }
+      exit;
     }
   } catch (Throwable $e) {
     header('Location: admin_borrow_center.php?error=tx'); exit();
@@ -2584,7 +2606,7 @@ if ($act === 'admin_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       }
     } catch (Throwable $_p) { $pending = []; }
 
-    // Processed (Approved/Rejected), excluding per-admin cleared
+    // Processed (Approved/Rejected), excluding per-admin cleared + include recent returns
     $recent = [];
     try {
       $idsCleared = [];
@@ -2614,202 +2636,31 @@ if ($act === 'admin_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           'processed_at' => $pat,
         ];
       }
+      // Also include recent user QR returns as 'Returned'
+      try {
+        $rf = $db->selectCollection('return_events');
+        $curR = $rf->find([], ['sort'=>['id'=>-1], 'limit' => 50]);
+        foreach ($curR as $e) {
+          $rid2 = (int)($e['request_id'] ?? 0);
+          if ($rid2 > 0 && $admin !== '' && isset($idsCleared[$rid2])) { continue; }
+          $uname = (string)($e['username'] ?? '');
+          $ufull = $uname;
+          try { $ud = $uCol->findOne(['username'=>$uname], ['projection'=>['full_name'=>1]]); if ($ud && isset($ud['full_name']) && trim((string)$ud['full_name'])!=='') { $ufull = (string)$ud['full_name']; } } catch (Throwable $_u2) { $ufull=$uname; }
+          $recent[] = [
+            'id' => $rid2,
+            'username' => $uname,
+            'user_full_name' => $ufull,
+            'item_name' => (string)($e['model_name'] ?? ''),
+            'quantity' => 1,
+            'status' => 'Returned',
+            'processed_by' => '',
+            'processed_at' => (string)($e['created_at'] ?? ''),
+          ];
+        }
+      } catch (Throwable $_r2) { /* ignore */ }
     } catch (Throwable $_r) { $recent = []; }
-
     echo json_encode(['ok'=>true, 'pending'=>$pending, 'recent'=>$recent]);
-  } catch (Throwable $e) {
-    echo json_encode(['ok'=>false, 'pending'=>[], 'recent'=>[]]);
-  }
-  exit();
-}
-
-// Admin: clear a processed notification (per-admin)
-if ($act === 'admin_notif_clear' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-  header('Content-Type: application/json');
-  try {
-    @require_once __DIR__ . '/../vendor/autoload.php';
-    @require_once __DIR__ . '/db/mongo.php';
-    $db = get_mongo_db();
-    $er = $db->selectCollection('equipment_requests');
-    $clears = $db->selectCollection('admin_notif_clears');
-    $admin = (string)($_SESSION['username'] ?? '');
-    $rid = isset($_POST['request_id']) ? (int)$_POST['request_id'] : 0;
-    if ($admin === '' || $rid <= 0) { echo json_encode(['ok'=>false,'reason'=>'bad_input']); exit(); }
-    $doc = $er->findOne(['id'=>$rid], ['projection'=>['status'=>1]]);
-    if (!$doc) { echo json_encode(['ok'=>false,'reason'=>'not_found']); exit(); }
-    $st = (string)($doc['status'] ?? '');
-    if ($st === 'Pending') { echo json_encode(['ok'=>false,'reason'=>'not_processed']); exit(); }
-    $clears->updateOne(['admin'=>$admin,'request_id'=>$rid], ['$set'=>['admin'=>$admin,'request_id'=>$rid,'cleared_at'=>date('Y-m-d H:i:s')]], ['upsert'=>true]);
-    echo json_encode(['ok'=>true]);
-  } catch (Throwable $e) { echo json_encode(['ok'=>false]); }
-  exit();
-}
-
-// Admin: clear all processed notifications (per-admin)
-if ($act === 'admin_notif_clear_all' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-  header('Content-Type: application/json');
-  try {
-    @require_once __DIR__ . '/../vendor/autoload.php';
-    @require_once __DIR__ . '/db/mongo.php';
-    $db = get_mongo_db();
-    $er = $db->selectCollection('equipment_requests');
-    $clears = $db->selectCollection('admin_notif_clears');
-    $admin = (string)($_SESSION['username'] ?? '');
-    if ($admin === '') { echo json_encode(['ok'=>false]); exit(); }
-    $limit = isset($_POST['limit']) ? max(50, min((int)$_POST['limit'], 500)) : 300;
-    $cur = $er->find(['status' => ['$in' => ['Approved','Rejected']]], ['sort'=>['updated_at'=>-1,'id'=>-1], 'limit'=>$limit]);
-    foreach ($cur as $row) {
-      $rid = (int)($row['id'] ?? 0); if ($rid <= 0) continue;
-      $clears->updateOne(['admin'=>$admin,'request_id'=>$rid], ['$set'=>['admin'=>$admin,'request_id'=>$rid,'cleared_at'=>date('Y-m-d H:i:s')]], ['upsert'=>true]);
-    }
-    echo json_encode(['ok'=>true]);
-  } catch (Throwable $e) { echo json_encode(['ok'=>false]); }
-  exit();
-}
-
-// Build borrowable catalog and counters via Mongo first
-$ABC_MONGO_FILLED = false;
-$invCatModels = [];
-$heldCounts = [];
-$qtyStats = [];
-try {
-  @require_once __DIR__ . '/../vendor/autoload.php';
-  @require_once __DIR__ . '/db/mongo.php';
-  $db = get_mongo_db();
-  $iiCol = $db->selectCollection('inventory_items');
-  $rhCol = $db->selectCollection('returned_hold');
-
-  // Build category -> models map from inventory (use model or item_name)
-  $cur = $iiCol->find([], ['projection'=>['category'=>1,'model'=>1,'item_name'=>1,'quantity'=>1,'status'=>1]]);
-  foreach ($cur as $doc) {
-    $cat = trim((string)($doc['category'] ?? '')) !== '' ? (string)$doc['category'] : 'Uncategorized';
-    $model = (string)($doc['model'] ?? ($doc['item_name'] ?? ''));
-    if ($model === '') { continue; }
-    if (!isset($invCatModels[$cat])) { $invCatModels[$cat] = []; }
-    if (!in_array($model, $invCatModels[$cat], true)) { $invCatModels[$cat][] = $model; }
-    // qty stats accumulate
-    if (!isset($qtyStats[$cat])) { $qtyStats[$cat] = []; }
-    if (!isset($qtyStats[$cat][$model])) { $qtyStats[$cat][$model] = ['available'=>0,'total'=>0]; }
-    $q = (int)($doc['quantity'] ?? 1);
-    $qtyStats[$cat][$model]['total'] += max(0, $q);
-    if ((string)($doc['status'] ?? '') === 'Available' && $q > 0) { $qtyStats[$cat][$model]['available'] += $q; }
-  }
-  // Held counts from returned_hold
-  $curH = $rhCol->find([], ['projection'=>['category'=>1,'model_name'=>1]]);
-  foreach ($curH as $h) {
-    $cat = trim((string)($h['category'] ?? '')) !== '' ? (string)$h['category'] : 'Uncategorized';
-    $model = (string)($h['model_name'] ?? '');
-    if ($model === '') { continue; }
-    if (!isset($heldCounts[$cat])) { $heldCounts[$cat] = []; }
-    if (!isset($heldCounts[$cat][$model])) { $heldCounts[$cat][$model] = 0; }
-    $heldCounts[$cat][$model] += 1;
-    // ensure model appears in invCatModels for UI
-    if (!isset($invCatModels[$cat])) { $invCatModels[$cat] = []; }
-    if (!in_array($model, $invCatModels[$cat], true)) { $invCatModels[$cat][] = $model; }
-  }
-  // Sort models within categories for nicer UI
-  foreach ($invCatModels as $c => &$mods) { natcasesort($mods); $mods = array_values(array_unique($mods)); }
-  unset($mods);
-  // Build consumed counts per (category, model): active borrows + returned_hold (returned_queue removed)
-  $activeConsumed = [];
-  try {
-    $ubCol = $db->selectCollection('user_borrows');
-    $agg = $ubCol->aggregate([
-      ['$match' => ['status' => 'Borrowed']],
-      ['$lookup' => [
-        'from' => 'inventory_items',
-        'localField' => 'model_id',
-        'foreignField' => 'id',
-        'as' => 'item'
-      ]],
-      ['$unwind' => '$item'],
-      ['$project' => [
-        'category' => ['$ifNull' => ['$item.category', 'Uncategorized']],
-        'model_name' => ['$ifNull' => ['$item.model', '$item.item_name']]
-      ]],
-      ['$group' => ['_id' => ['c' => '$category', 'm' => '$model_name'], 'cnt' => ['$sum' => 1]]]
-    ]);
-    foreach ($agg as $r) {
-      $c = trim((string)($r->_id['c'] ?? '')) ?: 'Uncategorized';
-      $m = (string)($r->_id['m'] ?? ''); if ($m === '') continue;
-      if (!isset($activeConsumed[$c])) { $activeConsumed[$c] = []; }
-      $activeConsumed[$c][$m] = (int)($r->cnt ?? 0);
-    }
-  } catch (Throwable $e) {}
-  $pendingReturned = [];
-  // Also load borrowable whitelist for UI mapping from new catalog collection
-  $borrowables = [];
-  $bcCol = $db->selectCollection('borrowable_catalog');
-  // Ensure index on (category, model_name)
-  try { $bcCol->createIndex(['category'=>1,'model_name'=>1], ['unique'=>true]); } catch (Throwable $eidx) {}
-  // If catalog empty but legacy exists, migrate minimal fields
-  try {
-    $catCount = $bcCol->countDocuments([]);
-    if ($catCount === 0) {
-      $legacy = $db->selectCollection('borrowable_models');
-      $curL = $legacy->find([], ['projection'=>['model_name'=>1,'category'=>1,'active'=>1,'borrow_limit'=>1,'created_at'=>1]]);
-      foreach ($curL as $b) {
-        $bcCol->updateOne(
-          ['category'=>(string)($b['category'] ?? ''), 'model_name'=>(string)($b['model_name'] ?? '')],
-          ['$set'=>[
-            'category'=>(string)($b['category'] ?? ''),
-            'model_name'=>(string)($b['model_name'] ?? ''),
-            'active'=>(int)($b['active'] ?? 1),
-            'borrow_limit'=>(int)($b['borrow_limit'] ?? 0),
-            'created_at'=>(string)($b['created_at'] ?? date('Y-m-d H:i:s'))
-          ]],
-          ['upsert'=>true]
-        );
-      }
-    }
-  } catch (Throwable $emig) {}
-  $bmCur = $bcCol->find([], ['sort'=>['category'=>1,'model_name'=>1], 'projection'=>['model_name'=>1,'category'=>1,'active'=>1,'borrow_limit'=>1,'created_at'=>1]]);
-  foreach ($bmCur as $b) {
-    $borrowables[] = [
-      'model_name' => (string)($b['model_name'] ?? ''),
-      'category' => (string)($b['category'] ?? ''),
-      'active' => (int)($b['active'] ?? 0),
-      'borrow_limit' => (int)($b['borrow_limit'] ?? 0),
-      'created_at' => (string)($b['created_at'] ?? ''),
-    ];
-  }
-  // Build quick map of borrow limits per category/model for UI calculations
-  $borrowLimitMap = [];
-  foreach ($borrowables as $b) {
-    $c = trim((string)$b['category']);
-    $m = trim((string)$b['model_name']);
-    if ($c === '' || $m === '') continue;
-    if (!isset($borrowLimitMap[$c])) { $borrowLimitMap[$c] = []; }
-    $borrowLimitMap[$c][$m] = (int)($b['borrow_limit'] ?? 0);
-  }
-  // Initialize lists (JSON endpoints provide data in-page; keep vars defined for template safety)
-  $pending = [];
-  $borrowed = [];
-  $ABC_MONGO_FILLED = true;
-} catch (Throwable $e) {
-  $ABC_MONGO_FILLED = false;
-}
-
-// Removed MySQL fallback connection: MongoDB is the only backend
-
-// Removed MySQL schema ensure and pruning: handled in MongoDB collections
-
-// Actions: approve/reject/return/lost/maintenance
-$act = $_GET['action'] ?? '';
-
-// JSON endpoints handled above via Mongo
-
-// JSON endpoints handled above via Mongo
-
-// Removed duplicate SQL validator (Mongo JSON endpoint already implemented above)
-
-// Approve with a specific Model ID (from QR scan or manual input)
-// Removed duplicate SQL approve_with (Mongo handler exists above)
-// Removed SQL reject; add Mongo reject route at top if needed
-
-// Removed duplicate SQL approve (Mongo handler exists above)
-
-// Removed duplicate SQL mark_* (Mongo handler exists above)
+    exit();
 
 // Handle borrowable list POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -2935,7 +2786,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 '$or' => [ ['model'=>$modelName], ['item_name'=>$modelName] ]
               ]],
               ['$project' => ['quantity' => ['$ifNull' => ['$quantity', 1]]]],
-              ['$group' => ['_id' => null, 'total_qty' => ['$sum' => '$quantity']]],
+              ['$group' => ['_id' => null, 'total_qty' => ['$sum' => '$quantity']]]
             ]);
             $total = 0; foreach ($agg as $r) { $total = (int)($r->total_qty ?? 0); break; }
             // Treat reqLimit as an increment to current borrow_limit; cap by total
@@ -3141,12 +2992,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
           }
         } catch (Throwable $eBm) { /* ignore */ }
-        // Record retired serial so it cannot be reused
+        // Retire serial
         try { $retCol->createIndex(['serial_no'=>1], ['unique'=>true]); } catch (Throwable $eIdx) {}
         if ($serial !== '') {
           try { $retCol->updateOne(['serial_no'=>$serial], ['$set'=>['serial_no'=>$serial,'reason'=>'Permanently Lost','model_id'=>$mid,'retired_at'=>$now,'retired_by'=>$by]], ['upsert'=>true]); } catch (Throwable $eRet) {}
         }
-        // Preserve snapshot in deletion history as well (without deleting the record)
+        // Deletion history snapshot (reason: Permanently Lost)
         try {
           $lastDel = $delLogCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
           $nextDelId = ($lastDel && isset($lastDel['id']) ? (int)$lastDel['id'] : 0) + 1;
@@ -3393,7 +3244,7 @@ try {
       'category' => ['$ifNull' => ['$category', 'Uncategorized']],
       'model_name' => ['$ifNull' => ['$model', '$item_name']],
       'q' => ['$ifNull' => ['$quantity', 1]],
-      'status' => ['$ifNull' => ['$status', '']]
+      'status' => ['$ifNull' => ['$status','']]
     ]],
     ['$project' => [
       'category' => 1,
@@ -4037,6 +3888,16 @@ try {
               .finally(function(){ feeding=false; });
           }
           pollVerif(); setInterval(function(){ if (document.visibilityState==='visible') pollVerif(); }, 2000);
+          // Also poll user self-return feed (return_events) for toasts
+          var baseRet = new Set(); var initRet=false; var fetchingRet=false;
+          function pollUserReturns(){ if (fetchingRet) return; fetchingRet = true;
+            fetch('admin_borrow_center.php?action=return_feed')
+              .then(function(r){ return r.json(); })
+              .then(function(d){ var list = (d && d.ok && Array.isArray(d.returns)) ? d.returns : []; var ids = new Set(list.map(function(v){ return parseInt(v.id||0,10); }).filter(function(n){ return n>0; })); if (!initRet){ baseRet = ids; initRet=true; return; } var ding=false; list.forEach(function(v){ var id=parseInt(v.id||0,10); if (!baseRet.has(id)){ ding=true; var name=String(v.model_name||''); var sn=String(v.qr_serial_no||''); var loc=String(v.location||''); showToast('User returned '+(name?name+' ':'')+(sn?('['+sn+']'):'')+(loc?(' @ '+loc):''), 'alert-success'); } }); if (ding) try{ playBeep(); }catch(_){ } baseRet = ids; })
+              .catch(function(){})
+              .finally(function(){ fetchingRet=false; });
+          }
+          pollUserReturns(); setInterval(function(){ if (document.visibilityState==='visible') pollUserReturns(); }, 2000);
           var __brBaseIds = new Set(); var __brInit=false; var __brFetch=false;
           function pollBorrowReqSound(){ if (__brFetch) return; __brFetch = true; fetch('admin_borrow_center.php?action=admin_notifications').then(function(r){ return r.json(); }).then(function(d){ var pending = (d && Array.isArray(d.pending)) ? d.pending : []; var curr = new Set(pending.map(function(it){ return parseInt(it.id||0,10); }).filter(function(n){ return n>0; })); if (!__brInit) { __brBaseIds = curr; __brInit = true; return; } var hasNew=false; curr.forEach(function(id){ if(!__brBaseIds.has(id)) hasNew=true; }); if (hasNew) { try{ playBeep(); }catch(_){ } } __brBaseIds = curr; }).catch(function(){}).finally(function(){ __brFetch = false; }); }
           pollBorrowReqSound(); setInterval(function(){ if (document.visibilityState==='visible') pollBorrowReqSound(); }, 1500);
