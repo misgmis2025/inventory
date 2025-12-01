@@ -4415,7 +4415,34 @@ if (!empty($my_requests)) {
               userPrefs.lastLocation = location;
               saveUserPrefs();
               
-              setTimeout(() => { try{ const inst = bootstrap.Modal.getOrCreateInstance(document.getElementById('userQrReturnModal')); inst.hide(); }catch(_){ } window.location.reload(); }, 500);
+              // Close modal immediately
+              try { const inst = bootstrap.Modal.getOrCreateInstance(document.getElementById('userQrReturnModal')); inst.hide(); } catch(_){ }
+              
+              // Show green success alert to the user
+              try {
+                const alert = document.createElement('div');
+                alert.className = 'alert alert-success alert-dismissible fade show';
+                alert.setAttribute('role','alert');
+                alert.innerHTML = '<i class="bi bi-check2-circle me-2"></i>Return processed successfully via QR.'+
+                  '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+                const container = document.querySelector('#content') || document.body;
+                container.insertBefore(alert, container.firstChild);
+                setTimeout(()=>{ try{ alert.classList.remove('show'); alert.addEventListener('transitionend', ()=>{ try{ alert.remove(); }catch(__){} }, {once:true}); }catch(__){} }, 3500);
+              } catch(__){}
+              
+              // Refresh My Borrowed and Overdue lists without full reload
+              try {
+                fetch('user_request.php?action=my_borrowed', { cache:'no-store' })
+                  .then(r=>r.json())
+                  .then(function(d){ try{ if (typeof renderMyBorrowed === 'function') renderMyBorrowed(d); }catch(_){ } })
+                  .catch(()=>{});
+              } catch(__){}
+              try {
+                fetch('user_request.php?action=my_overdue', { cache:'no-store' })
+                  .then(r=>r.json())
+                  .then(function(d){ try{ if (typeof renderMyOverdue === 'function') renderMyOverdue(d); }catch(_){ } })
+                  .catch(()=>{});
+              } catch(__){}
               
             } else {
               throw new Error(result.error || 'Failed to process return');
