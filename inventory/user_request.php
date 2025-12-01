@@ -2958,91 +2958,72 @@ if (!empty($my_requests)) {
           try { const devs = await Html5Qrcode.getCameras(); if (devs && devs.length) { currentCameraId = devs[0].id; } } catch(_){ }
         }
         if (!currentCameraId) { setStatus('Please select a camera', 'text-warning'); return; }
-        
+
         const readerEl = q('uqrReader');
-        if (!readerEl) {
-          setStatus('Scanner container not found', 'text-danger');
-          return;
-        }
-        
+        if (!readerEl) { setStatus('Scanner container not found', 'text-danger'); return; }
+
         // Clear previous scanner if exists
         if (scanner) {
-          try { await scanner.clear(); } 
-          catch (e) { console.warn('Error clearing previous scanner:', e); }
+          try { await scanner.clear(); } catch (e) { console.warn('Error clearing previous scanner:', e); }
         }
-        
+
         // Initialize scanner
         scanner = new Html5Qrcode('uqrReader');
-        
-        try {
-          // Start scanning
-          await scanner.start(
-            currentCameraId,
-            { fps: 10, qrbox: { width: 250, height: 250 } },
-            onScan,
-            (errorMessage) => {
-              // Handle specific error cases
-              let displayMsg = errorMessage;
-              if (errorMessage.includes('NotAllowedError') || errorMessage.includes('Permission denied')) {
-                displayMsg = 'Camera access denied. Please allow camera access in your browser settings.';
-              } else if (errorMessage.includes('NotFoundError')) {
-                displayMsg = 'No camera found. Please connect a camera and try again.';
-              } else if (errorMessage.includes('NotReadableError')) {
-                displayMsg = 'Camera is already in use by another application.';
-              } else if (errorMessage.includes('OverconstrainedError')) {
-                displayMsg = 'Camera does not support the requested constraints.';
-              }
-              
-              setStatus(displayMsg, 'text-danger');
-            }
-          );
-          
-          // Update UI
+        const cfg = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        function applyVideoTweaks(){
+          try {
+            const v = document.querySelector('#uqrReader video');
+            if (v) { v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted = true; v.autoplay = true; try { v.play().catch(()=>{}); } catch(_){ } }
+          } catch(_){ }
+        }
+        function markStarted(){
           scanning = true;
           const startBtn = q('uqrStart');
           const stopBtn = q('uqrStop');
           const cameraSelect = q('uqrCamera');
           const refreshBtn = q('uqrRefreshCams');
-          
           if (startBtn) startBtn.style.display = 'none';
           if (stopBtn) stopBtn.style.display = 'inline-block';
           if (cameraSelect) cameraSelect.disabled = true;
           if (refreshBtn) refreshBtn.disabled = true;
-          
-          setStatus('Scanning for QR code...', 'text-primary');
-          
+          applyVideoTweaks();
+          setStatus('Camera active. Scan a QR.', 'text-success');
+        }
+        function handleFatalError(err){
+          let msg = (err && (err.message || err.name)) || 'Unknown error';
+          if (err && err.name === 'NotAllowedError') msg = 'Camera access denied. Please allow camera access in your browser settings.';
+          else if (err && err.name === 'NotFoundError') msg = 'No camera found. Please connect a camera and try again.';
+          else if (err && err.name === 'NotReadableError') msg = 'Could not start video source. Make sure no other app or tab is using the camera, then try again.';
+          else if (err && err.name === 'OverconstrainedError') msg = 'Selected camera is unavailable or does not support the requested constraints.';
+          setStatus('Unable to start camera: ' + msg, 'text-danger');
+          const startBtn = q('uqrStart');
+          const stopBtn = q('uqrStop');
+          const cameraSelect = q('uqrCamera');
+          const refreshBtn = q('uqrRefreshCams');
+          if (startBtn) startBtn.style.display = 'inline-block';
+          if (stopBtn) stopBtn.style.display = 'none';
+          if (cameraSelect) cameraSelect.disabled = false;
+          if (refreshBtn) refreshBtn.disabled = false;
+        }
+
+        try {
+          // 1) Try explicit selected deviceId
+          await scanner.start(currentCameraId, cfg, onScan, ()=>{});
+          markStarted();
         } catch (err) {
-          console.error('Scanner error:', err);
-          
-          // Fallback: try facingMode environment
           try {
-            await scanner.start(
-              { facingMode: 'environment' },
-              { fps: 10, qrbox: { width: 250, height: 250 } },
-              onScan,
-              ()=>{}
-            );
-            scanning = true;
-            const startBtn = q('uqrStart'); const stopBtn = q('uqrStop'); const cameraSelect = q('uqrCamera'); const refreshBtn = q('uqrRefreshCams');
-            if (startBtn) startBtn.style.display = 'none';
-            if (stopBtn) stopBtn.style.display = 'inline-block';
-            if (cameraSelect) cameraSelect.disabled = true;
-            if (refreshBtn) refreshBtn.disabled = true;
-            setStatus('Scanning for QR code...', 'text-primary');
-          } catch (e2) {
-            let errorMsg = 'Error starting camera: ' + ((err && err.message) || (e2 && e2.message) || 'Unknown error');
-            setStatus(errorMsg, 'text-danger');
-            
-            // Reset UI
-            const startBtn = q('uqrStart');
-            const stopBtn = q('uqrStop');
-            const cameraSelect = q('uqrCamera');
-            const refreshBtn = q('uqrRefreshCams');
-            
-            if (startBtn) startBtn.style.display = 'inline-block';
-            if (stopBtn) stopBtn.style.display = 'none';
-            if (cameraSelect) cameraSelect.disabled = false;
-            if (refreshBtn) refreshBtn.disabled = false;
+            // 2) Try exact environment-facing camera
+            await scanner.start({ facingMode: { exact: 'environment' } }, cfg, onScan, ()=>{});
+            markStarted();
+          } catch (_e1) {
+            try {
+              // 3) Try non-exact environment-facing camera
+              await scanner.start({ facingMode: 'environment' }, cfg, onScan, ()=>{});
+              markStarted();
+            } catch (e2) {
+              handleFatalError(e2 || err);
+            }
           }
         }
       }
@@ -4042,40 +4023,16 @@ if (!empty($my_requests)) {
             try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
           }
         } catch(_){ }
-        const preferBack = (function(){ try{ const opt=(cameraSelect&&cameraSelect.options&&cameraSelect.options[cameraSelect.selectedIndex]); const txt=opt? (opt.textContent||'') : ''; if(/back|rear|environment/i.test(String(txt))) return true; }catch(_){ } try{ return String(userPrefs&&userPrefs.facing||'')==='back'; }catch(_){ } return false; })();
-
-        // Re-resolve the selected camera against the latest device list (avoid stale IDs on mobile)
-        try {
-          const camsNow = await Html5Qrcode.getCameras();
-          if (Array.isArray(camsNow) && camsNow.length) {
-            let chosen = null;
-            if (currentCameraId) { chosen = camsNow.find(c => c && c.id === currentCameraId) || null; }
-            if (!chosen) {
-              const back = camsNow.find(c => /back|rear|environment/i.test(String(c && c.label || '')));
-              chosen = back || camsNow[0];
-            }
-            if (chosen && chosen.id) {
-              currentCameraId = chosen.id;
-              if (cameraSelect) { try { cameraSelect.value = chosen.id; } catch(_){ } }
-              try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
-            }
-          }
-        } catch(_){ }
 
         // Clear previous scanner if exists
         if (scanner) {
           try { 
-            try { await scanner.stop(); } catch(_){ }
             await scanner.clear();
             scanner = null; // Ensure we create a new instance
           } catch (e) { 
             console.warn('Error clearing previous scanner:', e); 
           }
         }
-        // Ensure container is clean before creating a new scanner
-        try { if (readerEl) readerEl.innerHTML = ''; } catch(_){ }
-        // Refresh camera list to avoid stale device ids on mobile
-        try { await Html5Qrcode.getCameras(); } catch(_){ }
         
         scanner = new Html5Qrcode('uqrReader');
 
@@ -4100,76 +4057,13 @@ if (!empty($my_requests)) {
           // Prefer an explicit selected camera id if available (do not silently switch to another lens)
           if (currentCameraId) {
             try {
-              await scanner.start({ deviceId: { exact: currentCameraId } }, config, onReturnScan, handleScannerError);
+              await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
               started = true;
-            } catch(e0){
+            } catch(e1){
               try {
-                await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
+                await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
                 started = true;
-              } catch(e1){
-                try {
-                  await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
-                  started = true;
-                } catch(e1b){
-                  try {
-                    await scanner.start({ deviceId: { exact: currentCameraId } }, configLite, onReturnScan, handleScannerError);
-                    started = true;
-                  } catch(e1c){
-                    if (preferBack) {
-                      try {
-                        await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
-                        started = true;
-                      } catch(e2a){
-                        try {
-                          await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
-                          started = true;
-                        } catch(e2b){ /* continue */ }
-                      }
-                    }
-                  }
-                  // If still not started, try other device IDs explicitly (prefer back)
-                  if (!started) {
-                    try {
-                      const cams = await Html5Qrcode.getCameras();
-                      const order = [];
-                      if (Array.isArray(cams)) {
-                        let backs = cams.filter(c => /back|rear|environment/i.test(String(c.label||'')));
-                        let others = cams.filter(c => backs.indexOf(c) === -1);
-                        if (preferBack && backs.length === 0 && cams.length > 1) {
-                          const last = cams[cams.length-1];
-                          if (last) { backs = [last]; others = cams.filter(c => c && c.id !== last.id); }
-                        }
-                        order.push(...backs, ...others);
-                      }
-                      for (const dev of (order.length ? order : [])) {
-                        if (!dev || !dev.id) continue;
-                        if (currentCameraId && dev.id === currentCameraId) continue;
-                        try {
-                          await scanner.start(dev.id, configLite, onReturnScan, handleScannerError);
-                          started = true;
-                          currentCameraId = dev.id;
-                          if (cameraSelect) { try { cameraSelect.value = dev.id; } catch(_){ } }
-                          try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
-                          break;
-                        } catch(_tryNext){ /* try next device */ }
-                      }
-                    } catch(_enumErr){ /* ignore */ }
-                  }
-                  // If still not started and user did not prefer back, try environment last
-                  if (!started && !preferBack) {
-                    try {
-                      await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
-                      started = true;
-                    } catch(e2c){
-                      try {
-                        await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
-                        started = true;
-                      } catch(e2d){ started = false; }
-                    }
-                  }
-                }
-                }
-              }
+              } catch(e1b){ started = false; }
             }
           } else {
             // No specific device selected: try environment-facing fallbacks
@@ -4189,30 +4083,6 @@ if (!empty($my_requests)) {
             }
           }
 
-          // If still not started here, try enumerating devices explicitly and start the first available (prefer back)
-          if (!started) {
-            try {
-              const cams = await Html5Qrcode.getCameras();
-              const order = [];
-              if (Array.isArray(cams)) {
-                const backs = cams.filter(c => /back|rear|environment/i.test(String(c.label||'')));
-                const others = cams.filter(c => backs.indexOf(c) === -1);
-                order.push(...backs, ...others);
-              }
-              for (const dev of (order.length ? order : [])) {
-                if (!dev || !dev.id) continue;
-                if (currentCameraId && dev.id === currentCameraId) continue;
-                try {
-                  await scanner.start(dev.id, configLite, onReturnScan, handleScannerError);
-                  started = true;
-                  currentCameraId = dev.id;
-                  if (cameraSelect) { try { cameraSelect.value = dev.id; } catch(_){ } }
-                  try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
-                  break;
-                } catch(_tryNext){ /* try next device */ }
-              }
-            } catch(_enumErr) { /* ignore */ }
-          }
           // If still not started here, throw to error handler
           if (!started) { throw new Error('Failed to start selected camera'); }
 
@@ -4417,22 +4287,21 @@ if (!empty($my_requests)) {
             cameraSelect.appendChild(option);
           });
           
-          // Choose camera: prefer saved one (if still present), otherwise prefer back/environment-facing, otherwise first
-          let selectedId = '';
-          try {
-            if (userPrefs && userPrefs.cameraId) {
-              const exists = devices.some(d => d.id === userPrefs.cameraId);
-              if (exists) { selectedId = userPrefs.cameraId; }
+          // Restore saved camera preference
+          if (userPrefs.cameraId) {
+            const savedCam = Array.from(cameraSelect.options).find(
+              opt => opt.value === userPrefs.cameraId
+            );
+            if (savedCam) {
+              cameraSelect.value = savedCam.value;
+              currentCameraId = savedCam.value;
             }
-          } catch(_){ }
-          if (!selectedId && devices && devices.length) {
-            const pref = devices.find(d => /back|rear|environment/i.test(String(d.label||'')));
-            selectedId = (pref && pref.id) ? pref.id : devices[0].id;
           }
-          if (selectedId) {
-            cameraSelect.value = selectedId;
-            currentCameraId = selectedId;
-            try { userPrefs.cameraId = selectedId; saveUserPrefs(); } catch(_){ }
+          
+          // If no camera selected and we have cameras, select first one
+          if (!currentCameraId && devices.length > 0) {
+            cameraSelect.value = devices[0].id;
+            currentCameraId = devices[0].id;
           }
           
           setStatus('Ready to scan', 'text-muted');
@@ -4460,7 +4329,6 @@ if (!empty($my_requests)) {
           if (this.value) {
             currentCameraId = this.value;
             userPrefs.cameraId = currentCameraId;
-            try { const txt=(this.options[this.selectedIndex]&&this.options[this.selectedIndex].textContent)||''; userPrefs.facing = /back|rear|environment/i.test(String(txt)) ? 'back':'front'; } catch(_){ }
             saveUserPrefs();
             
             // If scanner is running with a different camera, restart it
@@ -4482,11 +4350,6 @@ if (!empty($my_requests)) {
       if (stopBtn) {
         stopBtn.addEventListener('click', stopScan);
       }
-      // Populate camera list when the modal opens, and stop scanning when it closes
-      try {
-        modal.addEventListener('shown.bs.modal', function(){ try{ populateCameraSelect(); }catch(_){ } setStatus('Ready to scan','text-muted'); });
-        modal.addEventListener('hidden.bs.modal', function(){ try{ stopScan(); }catch(_){ } });
-      } catch(_){ }
       
       
       if (submitBtn) {
@@ -5026,20 +4889,6 @@ if (!empty($my_requests)) {
                 var r = btn.getBoundingClientRect();
                 var f = document.createElement('div'); f.id='floatingTableMenu'; f.className='dropdown-menu show'; f.style.position='fixed'; f.style.left=(r.left)+'px'; f.style.top=(r.bottom)+'px'; f.style.zIndex='1070'; f.innerHTML = menu.innerHTML; document.body.appendChild(f);
               }
-              // If still nothing is visible (edge mobile cases), cycle sections as a last-resort fallback
-              setTimeout(function(){
-                var menuShown = menu.classList.contains('show') || document.getElementById('floatingTableMenu');
-                if (!menuShown) {
-                  try{
-                    var order=['section-recent','section-overdue','section-borrowed','section-history'];
-                    var labels={'section-recent':'My Recent Requests','section-overdue':'Overdue Items','section-borrowed':'My Borrowed','section-history':'Borrow History'};
-                    var last = localStorage.getItem('ur_last_section')||'section-recent';
-                    var idx = Math.max(0, order.indexOf(last));
-                    var next = order[(idx+1)%order.length];
-                    showSection(next, labels[next]||'');
-                  }catch(_){ showSection('section-overdue','Overdue Items'); }
-                }
-              }, 120);
             }, 30);
           }
           btn.addEventListener('click', function(e){
@@ -5060,14 +4909,13 @@ if (!empty($my_requests)) {
             }
           });
         })();
-        // Default view on load: honor URL ?view=overdue|borrowed|history; otherwise default to My Recent Requests
+        // No fallback cycling; clicking the button should only open the dropdown
+        // Default view on load: honor URL ?view=overdue; otherwise always default to My Recent Requests
         (function(){
           try {
             var v = (new URL(window.location.href)).searchParams.get('view');
             v = v ? String(v).toLowerCase() : '';
             if (v === 'overdue') { showSection('section-overdue', 'Overdue Items'); return; }
-            if (v === 'borrowed') { showSection('section-borrowed', 'My Borrowed'); return; }
-            if (v === 'history') { showSection('section-history', 'Borrow History'); return; }
           } catch(_){ }
           showSection('section-recent', 'My Recent Requests');
         })();
