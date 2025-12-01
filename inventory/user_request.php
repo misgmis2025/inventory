@@ -4046,12 +4046,17 @@ if (!empty($my_requests)) {
         // Clear previous scanner if exists
         if (scanner) {
           try { 
+            try { await scanner.stop(); } catch(_){ }
             await scanner.clear();
             scanner = null; // Ensure we create a new instance
           } catch (e) { 
             console.warn('Error clearing previous scanner:', e); 
           }
         }
+        // Ensure container is clean before creating a new scanner
+        try { if (readerEl) readerEl.innerHTML = ''; } catch(_){ }
+        // Refresh camera list to avoid stale device ids on mobile
+        try { await Html5Qrcode.getCameras(); } catch(_){ }
         
         scanner = new Html5Qrcode('uqrReader');
 
@@ -4083,15 +4088,20 @@ if (!empty($my_requests)) {
                 await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
                 started = true;
               } catch(e1b){
-                // Fallback: try environment-facing constraints when device id fails
+                // Fallback: try deviceId constraint form, then environment-facing
                 try {
-                  await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
+                  await scanner.start({ deviceId: { exact: currentCameraId } }, configLite, onReturnScan, handleScannerError);
                   started = true;
-                } catch(e2a){
+                } catch(e1c){
                   try {
-                    await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
+                    await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
                     started = true;
-                  } catch(e2b){ started = false; }
+                  } catch(e2a){
+                    try {
+                      await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
+                      started = true;
+                    } catch(e2b){ started = false; }
+                  }
                 }
               }
             }
@@ -4113,6 +4123,30 @@ if (!empty($my_requests)) {
             }
           }
 
+          // If still not started here, try enumerating devices explicitly and start the first available (prefer back)
+          if (!started) {
+            try {
+              const cams = await Html5Qrcode.getCameras();
+              const order = [];
+              if (Array.isArray(cams)) {
+                const backs = cams.filter(c => /back|rear|environment/i.test(String(c.label||'')));
+                const others = cams.filter(c => backs.indexOf(c) === -1);
+                order.push(...backs, ...others);
+              }
+              for (const dev of (order.length ? order : [])) {
+                if (!dev || !dev.id) continue;
+                if (currentCameraId && dev.id === currentCameraId) continue;
+                try {
+                  await scanner.start(dev.id, configLite, onReturnScan, handleScannerError);
+                  started = true;
+                  currentCameraId = dev.id;
+                  if (cameraSelect) { try { cameraSelect.value = dev.id; } catch(_){ } }
+                  try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
+                  break;
+                } catch(_tryNext){ /* try next device */ }
+              }
+            } catch(_enumErr) { /* ignore */ }
+          }
           // If still not started here, throw to error handler
           if (!started) { throw new Error('Failed to start selected camera'); }
 
