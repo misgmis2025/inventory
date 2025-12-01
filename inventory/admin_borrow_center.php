@@ -4287,13 +4287,6 @@ try {
             if (selectedId) { camSelect.value = selectedId; }
           }).catch(function(){ /* ignore */ });
         }
-        // Persist camera choice and switch live if already scanning
-        if (camSelect){
-          camSelect.addEventListener('change', function(){
-            try { localStorage.setItem('rs_camera', camSelect.value || ''); } catch(_){ }
-            if (scanning) { try{ stop(); }catch(_){} setTimeout(startWithSelected, 150); }
-          });
-        }
         function startWithSelected(){
           if (scanning || typeof Html5Qrcode==='undefined') return;
           setStatus('Starting camera...','text-info');

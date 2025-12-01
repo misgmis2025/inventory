@@ -4065,6 +4065,7 @@ if (!empty($my_requests)) {
           };
           const configLite = { fps: 10, qrbox: { width: 250, height: 250 } };
           let started = false;
+          // Prefer an explicit selected camera id if available
           if (currentCameraId) {
             try {
               await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
@@ -4076,7 +4077,8 @@ if (!empty($my_requests)) {
               } catch(e1b){ started = false; }
             }
           }
-          if (!started && !currentCameraId) {
+          // Fallback: try environment-facing constraints when device id fails or is not set
+          if (!started) {
             try {
               await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
               started = true;
