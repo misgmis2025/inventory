@@ -3009,7 +3009,7 @@ if (!empty($my_requests)) {
 
         try {
           // 1) Try explicit selected deviceId
-          await scanner.start(currentCameraId, cfg, onScan, ()=>{});
+          await scanner.start({ deviceId: { exact: currentCameraId } }, cfg, onScan, ()=>{});
           markStarted();
         } catch (err) {
           try {
@@ -3112,12 +3112,13 @@ if (!empty($my_requests)) {
           setStatus('Loading cameras...', 'text-muted');
           
           // Request camera permissions first
-          await navigator.mediaDevices.getUserMedia({ video: true });
+          try { await navigator.mediaDevices.getUserMedia({ video: true }); } catch(_perm){ /* continue without labels */ }
           
-          const devices = await Html5Qrcode.getCameras();
+          let devices = [];
+          try { devices = await Html5Qrcode.getCameras(); } catch(_enum){ devices = []; }
           cameraSelect.innerHTML = '';
           
-          if (devices.length === 0) {
+          if (!devices || devices.length === 0) {
             setStatus('No cameras found', 'text-warning');
             cameraSelect.innerHTML = '<option value="">No cameras found</option>';
             return;
@@ -3130,40 +3131,38 @@ if (!empty($my_requests)) {
           cameraSelect.appendChild(defaultOption);
           
           // Add cameras to dropdown
-          devices.forEach(device => {
+          devices.forEach((device, idx) => {
             const option = document.createElement('option');
             option.value = device.id;
-            option.textContent = device.label || `Camera ${cameraSelect.length}`;
+            option.textContent = device.label || `Camera ${idx+1}`;
             cameraSelect.appendChild(option);
           });
           
+          // Restore saved choice if present
           if (userPrefs.cameraId) {
             const savedCam = Array.from(cameraSelect.options).find(opt => opt.value === userPrefs.cameraId);
-            if (savedCam) { cameraSelect.value = savedCam.value; currentCameraId = savedCam.value; try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ } }
+            if (savedCam) {
+              cameraSelect.value = savedCam.value;
+              currentCameraId = savedCam.value;
+            }
           }
+          // Prefer a back/environment camera, else first
           if (!currentCameraId && devices.length > 0) {
             const pref = devices.find(d => /back|rear|environment/i.test(String(d.label||''))) || devices[0];
             cameraSelect.value = pref.id;
             currentCameraId = pref.id;
-            try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
           }
           
           setStatus('Ready to scan', 'text-muted');
           
         } catch (err) {
           console.error('Error getting cameras:', err);
-          
           let errorMsg = 'Error accessing camera: ' + (err.message || 'Unknown error');
-          if (err.name === 'NotAllowedError') {
-            errorMsg = 'Camera access was denied. Please allow camera access to use the scanner.';
-          } else if (err.name === 'NotFoundError') {
-            errorMsg = 'No camera found. Please connect a camera and try again.';
-          } else if (err.name === 'NotReadableError') {
-            errorMsg = 'Camera is already in use by another application.';
-          }
-          
+          if (err.name === 'NotAllowedError') errorMsg = 'Camera access was denied. Please allow camera access to use the scanner.';
+          else if (err.name === 'NotFoundError') errorMsg = 'No camera found. Please connect a camera and try again.';
+          else if (err.name === 'NotReadableError') errorMsg = 'Camera is already in use by another application.';
           setStatus(errorMsg, 'text-danger');
-          cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
+          cameraSelect.innerHTML = '<option value="">No cameras found</option>';
         }
       }
       
@@ -4039,8 +4038,6 @@ if (!empty($my_requests)) {
         try {
           const config = getScannerConfig();
           
-          // Clear any previous scanner instances (avoid private API)
-          try { await scanner.clear(); } catch(_){ }
           
           const onReturnScan = async (txt) => {
             const now = Date.now();
@@ -4057,13 +4054,43 @@ if (!empty($my_requests)) {
           // Prefer an explicit selected camera id if available (do not silently switch to another lens)
           if (currentCameraId) {
             try {
-              await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
+              await scanner.start({ deviceId: { exact: currentCameraId } }, config, onReturnScan, handleScannerError);
               started = true;
             } catch(e1){
               try {
-                await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
+                await scanner.start({ deviceId: { exact: currentCameraId } }, configLite, onReturnScan, handleScannerError);
                 started = true;
-              } catch(e1b){ started = false; }
+              } catch(e1b){
+                // Try other environment/back cameras from the list
+                try {
+                  const devs = await Html5Qrcode.getCameras();
+                  const candidates = (devs||[]).filter(d => /back|rear|environment/i.test(String(d.label||'')) && d.id !== currentCameraId);
+                  for (const cand of candidates) {
+                    try {
+                      await scanner.start({ deviceId: { exact: cand.id } }, configLite, onReturnScan, handleScannerError);
+                      currentCameraId = cand.id; // switch to working back camera
+                      started = true;
+                      break;
+                    } catch(_candErr) { /* try next */ }
+                  }
+                } catch(_enum){ /* ignore enumeration failure */ }
+                if (!started) {
+                  // Fallback to environment-facing even when a specific deviceId fails
+                  try {
+                    await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
+                    started = true;
+                  } catch(e2){
+                    try {
+                      await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
+                      started = true;
+                    } catch(e3){
+                      try {
+                        await scanner.start({ facingMode: 'user' }, configLite, onReturnScan, handleScannerError);
+                        started = true;
+                    } catch(e4){ started = false; }
+                  }
+                }
+              }
             }
           } else {
             // No specific device selected: try environment-facing fallbacks
@@ -4095,7 +4122,7 @@ if (!empty($my_requests)) {
           try { if (currentCameraId) { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } } catch(_){ }
           
           setStatus('Scanning for QR code...', 'text-primary');
-          try{ var v=document.querySelector('#uqrReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ }
+          try{ var v=document.querySelector('#uqrReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; v.autoplay=true; try{ v.play().catch(()=>{}); }catch(__){} } }catch(_){ }
           
         } catch (err) {
           console.error('Scanner initialization error:', err);
@@ -4262,12 +4289,17 @@ if (!empty($my_requests)) {
           setStatus('Loading cameras...', 'text-muted');
           
           // Request camera permissions first
-          await navigator.mediaDevices.getUserMedia({ video: true });
+          try { await navigator.mediaDevices.getUserMedia({ video: true }); } catch(_perm){ /* continue without labels */ }
           
-          const devices = await Html5Qrcode.getCameras();
+          let devices = [];
+          try {
+            devices = await Html5Qrcode.getCameras();
+          } catch(_enumErr) {
+            devices = [];
+          }
           cameraSelect.innerHTML = '';
           
-          if (devices.length === 0) {
+          if (!devices || devices.length === 0) {
             setStatus('No cameras found', 'text-warning');
             cameraSelect.innerHTML = '<option value="">No cameras found</option>';
             return;
@@ -4280,35 +4312,33 @@ if (!empty($my_requests)) {
           cameraSelect.appendChild(defaultOption);
           
           // Add cameras to dropdown
-          devices.forEach(device => {
+          devices.forEach((device, idx) => {
             const option = document.createElement('option');
             option.value = device.id;
-            option.textContent = device.label || `Camera ${cameraSelect.length}`;
+            option.textContent = device.label || `Camera ${idx+1}`;
             cameraSelect.appendChild(option);
           });
           
           // Restore saved camera preference
           if (userPrefs.cameraId) {
-            const savedCam = Array.from(cameraSelect.options).find(
-              opt => opt.value === userPrefs.cameraId
-            );
+            const savedCam = Array.from(cameraSelect.options).find(opt => opt.value === userPrefs.cameraId);
             if (savedCam) {
               cameraSelect.value = savedCam.value;
               currentCameraId = savedCam.value;
             }
           }
           
-          // If no camera selected and we have cameras, select first one
+          // Prefer a back/environment camera if nothing selected
           if (!currentCameraId && devices.length > 0) {
-            cameraSelect.value = devices[0].id;
-            currentCameraId = devices[0].id;
+            const pref = devices.find(d => /back|rear|environment/i.test(String(d.label||''))) || devices[0];
+            cameraSelect.value = pref.id;
+            currentCameraId = pref.id;
           }
           
           setStatus('Ready to scan', 'text-muted');
           
         } catch (err) {
           console.error('Error getting cameras:', err);
-          
           let errorMsg = 'Error accessing camera: ' + (err.message || 'Unknown error');
           if (err.name === 'NotAllowedError') {
             errorMsg = 'Camera access was denied. Please allow camera access to use the scanner.';
@@ -4317,9 +4347,8 @@ if (!empty($my_requests)) {
           } else if (err.name === 'NotReadableError') {
             errorMsg = 'Camera is already in use by another application.';
           }
-          
           setStatus(errorMsg, 'text-danger');
-          cameraSelect.innerHTML = '<option value="">Error loading cameras</option>';
+          cameraSelect.innerHTML = '<option value="">No cameras found</option>';
         }
       }
       
@@ -4480,9 +4509,11 @@ if (!empty($my_requests)) {
           locInput.disabled = false;
         }
         
-        // Initialize cameras and start scanning
-        populateCameraSelect().then(() => { setTimeout(() => startScan(), 300); });
+        // Initialize/refresh cameras (start will be triggered on shown)
+        populateCameraSelect();
       });
+      // Start scanning once modal is fully visible (fixes mobile back camera start issues)
+      modal.addEventListener('shown.bs.modal', function() { setTimeout(() => startScan(), 150); });
       
       // Clean up on modal hide
       modal.addEventListener('hidden.bs.modal', function() {
