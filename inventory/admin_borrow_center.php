@@ -1,5 +1,5 @@
 <?php
-// Align session settings with index.php to ensure continuity across requests
+ // Align session settings with index.php to ensure continuity across requests
 $__sess_path = ini_get('session.save_path');
 if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
     $__alt = __DIR__ . '/../tmp_sessions';
@@ -4268,8 +4268,14 @@ try {
               opt.textContent = c.label || ('Camera '+(idx+1));
               camSelect.appendChild(opt);
             });
+            var envOpt = document.createElement('option'); envOpt.value='__env'; envOpt.textContent='Back Camera (auto)'; camSelect.appendChild(envOpt);
+            var usrOpt = document.createElement('option'); usrOpt.value='__user'; usrOpt.textContent='Front Camera (auto)'; camSelect.appendChild(usrOpt);
             var saved = localStorage.getItem('rs_camera');
-            if (saved && camsCache.some(function(c){ return c.id===saved; })) camSelect.value = saved;
+            if (saved) { camSelect.value = saved; }
+            else {
+              var pref = null; try{ pref = camsCache.find(function(c){ return /back|rear|environment/i.test(String(c.label||'')); }); }catch(_){ }
+              if (pref && pref.id) camSelect.value = pref.id; else camSelect.value='__env';
+            }
           }).catch(function(){ /* ignore */ });
         }
         // Persist camera choice and switch live if already scanning
@@ -4288,6 +4294,18 @@ try {
             var id = (camSelect && camSelect.value) ? camSelect.value : (camsCache[0] && camsCache[0].id);
             if (!id) { setStatus('No camera found','text-danger'); return; }
             localStorage.setItem('rs_camera', id);
+            if (id === '__env') {
+              scanner.start({ facingMode: { exact: 'environment' } }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+                .then(function(){ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#rsReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
+                .catch(function(){ return scanner.start({ facingMode: 'environment' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{}).then(function(){ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#rsReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); }); });
+              return;
+            }
+            if (id === '__user') {
+              scanner.start({ facingMode: 'user' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+                .then(function(){ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#rsReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
+                .catch(function(err){ setStatus('Camera error: '+((err&&err.message)||'start failure'),'text-danger'); });
+              return;
+            }
             scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
               .then(()=>{ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#rsReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
               .catch(function(err){
@@ -6258,8 +6276,14 @@ try {
             opt.textContent = c.label || ('Camera '+(idx+1));
             camSelect.appendChild(opt);
           });
+          var envOpt = document.createElement('option'); envOpt.value='__env'; envOpt.textContent='Back Camera (auto)'; camSelect.appendChild(envOpt);
+          var usrOpt = document.createElement('option'); usrOpt.value='__user'; usrOpt.textContent='Front Camera (auto)'; camSelect.appendChild(usrOpt);
           var saved = localStorage.getItem('as_camera');
-          if (saved && camsCache.some(function(c){ return c.id===saved; })) camSelect.value = saved;
+          if (saved) { camSelect.value = saved; }
+          else {
+            var pref = null; try{ pref = camsCache.find(function(c){ return /back|rear|environment/i.test(String(c.label||'')); }); }catch(_){ }
+            if (pref && pref.id) camSelect.value = pref.id; else camSelect.value='__env';
+          }
         }).catch(function(){ /* ignore */ });
       }
       function startWithSelected(){
@@ -6271,6 +6295,18 @@ try {
           var id = (camSelect && camSelect.value) ? camSelect.value : (camsCache[0] && camsCache[0].id);
           if (!id) { setStatus('No camera found','text-danger'); return; }
           localStorage.setItem('as_camera', id);
+          if (id === '__env') {
+            scanner.start({ facingMode: { exact: 'environment' } }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+              .then(function(){ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#asReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
+              .catch(function(){ return scanner.start({ facingMode: 'environment' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{}).then(function(){ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#asReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); }); });
+            return;
+          }
+          if (id === '__user') {
+            scanner.start({ facingMode: 'user' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
+              .then(function(){ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#asReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
+              .catch(function(err){ setStatus('Camera error: '+((err&&err.message)||'start failure'),'text-danger'); });
+            return;
+          }
           scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
             .then(()=>{ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#asReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
             .catch(function(err){

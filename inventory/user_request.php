@@ -406,6 +406,23 @@ if ($__act === 'process_return' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Throwable $_a) {}
       }
 
+      try {
+        $feedCol = $mongo_db->selectCollection('return_events');
+        $last = $feedCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+        $eid = ($last && isset($last['id'])) ? ((int)$last['id']) + 1 : 1;
+        $modelName = '';
+        try { if ($item) { $modelName = (string)($item['model'] ?? ($item['item_name'] ?? '')); } } catch (Throwable $_mn) { $modelName = ''; }
+        $reqForEvent = ($reqId > 0) ? $reqId : (isset($rid) ? (int)$rid : 0);
+        $feedCol->insertOne([
+          'id' => (int)$eid,
+          'request_id' => (int)$reqForEvent,
+          'model_name' => (string)$modelName,
+          'qr_serial_no' => (string)$serial,
+          'location' => (string)$location,
+          'username' => (string)($_SESSION['username'] ?? ''),
+          'created_at' => $now,
+        ]);
+      } catch (Throwable $_feed) { /* no-op */ }
       echo json_encode(['success' => true]);
     } else {
       echo json_encode(['success'=>false,'error'=>'DB unavailable']);
@@ -3139,22 +3156,14 @@ if (!empty($my_requests)) {
             cameraSelect.appendChild(option);
           });
           
-          // Restore saved camera preference
           if (userPrefs.cameraId) {
-            const savedCam = Array.from(cameraSelect.options).find(
-              opt => opt.value === userPrefs.cameraId
-            );
-            if (savedCam) {
-              cameraSelect.value = savedCam.value;
-              currentCameraId = savedCam.value;
-              try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
-            }
+            const savedCam = Array.from(cameraSelect.options).find(opt => opt.value === userPrefs.cameraId);
+            if (savedCam) { cameraSelect.value = savedCam.value; currentCameraId = savedCam.value; try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ } }
           }
-          
-          // If no camera selected and we have cameras, select first one
           if (!currentCameraId && devices.length > 0) {
-            cameraSelect.value = devices[0].id;
-            currentCameraId = devices[0].id;
+            const pref = devices.find(d => /back|rear|environment/i.test(String(d.label||''))) || devices[0];
+            cameraSelect.value = pref.id;
+            currentCameraId = pref.id;
             try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
           }
           
@@ -3811,9 +3820,6 @@ if (!empty($my_requests)) {
             <button type="button" id="uqrStart" class="btn btn-success btn-sm"><i class="bi bi-camera-video"></i> Start</button>
             <button type="button" id="uqrStop" class="btn btn-danger btn-sm" style="display:none;"><i class="bi bi-stop-circle"></i> Stop</button>
           </div>
-          <div class="mb-2">
-            <input type="file" id="uqrImageFile" class="form-control form-control-sm" accept="image/*" capture="environment" />
-          </div>
           <div class="mb-3">
             <label class="form-label small">Return Location</label>
             <input type="text" class="form-control" id="uqrLoc" placeholder="e.g. Storage Room A" required />
@@ -4070,7 +4076,7 @@ if (!empty($my_requests)) {
               } catch(e1b){ started = false; }
             }
           }
-          if (!started) {
+          if (!started && !currentCameraId) {
             try {
               await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
               started = true;
@@ -4349,7 +4355,7 @@ if (!empty($my_requests)) {
       if (stopBtn) {
         stopBtn.addEventListener('click', stopScan);
       }
-      (function(){ var img=document.getElementById('uqrImageFile'); if(!img) return; img.addEventListener('change', function(){ var f=this.files&&this.files[0]; if(!f){return;} try{ stopScan(); }catch(_){ } setStatus('Processing image...','text-info'); function tryScanSequence(file){ if (typeof Html5Qrcode !== 'undefined' && typeof Html5Qrcode.scanFile === 'function') { return Html5Qrcode.scanFile(file, true).catch(function(){ return Html5Qrcode.scanFile(file, false); }).catch(function(){ var inst = new Html5Qrcode('uqrReader'); return inst.scanFile(file, true).finally(function(){ try{inst.clear();}catch(e){} }); }); } var inst2 = new Html5Qrcode('uqrReader'); return inst2.scanFile(file, true).finally(function(){ try{inst2.clear();}catch(e){} }); } tryScanSequence(f).then(function(txt){ handleReturnDecoded(txt); }).catch(function(){ setStatus('No QR found in image.','text-danger'); }); }); })();
+      
       
       if (submitBtn) {
         submitBtn.addEventListener('click', async function() {
@@ -4395,12 +4401,7 @@ if (!empty($my_requests)) {
               userPrefs.lastLocation = location;
               saveUserPrefs();
               
-              // Close modal and refresh after delay
-              setTimeout(() => {
-                const modal = bootstrap.Modal.getInstance(modal);
-                if (modal) modal.hide();
-                window.location.reload();
-              }, 1500);
+              setTimeout(() => { try{ const inst = bootstrap.Modal.getOrCreateInstance(document.getElementById('userQrReturnModal')); inst.hide(); }catch(_){ } window.location.reload(); }, 500);
               
             } else {
               throw new Error(result.error || 'Failed to process return');
