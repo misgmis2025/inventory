@@ -3874,6 +3874,11 @@ if (!empty($my_requests)) {
       let currentCameraId = userPrefs.cameraId || '';
       let currentReqId = 0;
       let currentBorrowId = 0;
+      let uqrProcessing = false;
+      let uqrLastScan = 0;
+      let uqrLastText = '';
+      let uqrLastTextTs = 0;
+      let uqrFailCooldownUntil = 0;
       
       // Status message helper
       function setStatus(message, className = 'text-muted', timeout = 0) {
@@ -3927,7 +3932,8 @@ if (!empty($my_requests)) {
         // Skip common non-critical errors
         if (errorMessage.includes('No MultiFormat Readers') || 
             errorMessage.includes('No barcode detected') ||
-            errorMessage.includes('No QR code found')) {
+            errorMessage.includes('No QR code found') ||
+            /parse/i.test(errorMessage)) {
           return; // These are normal during scanning
         }
         
@@ -3951,7 +3957,6 @@ if (!empty($my_requests)) {
       async function handleReturnDecoded(decodedText){
         if (!decodedText) return;
         try{
-          await stopScan();
           let serial = '';
           try {
             const data = JSON.parse(decodedText);
@@ -3971,11 +3976,7 @@ if (!empty($my_requests)) {
             }catch(_){ }
             if (!serial && /^\s*[\w\-]+\s*$/.test(s)) serial = s;
           }
-          if (!serial){ 
-            setStatus('Invalid QR content','text-danger'); 
-            setTimeout(()=>startScan(), 1000); 
-            return; 
-          }
+          if (!serial){ setStatus('Invalid QR content','text-danger'); uqrFailCooldownUntil = Date.now() + 1200; return; }
           setStatus('Verifying serial...','text-muted');
           const body='request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId||0)+'&serial_no='+encodeURIComponent(serial);
           const r=await fetch('user_request.php?action=returnship_check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
@@ -3992,7 +3993,7 @@ if (!empty($my_requests)) {
                 gb.disabled=true; 
               }
             }catch(_){ }
-            setTimeout(()=>startScan(), 1000);
+            uqrFailCooldownUntil = Date.now() + 2000;
             return;
           }
           setStatus('Item verified: '+serial,'text-success');
@@ -4007,9 +4008,9 @@ if (!empty($my_requests)) {
               try{ sb.focus(); }catch(_){ } 
             }
           }catch(_){ }
+          try{ await stopScan(); }catch(_){ }
         }catch(e){ 
           setStatus('Scan error','text-danger'); 
-          setTimeout(()=>startScan(), 1000); 
         }
       }
 
@@ -4041,7 +4042,16 @@ if (!empty($my_requests)) {
           // Clear any previous scanner instances (avoid private API)
           try { await scanner.clear(); } catch(_){ }
           
-          const onReturnScan = (txt) => { try{ handleReturnDecoded(txt); }catch(_){ } };
+          const onReturnScan = async (txt) => {
+            const now = Date.now();
+            if (now < uqrFailCooldownUntil) return;
+            if (uqrProcessing || (now - uqrLastScan) < 900) return;
+            const raw = String(txt || '');
+            if (raw === uqrLastText && (now - uqrLastTextTs) < 2500) return;
+            uqrLastText = raw; uqrLastTextTs = now; uqrLastScan = now;
+            uqrProcessing = true;
+            try { await handleReturnDecoded(txt); } finally { uqrProcessing = false; }
+          };
           const configLite = { fps: 10, qrbox: { width: 250, height: 250 } };
           let started = false;
           if (currentCameraId) {
