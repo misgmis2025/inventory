@@ -820,6 +820,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     .finally(function(){ feeding=false; });
                 }
                 pollVerif(); setInterval(function(){ if (document.visibilityState==='visible') pollVerif(); }, 2000);
+                var retBase = new Set(); var retInit=false; var retFetching=false;
+                function pollUserReturns(){ if (retFetching) return; retFetching = true;
+                  fetch('admin_borrow_center.php?action=return_feed')
+                    .then(function(r){ return r.json(); })
+                    .then(function(d){ var list=(d&&d.ok&&Array.isArray(d.returns))?d.returns:[]; var ids=new Set(list.map(function(v){ return parseInt(v.id||0,10); }).filter(function(n){ return n>0; })); if(!retInit){ retBase=ids; retInit=true; return; } var ding=false; list.forEach(function(v){ var id=parseInt(v.id||0,10); if(!retBase.has(id)){ ding=true; var name=String(v.model_name||''); var sn=String(v.qr_serial_no||''); var loc=String(v.location||''); showToast('User returned '+(name?name+' ':'')+(sn?('['+sn+']'):'')+(loc?(' @ '+loc):''), 'alert-success'); } }); if(ding){ try{ playBeep(); }catch(_){ } } retBase=ids; })
+                    .catch(function(){})
+                    .finally(function(){ retFetching=false; });
+                }
+                pollUserReturns(); setInterval(function(){ if (document.visibilityState==='visible') pollUserReturns(); }, 2000);
               } catch(_e){}
             });
         })();

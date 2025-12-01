@@ -368,6 +368,16 @@ try {
             });
             function poll(){ if(fetching) return; fetching=true; fetch('admin_borrow_center.php?action=admin_notifications').then(r=>r.json()).then(d=>{ const pending=(d&&Array.isArray(d.pending))? d.pending:[]; const recent=(d&&Array.isArray(d.recent))? d.recent:[]; if (bellDot) bellDot.classList.toggle('d-none', pending.length===0); try{ const navLink=document.querySelector('a[href="admin_borrow_center.php"]'); if(navLink){ let dot=navLink.querySelector('.nav-borrow-dot'); const shouldShow = pending.length>0; if (shouldShow){ if(!dot){ dot=document.createElement('span'); dot.className='nav-borrow-dot ms-2 d-inline-block rounded-circle'; dot.style.width='8px'; dot.style.height='8px'; dot.style.backgroundColor='#dc3545'; dot.style.verticalAlign='middle'; dot.style.display='inline-block'; navLink.appendChild(dot);} else { dot.style.display='inline-block'; } } else if (dot){ dot.style.display='none'; } } }catch(_){} renderCombined(pending, recent); const curr=new Set(pending.map(it=>parseInt(it.id||0,10))); if(!initialized){ baseline=curr; initialized=true; } else { let hasNew=false; pending.forEach(it=>{ const id=parseInt(it.id||0,10); if(!baseline.has(id)){ hasNew=true; showToast('New request: '+(it.username||'')+' → '+(it.item_name||'')+' (x'+(it.quantity||1)+')'); } }); if(hasNew) playBeep(); baseline=curr; } }).catch(()=>{}).finally(()=>{ fetching=false; }); }
             poll(); setInterval(()=>{ if(document.visibilityState==='visible') poll(); }, 1000);
+            // Also poll user self-return feed (return_events) for side toasts
+            var retBase = new Set(); var retInit=false; var retFetching=false;
+            function pollUserReturns(){ if (retFetching) return; retFetching = true;
+              fetch('admin_borrow_center.php?action=return_feed')
+                .then(function(r){ return r.json(); })
+                .then(function(d){ var list=(d&&d.ok&&Array.isArray(d.returns))?d.returns:[]; var ids=new Set(list.map(function(v){ return parseInt(v.id||0,10); }).filter(function(n){ return n>0; })); if(!retInit){ retBase=ids; retInit=true; return; } var ding=false; list.forEach(function(v){ var id=parseInt(v.id||0,10); if(!retBase.has(id)){ ding=true; var name=String(v.model_name||''); var sn=String(v.qr_serial_no||''); var loc=String(v.location||''); showToast('User returned '+(name?name+' ':'')+(sn?('['+sn+']'):'')+(loc?(' @ '+loc):'')); } }); if(ding){ try{ playBeep(); }catch(_){ } } retBase=ids; })
+                .catch(function(){})
+                .finally(function(){ retFetching=false; });
+            }
+            pollUserReturns(); setInterval(function(){ if (document.visibilityState==='visible') pollUserReturns(); }, 2000);
         })();
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar-wrapper');
