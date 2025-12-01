@@ -869,29 +869,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                     // Create new scanner
                     html5Qrcode = new Html5Qrcode('reader');
 
-                    // Start scanning with selected camera
-                    html5Qrcode.start(
-                        selectedCamera.id,
-                        {
-                            fps: 10,
-                            qrbox: { width: 300, height: 300 },
-                            aspectRatio: 1.0,
-                            disableFlip: false
-                        },
-                        onScanSuccess,
-                        onScanFailure
-                    ).then(function() {
+                    // Start scanning with selected camera, with fallbacks for environment-facing camera
+                    const cfg = {
+                        fps: 10,
+                        qrbox: { width: 300, height: 300 },
+                        aspectRatio: 1.0,
+                        disableFlip: false
+                    };
+
+                    function applyVideoTweaks(){
+                        try {
+                            var v = document.querySelector('#reader video');
+                            if (v) {
+                                v.setAttribute('playsinline','');
+                                v.setAttribute('webkit-playsinline','');
+                                v.muted = true;
+                            }
+                        } catch(_){ }
+                    }
+
+                    function markStarted(){
                         console.log('Camera started successfully');
                         isScanning = true;
                         updateCameraStatus('Camera active. Point to a QR code to scan.');
                         document.getElementById('start-camera').style.display = 'none';
                         document.getElementById('stop-camera').style.display = 'inline-block';
+                        applyVideoTweaks();
                         try { localStorage.setItem('qr_camera', selectedCamera.id || ''); } catch(_){ }
-                    }).catch(function(err) {
+                    }
+
+                    function handleFatalError(err){
                         console.error('Camera start error:', err);
-                        updateCameraStatus('Camera error: ' + (err.name || 'start failure'));
-                        alert('Unable to start camera: ' + (err.message || err));
-                    });
+                        var msg = (err && (err.message || err.name)) || 'start failure';
+                        if (err && err.name === 'NotReadableError') {
+                            msg = 'Could not start video source. Make sure no other app or tab is using the camera, then try again.';
+                        }
+                        updateCameraStatus('Camera error: ' + msg);
+                        alert('Unable to start camera: ' + msg);
+                    }
+
+                    html5Qrcode.start(selectedCamera.id, cfg, onScanSuccess, onScanFailure)
+                        .then(function(){
+                            markStarted();
+                        })
+                        .catch(function(err){
+                            // Fallback: try environment-facing constraints if direct device id fails
+                            html5Qrcode.start({ facingMode: { exact: 'environment' } }, cfg, onScanSuccess, onScanFailure)
+                                .then(function(){
+                                    markStarted();
+                                })
+                                .catch(function(){
+                                    html5Qrcode.start({ facingMode: 'environment' }, cfg, onScanSuccess, onScanFailure)
+                                        .then(function(){
+                                            markStarted();
+                                        })
+                                        .catch(function(e2){
+                                            handleFatalError(e2 || err);
+                                        });
+                                });
+                        });
                 })
                 .catch(function(err) {
                     console.error('Camera enumeration error:', err);
