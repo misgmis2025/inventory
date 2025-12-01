@@ -4235,10 +4235,25 @@ try {
         var returnBtn = q('rsReturnBtn');
         var camWrap = q('rsCamWrap');
         var camSelect = q('rsCameraSelect');
+        var refreshBtn = q('rsRefreshCams');
         var camsCache = [];
         var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         function setStatus(t,cls){ if(statusEl){ statusEl.textContent=t; statusEl.className='small '+(cls||'text-muted'); } }
-        function stop(){ if(scanner && scanning){ scanner.stop().then(()=>{ scanning=false; if(startBtn) startBtn.style.display='inline-block'; if(stopBtn) stopBtn.style.display='none'; setStatus('Scanner stopped.','text-muted');}).catch(()=>{});} }
+        function stop(){
+          if (scanner && scanning){
+            scanner.stop().then(()=>{
+              try{ scanner.clear(); }catch(_){ }
+              scanner = null;
+              scanning = false;
+              if(startBtn) startBtn.style.display='inline-block';
+              if(stopBtn) stopBtn.style.display='none';
+              setStatus('Scanner stopped.','text-muted');
+            }).catch(()=>{ try{ scanner=null; }catch(_){} });
+          } else {
+            try{ if(scanner){ try{ scanner.clear(); }catch(_){ } scanner=null; } }catch(_){ }
+            scanning = false;
+          }
+        }
         function listCams(){
           if (!camSelect) return;
           camSelect.innerHTML = '';
@@ -4268,7 +4283,8 @@ try {
           if (scanning || typeof Html5Qrcode==='undefined') return;
           setStatus('Starting camera...','text-info');
           try{
-            if (!scanner) scanner=new Html5Qrcode('rsReader');
+            try{ if (scanner) { try{ scanner.clear(); }catch(_){ } scanner = null; } }catch(_){ }
+            scanner=new Html5Qrcode('rsReader');
             var id = (camSelect && camSelect.value) ? camSelect.value : (camsCache[0] && camsCache[0].id);
             if (!id) { setStatus('No camera found','text-danger'); return; }
             localStorage.setItem('rs_camera', id);
@@ -4346,6 +4362,7 @@ try {
           localStorage.setItem('rs_camera', this.value);
           if (scanning) { stop(); setTimeout(startWithSelected, 100); }
         });
+        if (refreshBtn) refreshBtn.addEventListener('click', function(){ stop(); if (readerDiv) readerDiv.innerHTML=''; listCams(); setTimeout(startWithSelected, 150); });
         if (imgInput) imgInput.addEventListener('change', function(){ var f=this.files&&this.files[0]; if(!f){return;} stop(); setStatus('Processing image...','text-info');
           function tryScanSequence(file){
             if (typeof Html5Qrcode !== 'undefined' && typeof Html5Qrcode.scanFile === 'function') {
@@ -5600,6 +5617,7 @@ try {
           <div class="mb-3" id="asCamWrap" style="max-width:360px;">
             <label class="form-label small mb-1">Camera (desktop only)</label>
             <select id="asCameraSelect" class="form-select form-select-sm"></select>
+            <button type="button" id="asRefreshCams" class="btn btn-sm btn-outline-secondary mt-2">Refresh</button>
           </div>
           <div class="mt-2">
             <label class="form-label small mb-1">Or upload QR image</label>
@@ -5644,6 +5662,7 @@ try {
           <div class="mb-3" id="rsCamWrap" style="max-width:360px;">
             <label class="form-label small mb-1">Camera (desktop only)</label>
             <select id="rsCameraSelect" class="form-select form-select-sm"></select>
+            <button type="button" id="rsRefreshCams" class="btn btn-sm btn-outline-secondary mt-2">Refresh</button>
           </div>
           <div class="mt-2">
             <label class="form-label small mb-1">Or upload QR image</label>
@@ -6150,6 +6169,8 @@ try {
       var imgInput = document.getElementById('asImageFile');
       var camWrap = document.getElementById('asCamWrap');
       var camSelect = document.getElementById('asCameraSelect');
+      var readerDiv = document.getElementById('asReader');
+      var refreshBtn = document.getElementById('asRefreshCams');
       var scanner = null, scanning=false;
       var approveBtn = document.getElementById('asApproveBtn');
       var reqTypeField = document.getElementById('asReqType');
@@ -6209,7 +6230,21 @@ try {
         }
       }
       function setStatus(t,cls){ if(statusEl){ statusEl.textContent=t; statusEl.className='small '+(cls||'text-muted'); } }
-      function stop(){ if(scanner && scanning){ scanner.stop().then(()=>{ scanning=false; startBtn.style.display='inline-block'; stopBtn.style.display='none'; setStatus('Scanner stopped.','text-muted');}).catch(()=>{});} }
+      function stop(){
+        if (scanner && scanning){
+          scanner.stop().then(()=>{
+            try{ scanner.clear(); }catch(_){ }
+            scanner = null;
+            scanning=false;
+            startBtn.style.display='inline-block';
+            stopBtn.style.display='none';
+            setStatus('Scanner stopped.','text-muted');
+          }).catch(()=>{ try{ scanner=null; }catch(_){} });
+        } else {
+          try{ if(scanner){ try{ scanner.clear(); }catch(_){ } scanner=null; } }catch(_){ }
+          scanning=false;
+        }
+      }
       function listCams(){
         if (!camSelect) return;
         camSelect.innerHTML = '';
@@ -6231,16 +6266,17 @@ try {
         if (scanning || typeof Html5Qrcode==='undefined') return;
         setStatus('Starting camera...','text-info');
         try{
-          if (!scanner) scanner=new Html5Qrcode('asReader');
+          try{ if (scanner) { try{ scanner.clear(); }catch(_){ } scanner = null; } }catch(_){ }
+          scanner=new Html5Qrcode('asReader');
           var id = (camSelect && camSelect.value) ? camSelect.value : (camsCache[0] && camsCache[0].id);
           if (!id) { setStatus('No camera found','text-danger'); return; }
           localStorage.setItem('as_camera', id);
           scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
-            .then(()=>{ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+            .then(()=>{ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#asReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
             .catch(function(err){
               try {
                 scanner.start({ facingMode: 'environment' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
-                  .then(function(){ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+                  .then(function(){ scanning=true; startBtn.style.display='none'; stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#asReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
                   .catch(function(e2){ setStatus('Camera error: '+((e2&&e2.message)||'start failure'),'text-danger'); });
               } catch(e3){ setStatus('Camera error: '+((err&&err.message)||'start failure'),'text-danger'); }
             });
@@ -6335,6 +6371,7 @@ try {
         localStorage.setItem('as_camera', this.value);
         if (scanning) { stop(); setTimeout(startWithSelected, 100); }
       });
+      refreshBtn && refreshBtn.addEventListener('click', function(){ stop(); if (readerDiv) readerDiv.innerHTML=''; listCams(); setTimeout(startWithSelected, 150); });
       imgInput && imgInput.addEventListener('change', function(){ var f=this.files&&this.files[0]; if(!f){return;} stop(); setStatus('Processing image...','text-info');
         function tryScanSequence(file){
           // 1) Static scanFile with preview
