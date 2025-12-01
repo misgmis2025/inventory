@@ -4082,7 +4082,18 @@ if (!empty($my_requests)) {
               try {
                 await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
                 started = true;
-              } catch(e1b){ started = false; }
+              } catch(e1b){
+                // Fallback: try environment-facing constraints when device id fails
+                try {
+                  await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
+                  started = true;
+                } catch(e2a){
+                  try {
+                    await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
+                    started = true;
+                  } catch(e2b){ started = false; }
+                }
+              }
             }
           } else {
             // No specific device selected: try environment-facing fallbacks
@@ -4306,21 +4317,22 @@ if (!empty($my_requests)) {
             cameraSelect.appendChild(option);
           });
           
-          // Restore saved camera preference
-          if (userPrefs.cameraId) {
-            const savedCam = Array.from(cameraSelect.options).find(
-              opt => opt.value === userPrefs.cameraId
-            );
-            if (savedCam) {
-              cameraSelect.value = savedCam.value;
-              currentCameraId = savedCam.value;
+          // Choose camera: prefer saved one (if still present), otherwise prefer back/environment-facing, otherwise first
+          let selectedId = '';
+          try {
+            if (userPrefs && userPrefs.cameraId) {
+              const exists = devices.some(d => d.id === userPrefs.cameraId);
+              if (exists) { selectedId = userPrefs.cameraId; }
             }
+          } catch(_){ }
+          if (!selectedId && devices && devices.length) {
+            const pref = devices.find(d => /back|rear|environment/i.test(String(d.label||'')));
+            selectedId = (pref && pref.id) ? pref.id : devices[0].id;
           }
-          
-          // If no camera selected and we have cameras, select first one
-          if (!currentCameraId && devices.length > 0) {
-            cameraSelect.value = devices[0].id;
-            currentCameraId = devices[0].id;
+          if (selectedId) {
+            cameraSelect.value = selectedId;
+            currentCameraId = selectedId;
+            try { userPrefs.cameraId = selectedId; saveUserPrefs(); } catch(_){ }
           }
           
           setStatus('Ready to scan', 'text-muted');
@@ -4369,6 +4381,11 @@ if (!empty($my_requests)) {
       if (stopBtn) {
         stopBtn.addEventListener('click', stopScan);
       }
+      // Populate camera list when the modal opens, and stop scanning when it closes
+      try {
+        modal.addEventListener('shown.bs.modal', function(){ try{ populateCameraSelect(); }catch(_){ } setStatus('Ready to scan','text-muted'); });
+        modal.addEventListener('hidden.bs.modal', function(){ try{ stopScan(); }catch(_){ } });
+      } catch(_){ }
       
       
       if (submitBtn) {
