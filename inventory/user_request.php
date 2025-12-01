@@ -5026,6 +5026,20 @@ if (!empty($my_requests)) {
                 var r = btn.getBoundingClientRect();
                 var f = document.createElement('div'); f.id='floatingTableMenu'; f.className='dropdown-menu show'; f.style.position='fixed'; f.style.left=(r.left)+'px'; f.style.top=(r.bottom)+'px'; f.style.zIndex='1070'; f.innerHTML = menu.innerHTML; document.body.appendChild(f);
               }
+              // If still nothing is visible (edge mobile cases), cycle sections as a last-resort fallback
+              setTimeout(function(){
+                var menuShown = menu.classList.contains('show') || document.getElementById('floatingTableMenu');
+                if (!menuShown) {
+                  try{
+                    var order=['section-recent','section-overdue','section-borrowed','section-history'];
+                    var labels={'section-recent':'My Recent Requests','section-overdue':'Overdue Items','section-borrowed':'My Borrowed','section-history':'Borrow History'};
+                    var last = localStorage.getItem('ur_last_section')||'section-recent';
+                    var idx = Math.max(0, order.indexOf(last));
+                    var next = order[(idx+1)%order.length];
+                    showSection(next, labels[next]||'');
+                  }catch(_){ showSection('section-overdue','Overdue Items'); }
+                }
+              }, 120);
             }, 30);
           }
           btn.addEventListener('click', function(e){
@@ -5046,13 +5060,14 @@ if (!empty($my_requests)) {
             }
           });
         })();
-        // No fallback cycling; clicking the button should only open the dropdown
-        // Default view on load: honor URL ?view=overdue; otherwise always default to My Recent Requests
+        // Default view on load: honor URL ?view=overdue|borrowed|history; otherwise default to My Recent Requests
         (function(){
           try {
             var v = (new URL(window.location.href)).searchParams.get('view');
             v = v ? String(v).toLowerCase() : '';
             if (v === 'overdue') { showSection('section-overdue', 'Overdue Items'); return; }
+            if (v === 'borrowed') { showSection('section-borrowed', 'My Borrowed'); return; }
+            if (v === 'history') { showSection('section-history', 'Borrow History'); return; }
           } catch(_){ }
           showSection('section-recent', 'My Recent Requests');
         })();
