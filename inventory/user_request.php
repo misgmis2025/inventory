@@ -3913,54 +3913,11 @@ if (!empty($my_requests)) {
       }
       
       // Start scanning with selected camera
-      // Enhanced scanner configuration
       const getScannerConfig = () => ({
         fps: 10,
         qrbox: { width: 250, height: 250 },
         aspectRatio: 1.0,
-        // Enable experimental features for better barcode detection
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true,
-          // Add more experimental features for better detection
-          tryHarder: true,
-          useAdaptiveThreshold: true,
-          useHybridThresholding: true
-        },
-        // Support multiple formats with better compatibility
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.CODABAR,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_93,
-          Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.RSS_14,
-          Html5QrcodeSupportedFormats.RSS_EXPANDED,
-          Html5QrcodeSupportedFormats.PDF_417,
-          Html5QrcodeSupportedFormats.AZTEC,
-          Html5QrcodeSupportedFormats.DATA_MATRIX,
-          Html5QrcodeSupportedFormats.MAXICODE
-        ],
-        // Add more robust scanning options
-        useBarcodeDetectorIfSupported: true,
-        showTorchButtonIfSupported: true,
-        showZoomSliderIfSupported: true,
-        defaultZoomValueIfSupported: 2,
-        disableFlip: false,
-        videoConstraints: {
-          facingMode: 'environment',
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 },
-          // Add focus mode for better scanning
-          focusMode: 'continuous',
-          // Add torch mode for low light conditions
-          torch: false
-        }
+        disableFlip: false
       });
 
       // Enhanced error handler
@@ -4081,28 +4038,36 @@ if (!empty($my_requests)) {
         try {
           const config = getScannerConfig();
           
-          // Clear any previous scanner instances
-          if (scanner && scanner._html5Qrcode) {
-            try {
-              await scanner._html5Qrcode.clear();
-            } catch (e) {
-              console.warn('Error clearing previous scanner instance:', e);
-            }
-          }
+          // Clear any previous scanner instances (avoid private API)
+          try { await scanner.clear(); } catch(_){ }
           
           const onReturnScan = (txt) => { try{ handleReturnDecoded(txt); }catch(_){ } };
+          const configLite = { fps: 10, qrbox: { width: 250, height: 250 } };
           let started = false;
           if (currentCameraId) {
             try {
               await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
               started = true;
             } catch(e1){
-              started = false;
+              try {
+                await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
+                started = true;
+              } catch(e1b){ started = false; }
             }
           }
           if (!started) {
-            await scanner.start({ facingMode: 'environment' }, config, onReturnScan, handleScannerError);
-            started = true;
+            try {
+              await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
+              started = true;
+            } catch(e2){
+              try {
+                await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
+                started = true;
+              } catch(e3){
+                await scanner.start({ facingMode: 'user' }, configLite, onReturnScan, handleScannerError);
+                started = true;
+              }
+            }
           }
 
           // Update UI state
@@ -4117,7 +4082,7 @@ if (!empty($my_requests)) {
           
         } catch (err) {
           console.error('Scanner initialization error:', err);
-          handleScannerError(err.message || 'Failed to start scanner');
+          handleScannerError((err && (err.message || err.name || String(err))) || 'Failed to start scanner');
           
           // Reset UI state on error
           scanning = false;
