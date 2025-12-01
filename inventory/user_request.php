@@ -3821,6 +3821,9 @@ if (!empty($my_requests)) {
             <button type="button" id="uqrStart" class="btn btn-success btn-sm"><i class="bi bi-camera-video"></i> Start</button>
             <button type="button" id="uqrStop" class="btn btn-danger btn-sm" style="display:none;"><i class="bi bi-stop-circle"></i> Stop</button>
           </div>
+          <div class="mb-2">
+            <input type="file" id="uqrImageFile" class="form-control form-control-sm" accept="image/*" capture="environment" />
+          </div>
           <div class="mb-3">
             <label class="form-label small">Return Location</label>
             <input type="text" class="form-control" id="uqrLoc" placeholder="e.g. Storage Room A" required />
@@ -3988,9 +3991,73 @@ if (!empty($my_requests)) {
         setStatus(displayMsg, 'text-danger');
       };
 
+      async function handleReturnDecoded(decodedText){
+        if (!decodedText) return;
+        try{
+          await stopScan();
+          let serial = '';
+          try {
+            const data = JSON.parse(decodedText);
+            if (data && typeof data === 'object') {
+              serial = String(data.serial_no||data.serial||data.sn||data.sid||'').trim();
+              if (!serial && data.data) serial = String(data.data.serial_no||data.data.serial||data.data.sid||'').trim();
+            }
+          } catch(_) {}
+          if (!serial){
+            let s=String(decodedText||'').trim();
+            try{
+              if (/^https?:\/\//i.test(s)){
+                const u=new URL(s); const p=u.searchParams;
+                serial = String(p.get('serial_no')||p.get('serial')||p.get('sn')||p.get('sid')||p.get('id')||'').trim();
+                if (!serial){ const parts=u.pathname.split('/').filter(Boolean); if (parts.length) serial=parts[parts.length-1]; }
+              }
+            }catch(_){ }
+            if (!serial && /^\s*[\w\-]+\s*$/.test(s)) serial = s;
+          }
+          if (!serial){ 
+            setStatus('Invalid QR content','text-danger'); 
+            setTimeout(()=>startScan(), 1000); 
+            return; 
+          }
+          setStatus('Verifying serial...','text-muted');
+          const body='request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId||0)+'&serial_no='+encodeURIComponent(serial);
+          const r=await fetch('user_request.php?action=returnship_check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+          const jr=await r.json().catch(()=>({ok:false}));
+          if (!jr || !jr.ok){
+            setStatus(jr && jr.reason ? String(jr.reason) : 'Wrong Serial ID','text-danger');
+            try{
+              const sb=document.getElementById('uqrSubmit');
+              const gb=document.getElementById('uqrSubmitGray');
+              if (sb && gb){ 
+                try{ delete sb.dataset.serial; }catch(_){ } 
+                sb.style.display='none'; 
+                gb.style.display=''; 
+                gb.disabled=true; 
+              }
+            }catch(_){ }
+            setTimeout(()=>startScan(), 1000);
+            return;
+          }
+          setStatus('Item verified: '+serial,'text-success');
+          try{
+            const sb=document.getElementById('uqrSubmit');
+            const gb=document.getElementById('uqrSubmitGray');
+            if (sb && gb){ 
+              sb.dataset.serial=serial; 
+              sb.style.display=''; 
+              sb.disabled=false; 
+              gb.style.display='none'; 
+              try{ sb.focus(); }catch(_){ } 
+            }
+          }catch(_){ }
+        }catch(e){ 
+          setStatus('Scan error','text-danger'); 
+          setTimeout(()=>startScan(), 1000); 
+        }
+      }
+
       async function startScan() {
-        if (scanning || !currentCameraId) {
-          console.log('Scan already in progress or no camera selected');
+        if (scanning) {
           return;
         }
         
@@ -4009,9 +4076,8 @@ if (!empty($my_requests)) {
           }
         }
         
-        // Initialize new scanner instance
         scanner = new Html5Qrcode('uqrReader');
-        
+
         try {
           const config = getScannerConfig();
           
@@ -4024,83 +4090,21 @@ if (!empty($my_requests)) {
             }
           }
           
-          // Strict return scan handler: verify exact serial against borrowed item
-          async function onReturnScan(decodedText){
-            if (!decodedText) return;
-            try{
-              await stopScan();
-              let serial = '';
-              try {
-                const data = JSON.parse(decodedText);
-                if (data && typeof data === 'object') {
-                  serial = String(data.serial_no||data.serial||data.sn||data.sid||'').trim();
-                  if (!serial && data.data) serial = String(data.data.serial_no||data.data.serial||data.data.sid||'').trim();
-                }
-              } catch(_) {}
-              if (!serial){
-                let s=String(decodedText||'').trim();
-                try{
-                  if (/^https?:\/\//i.test(s)){
-                    const u=new URL(s); const p=u.searchParams;
-                    serial = String(p.get('serial_no')||p.get('serial')||p.get('sn')||p.get('sid')||p.get('id')||'').trim();
-                    if (!serial){ const parts=u.pathname.split('/').filter(Boolean); if (parts.length) serial=parts[parts.length-1]; }
-                  }
-                }catch(_){ }
-                if (!serial && /^\s*[\w\-]+\s*$/.test(s)) serial = s;
-              }
-              if (!serial){ 
-                setStatus('Invalid QR content','text-danger'); 
-                setTimeout(()=>startScan(), 1000); 
-                return; 
-              }
-              setStatus('Verifying serial...','text-muted');
-              const body='request_id='+encodeURIComponent(currentReqId)+'&borrow_id='+encodeURIComponent(currentBorrowId||0)+'&serial_no='+encodeURIComponent(serial);
-              const r=await fetch('user_request.php?action=returnship_check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
-              const jr=await r.json().catch(()=>({ok:false}));
-              if (!jr || !jr.ok){
-                setStatus(jr && jr.reason ? String(jr.reason) : 'Wrong Serial ID','text-danger');
-                try{
-                  const sb=document.getElementById('uqrSubmit');
-                  const gb=document.getElementById('uqrSubmitGray');
-                  if (sb && gb){ 
-                    try{ 
-                      delete sb.dataset.serial; 
-                    }catch(_){ } 
-                    sb.style.display='none'; 
-                    gb.style.display=''; 
-                    gb.disabled=true; 
-                  }
-                }catch(_){ }
-                setTimeout(()=>startScan(), 1000);
-                return;
-              }
-              setStatus('Item verified: '+serial,'text-success');
-              try{
-                const sb=document.getElementById('uqrSubmit');
-                const gb=document.getElementById('uqrSubmitGray');
-                if (sb && gb){ 
-                  sb.dataset.serial=serial; 
-                  sb.style.display=''; 
-                  sb.disabled=false; 
-                  gb.style.display='none'; 
-                  try{ 
-                    sb.focus(); 
-                  }catch(_){ } 
-                }
-              }catch(_){ }
-            }catch(e){ 
-              setStatus('Scan error','text-danger'); 
-              setTimeout(()=>startScan(), 1000); 
+          const onReturnScan = (txt) => { try{ handleReturnDecoded(txt); }catch(_){ } };
+          let started = false;
+          if (currentCameraId) {
+            try {
+              await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
+              started = true;
+            } catch(e1){
+              started = false;
             }
           }
-          // Start scanning with the strict return validator
-          await scanner.start(
-            currentCameraId, 
-            config,
-            onReturnScan,
-            handleScannerError
-          );
-          
+          if (!started) {
+            await scanner.start({ facingMode: 'environment' }, config, onReturnScan, handleScannerError);
+            started = true;
+          }
+
           // Update UI state
           scanning = true;
           if (startBtn) startBtn.style.display = 'none';
@@ -4109,6 +4113,7 @@ if (!empty($my_requests)) {
           if (refreshBtn) refreshBtn.disabled = true;
           
           setStatus('Scanning for QR code...', 'text-primary');
+          try{ var v=document.querySelector('#uqrReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ }
           
         } catch (err) {
           console.error('Scanner initialization error:', err);
@@ -4363,6 +4368,7 @@ if (!empty($my_requests)) {
       if (stopBtn) {
         stopBtn.addEventListener('click', stopScan);
       }
+      (function(){ var img=document.getElementById('uqrImageFile'); if(!img) return; img.addEventListener('change', function(){ var f=this.files&&this.files[0]; if(!f){return;} try{ stopScan(); }catch(_){ } setStatus('Processing image...','text-info'); function tryScanSequence(file){ if (typeof Html5Qrcode !== 'undefined' && typeof Html5Qrcode.scanFile === 'function') { return Html5Qrcode.scanFile(file, true).catch(function(){ return Html5Qrcode.scanFile(file, false); }).catch(function(){ var inst = new Html5Qrcode('uqrReader'); return inst.scanFile(file, true).finally(function(){ try{inst.clear();}catch(e){} }); }); } var inst2 = new Html5Qrcode('uqrReader'); return inst2.scanFile(file, true).finally(function(){ try{inst2.clear();}catch(e){} }); } tryScanSequence(f).then(function(txt){ handleReturnDecoded(txt); }).catch(function(){ setStatus('No QR found in image.','text-danger'); }); }); })();
       
       if (submitBtn) {
         submitBtn.addEventListener('click', async function() {
@@ -4470,13 +4476,7 @@ if (!empty($my_requests)) {
         }
         
         // Initialize cameras and start scanning
-        populateCameraSelect().then(() => {
-          if (currentCameraId) {
-            setTimeout(() => startScan(), 300);
-          } else {
-            setStatus('Please select a camera', 'text-muted');
-          }
-        });
+        populateCameraSelect().then(() => { setTimeout(() => startScan(), 300); });
       });
       
       // Clean up on modal hide

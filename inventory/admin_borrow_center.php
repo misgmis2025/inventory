@@ -4273,11 +4273,11 @@ try {
             if (!id) { setStatus('No camera found','text-danger'); return; }
             localStorage.setItem('rs_camera', id);
             scanner.start(id,{fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
-              .then(()=>{ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+              .then(()=>{ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#rsReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
               .catch(function(err){
                 try {
                   scanner.start({ facingMode: 'environment' }, {fps:10,qrbox:{width:250,height:250}}, onScanSuccess, ()=>{})
-                    .then(function(){ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; setStatus('Camera active. Scan a QR.','text-success'); })
+                    .then(function(){ scanning=true; if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; var v=null; try{ v=document.querySelector('#rsReader video'); if(v){ v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.muted=true; } }catch(_){ } setStatus('Camera active. Scan a QR.','text-success'); })
                     .catch(function(e2){ setStatus('Camera error: '+((e2&&e2.message)||'start failure'),'text-danger'); });
                 } catch(e3){ setStatus('Camera error: '+((err&&err.message)||'start failure'),'text-danger'); }
               });
@@ -4332,19 +4332,13 @@ try {
             if (returnBtn) returnBtn.disabled = true;
             setStatus('Scan the item\'s QR or enter Serial ID manually.','text-muted');
             if (readerDiv) readerDiv.innerHTML='';
-            if (camWrap) camWrap.style.display = isMobile ? 'none' : 'block';
-            if (isMobile) {
-              if (startBtn) startBtn.disabled = true;
-              if (stopBtn) stopBtn.disabled = true;
-              setStatus('Live camera scanning is available on desktop only. Use image upload or enter Serial ID.','text-muted');
-            } else {
-              listCams();
-              if (startBtn) startBtn.disabled = false;
-              if (stopBtn) stopBtn.disabled = false;
-            }
+            if (camWrap) camWrap.style.display = 'block';
+            listCams();
+            if (startBtn) startBtn.disabled = false;
+            if (stopBtn) stopBtn.disabled = false;
           });
         }
-        if (startBtn) startBtn.addEventListener('click', function(){ if (isMobile) return; startWithSelected(); });
+        if (startBtn) startBtn.addEventListener('click', function(){ startWithSelected(); });
         if (stopBtn) stopBtn.addEventListener('click', function(){ stop(); });
         if (form) form.addEventListener('submit', function(){ stop(); });
         if (inputId) inputId.addEventListener('input', function(){ if(returnBtn) returnBtn.disabled = true; if (this.value.trim()) { validateCurrentId(); } else { setStatus('Scan the item\'s QR or enter Serial ID manually.','text-muted'); } });
