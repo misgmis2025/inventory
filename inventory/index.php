@@ -208,10 +208,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="login-subtitle">Log in to continue to your account</p>
         <form method="POST" action="" class="mt-3">
           <label class="form-label" for="username">Username</label>
-          <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" value="<?php echo htmlspecialchars($prev_username, ENT_QUOTES); ?>" required />
+          <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" value="<?php echo htmlspecialchars($prev_username, ENT_QUOTES); ?>" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
 
           <label class="form-label mt-2" for="password">Password</label>
           <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
+          <div id="capslock_warning_login" class="text-danger small mt-1" style="display:none;">Caps Lock is ON</div>
 
           <div class="mt-2">
             <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
@@ -233,10 +234,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       (function(){
         const pwd = document.getElementById('password');
         const toggle = document.getElementById('toggle_password_login');
+        const capsMsg = document.getElementById('capslock_warning_login');
         if (pwd && toggle) {
           toggle.addEventListener('change', function(){
             pwd.type = this.checked ? 'text' : 'password';
           });
+        }
+        if (pwd && capsMsg && typeof pwd.addEventListener === 'function') {
+          function handleCaps(e) {
+            if (!e || typeof e.getModifierState !== 'function') return;
+            const isCaps = e.getModifierState('CapsLock');
+            capsMsg.style.display = isCaps ? 'block' : 'none';
+          }
+          pwd.addEventListener('keydown', handleCaps);
+          pwd.addEventListener('keyup', handleCaps);
+          pwd.addEventListener('blur', function(){ capsMsg.style.display = 'none'; });
         }
       })();
     </script>

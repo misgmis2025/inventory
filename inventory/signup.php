@@ -186,11 +186,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input id="full_name" class="form-control" type="text" name="full_name" placeholder="Enter your full name" required />
                         <small id="fullTakenMsg" class="text-danger" style="display:none;">Full name already taken</small>
                         <label class="form-label" for="username">Username</label>
-                        <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" required />
+                        <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
                         <small id="userTakenMsg" class="text-danger" style="display:none;">Username already taken</small>
                         <label class="form-label mt-2" for="password">Password</label>
                         <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
                         <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
+                        <small id="capslock_warning_signup" class="text-danger" style="display:none; margin-top:.25rem;">Caps Lock is ON</small>
                         <label class="form-label mt-2" for="confirm_password">Confirm Password</label>
                         <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
                         <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
@@ -221,6 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const idTakenMsg = document.getElementById('idTakenMsg');
         const fullTakenMsg = document.getElementById('fullTakenMsg');
         const userTakenMsg = document.getElementById('userTakenMsg');
+        const capsMsg = document.getElementById('capslock_warning_signup');
 
         function passwordValid() {
           const val = pwd.value || '';
@@ -300,6 +302,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           schoolId.addEventListener('input', function(){ this.value = this.value.replace(/[^\d-]/g,''); validateMatch(); });
         }
         if (userType) { userType.addEventListener('change', validateMatch); }
+
+        if (pwd && capsMsg && typeof pwd.addEventListener === 'function') {
+          function handleCaps(e) {
+            if (!e || typeof e.getModifierState !== 'function') return;
+            const isCaps = e.getModifierState('CapsLock');
+            capsMsg.style.display = isCaps ? 'block' : 'none';
+          }
+          pwd.addEventListener('keydown', handleCaps);
+          pwd.addEventListener('keyup', handleCaps);
+          pwd.addEventListener('blur', function(){ capsMsg.style.display = 'none'; });
+          if (cpwd) {
+            cpwd.addEventListener('keydown', handleCaps);
+            cpwd.addEventListener('keyup', handleCaps);
+            cpwd.addEventListener('blur', function(){ capsMsg.style.display = 'none'; });
+          }
+        }
 
         // Simple debounce helper
         function debounce(fn, ms){ let t; return function(){ const ctx=this, args=arguments; clearTimeout(t); t=setTimeout(()=>fn.apply(ctx,args), ms||250); }; }
