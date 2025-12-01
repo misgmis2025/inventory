@@ -3197,6 +3197,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Removed legacy MySQL fallback list population; Mongo data already prepared above
 // Build quick lookup of active borrowable models per category
+try {
+  @require_once __DIR__ . '/../vendor/autoload.php';
+  @require_once __DIR__ . '/db/mongo.php';
+  $db = isset($db) && $db instanceof MongoDB\Database ? $db : get_mongo_db();
+  $bmCol = $db->selectCollection('borrowable_catalog');
+  $borrowables = [];
+  foreach ($bmCol->find([], ['sort'=>['category'=>1,'model_name'=>1]]) as $bm) { $borrowables[] = $bm; }
+  $borrowLimitMap = [];
+  foreach ($borrowables as $bm) {
+    $c = (string)($bm['category'] ?? '');
+    $m = (string)($bm['model_name'] ?? '');
+    if ($c === '' || $m === '') continue;
+    if (!isset($borrowLimitMap[$c])) { $borrowLimitMap[$c] = []; }
+    $borrowLimitMap[$c][$m] = (int)($bm['borrow_limit'] ?? 0);
+  }
+  $activeConsumed = [];
+  try {
+    $ubCol = $db->selectCollection('user_borrows');
+    $iiCol = $db->selectCollection('inventory_items');
+    $mids = [];
+    foreach ($ubCol->find(['status'=>'Borrowed'], ['projection'=>['model_id'=>1]]) as $br) {
+      $mid = (int)($br['model_id'] ?? 0); if ($mid > 0) { $mids[$mid] = true; }
+    }
+    $midList = array_values(array_unique(array_map('intval', array_keys($mids))));
+    $map = [];
+    if (!empty($midList)) {
+      foreach ($iiCol->find(['id'=>['$in'=>$midList]], ['projection'=>['id'=>1,'category'=>1,'model'=>1,'item_name'=>1]]) as $it) {
+        $map[(int)($it['id'] ?? 0)] = [
+          'c' => (string)($it['category'] ?? 'Uncategorized'),
+          'm' => (string)($it['model'] ?? ($it['item_name'] ?? '')),
+        ];
+      }
+      foreach ($ubCol->find(['status'=>'Borrowed','model_id'=>['$in'=>$midList]], ['projection'=>['model_id'=>1]]) as $br2) {
+        $mid = (int)($br2['model_id'] ?? 0);
+        if ($mid > 0 && isset($map[$mid])) {
+          $c = $map[$mid]['c'] !== '' ? $map[$mid]['c'] : 'Uncategorized';
+          $m = $map[$mid]['m'];
+          if ($m !== '') {
+            if (!isset($activeConsumed[$c])) { $activeConsumed[$c] = []; }
+            if (!isset($activeConsumed[$c][$m])) { $activeConsumed[$c][$m] = 0; }
+            $activeConsumed[$c][$m]++;
+          }
+        }
+      }
+    }
+  } catch (Throwable $_ac) { $activeConsumed = $activeConsumed ?? []; }
+  $pendingReturned = [];
+  try {
+    $rsCol = $db->selectCollection('returnship_requests');
+    $iiCol2 = isset($iiCol) ? $iiCol : $db->selectCollection('inventory_items');
+    $curPR = $rsCol->find(['verified_at'=>['$exists'=>true,'$ne'=>''], 'status'=>['$in'=>['Pending','Requested']]], ['projection'=>['qr_serial_no'=>1,'model_name'=>1]]);
+    foreach ($curPR as $pr) {
+      $serial = trim((string)($pr['qr_serial_no'] ?? ''));
+      $mNm = trim((string)($pr['model_name'] ?? ''));
+      $cat = 'Uncategorized';
+      if ($serial !== '') {
+        $it = $iiCol2->findOne(['serial_no'=>$serial], ['projection'=>['category'=>1,'model'=>1,'item_name'=>1]]);
+        if ($it) {
+          $cat = (string)($it['category'] ?? 'Uncategorized');
+          if ($mNm === '') { $mNm = (string)($it['model'] ?? ($it['item_name'] ?? '')); }
+        }
+      }
+      if ($mNm === '') continue;
+      if (!isset($pendingReturned[$cat])) { $pendingReturned[$cat] = []; }
+      if (!isset($pendingReturned[$cat][$mNm])) { $pendingReturned[$cat][$mNm] = 0; }
+      $pendingReturned[$cat][$mNm]++;
+    }
+  } catch (Throwable $_pr) { $pendingReturned = $pendingReturned ?? []; }
+} catch (Throwable $_bm) {
+  $borrowables = $borrowables ?? [];
+  $borrowLimitMap = $borrowLimitMap ?? [];
+  $activeConsumed = $activeConsumed ?? [];
+  $pendingReturned = $pendingReturned ?? [];
+}
 $activeBorrow = [];
 foreach ($borrowables as $b) {
   if ((int)$b['active'] !== 1) continue;
