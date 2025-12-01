@@ -131,6 +131,72 @@ if (isset($_GET['action']) && $_GET['action'] === 'update_location' && $_SERVER[
     exit();
 }
 
+// Admin-only: mark a Lost item as Found via QR scanner (set back to Available and update lost/damaged history)
+if (isset($_GET['action']) && $_GET['action'] === 'mark_found' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['usertype']) || $_SESSION['usertype'] !== 'admin') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Forbidden']);
+        exit();
+    }
+    try {
+        $raw = file_get_contents('php://input');
+        $data = json_decode($raw, true) ?: [];
+        $mid = intval($data['model_id'] ?? 0);
+        if ($mid <= 0) { http_response_code(400); echo json_encode(['success'=>false,'error'=>'Invalid payload']); exit(); }
+        require_once __DIR__ . '/../vendor/autoload.php';
+        require_once __DIR__ . '/db/mongo.php';
+        $db = get_mongo_db();
+        $itemsCol = $db->selectCollection('inventory_items');
+        $ldCol = $db->selectCollection('lost_damaged_log');
+        $item = $itemsCol->findOne(['id' => $mid], ['projection'=>['status'=>1,'serial_no'=>1,'model'=>1,'item_name'=>1,'category'=>1,'location'=>1]]);
+        if (!$item) { http_response_code(404); echo json_encode(['success'=>false,'error'=>'Item not found']); exit(); }
+        $curr = (string)($item['status'] ?? '');
+        if ($curr !== 'Lost') {
+            http_response_code(409);
+            echo json_encode(['success'=>false,'error'=>'Only Lost items can be marked as Found here.']);
+            exit();
+        }
+        $now = date('Y-m-d H:i:s');
+        $who = $_SESSION['username'] ?? 'system';
+        // Set status back to Available
+        $itemsCol->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available','updated_at'=>$now,'last_status_changed_by'=>$who]]);
+        // Resolve prior Lost/Under Maintenance logs so they disappear from open lists
+        try {
+            $ldCol->updateMany(
+                ['model_id'=>$mid, 'action'=>['$in'=>['Lost','Under Maintenance']], 'resolved_at'=>['$exists'=>false]],
+                ['$set'=>['resolved_at'=>$now]]
+            );
+        } catch (Throwable $e2) { /* best-effort */ }
+        // Insert a Found event with an incremental id and basic context
+        $last = $ldCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+        $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
+        $serial = isset($item['serial_no']) ? (string)$item['serial_no'] : '';
+        $modelKey = isset($item['model']) && $item['model'] !== '' ? (string)$item['model'] : (string)($item['item_name'] ?? '');
+        $cat = isset($item['category']) && $item['category'] !== '' ? (string)$item['category'] : 'Uncategorized';
+        $loc = isset($item['location']) ? (string)$item['location'] : '';
+        $ldCol->insertOne([
+            'id' => $nextId,
+            'model_id' => $mid,
+            'action' => 'Found',
+            'source' => 'qr_scanner',
+            'marked_by' => $who,
+            'affected_username' => '',
+            'created_at' => $now,
+            'serial_no' => $serial,
+            'model_key' => $modelKey,
+            'category' => $cat,
+            'location' => $loc,
+            'notes' => 'Marked as found via QR Scanner',
+        ]);
+        echo json_encode(['success'=>true]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['success'=>false,'error'=>'Server error']);
+    }
+    exit();
+}
+
 $scannedData = null;
 $error = '';
 
@@ -379,6 +445,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                                     </div>
                                     <div class="form-text">Allowed transitions depend on current status.</div>
                                 </div>
+                                <div id="found-action-wrap" class="mt-2" style="display:none; max-width: 380px;">
+                                    <button type="button" class="btn btn-success btn-sm" id="mark-found-btn"><i class="bi bi-check2-circle me-1"></i>Mark as Found</button>
+                                    <small class="text-muted ms-2">Available only when the item is currently marked as Lost.</small>
+                                </div>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -595,8 +665,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
     }
     function refreshStatusEditor(){
         try{
-            const wrap = document.getElementById('status-edit-wrap'); if(!wrap) return;
+            const wrap = document.getElementById('status-edit-wrap');
+            const foundWrap = document.getElementById('found-action-wrap');
             const curr = document.getElementById('status-badge')?.textContent.trim() || '';
+            if (foundWrap){ foundWrap.style.display = (curr === 'Lost' ? 'block' : 'none'); }
+            if (!wrap) return;
             const allowed = computeAllowedStatuses(curr);
             const sel = document.getElementById('status-edit-select');
             sel.innerHTML = '';
@@ -622,6 +695,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                 refreshStatusEditor();
                 alert('Status updated.');
             }catch(e){ alert('Error updating status.'); }
+        });
+    }
+
+    function setupFoundAction(){
+        const btn = document.getElementById('mark-found-btn'); if(!btn) return;
+        btn.addEventListener('click', async function(){
+            try{
+                const mid = parseInt(document.getElementById('scanned-model-id')?.value||'0',10)||0;
+                const curr = document.getElementById('status-badge')?.textContent.trim() || '';
+                if (mid<=0){ alert('No item loaded.'); return; }
+                if (curr !== 'Lost'){ alert('Only items currently marked as Lost can be marked as Found here.'); return; }
+                if (!confirm('Mark this Lost item as Found and set it to Available?')) return;
+                const resp = await fetch('qr_scanner.php?action=mark_found', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ model_id: mid })
+                });
+                const data = await resp.json().catch(()=>({success:false}));
+                if (!resp.ok || !data.success){ throw new Error(data.error||'Failed'); }
+                const badge = document.getElementById('status-badge');
+                if (badge){ badge.textContent = 'Available'; badge.className = 'badge status-badge ' + mapStatusClass('Available'); }
+                refreshStatusEditor();
+                alert('Item marked as Found and set to Available.');
+            }catch(e){ alert('Error marking item as Found.'); }
         });
     }
     let html5Qrcode = null;
@@ -894,7 +991,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                     const mid = parseInt(data.model_id||0,10)||0;
                     midInput.value = String(mid);
                     setupLocationEdit(mid, loc);
-                    refreshStatusEditor(); setupStatusSave();
+                    refreshStatusEditor(); setupStatusSave(); setupFoundAction();
                     setupRemarksEdit(mid, rem);
 
                     // Hide borrow/reserve info for legacy payloads
@@ -961,7 +1058,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                     const mid2 = parseInt(it.id||0,10)||0;
                     midInput2.value = String(mid2);
                     setupLocationEdit(mid2, loc2);
-                    refreshStatusEditor(); setupStatusSave();
+                    refreshStatusEditor(); setupStatusSave(); setupFoundAction();
                     setupRemarksEdit(mid2, rem2);
 
                     // Borrow info
