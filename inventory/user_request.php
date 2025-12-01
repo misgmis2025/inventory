@@ -4042,6 +4042,25 @@ if (!empty($my_requests)) {
             try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
           }
         } catch(_){ }
+        const preferBack = (function(){ try{ const opt=(cameraSelect&&cameraSelect.options&&cameraSelect.options[cameraSelect.selectedIndex]); const txt=opt? (opt.textContent||'') : ''; if(/back|rear|environment/i.test(String(txt))) return true; }catch(_){ } try{ return String(userPrefs&&userPrefs.facing||'')==='back'; }catch(_){ } return false; })();
+
+        // Re-resolve the selected camera against the latest device list (avoid stale IDs on mobile)
+        try {
+          const camsNow = await Html5Qrcode.getCameras();
+          if (Array.isArray(camsNow) && camsNow.length) {
+            let chosen = null;
+            if (currentCameraId) { chosen = camsNow.find(c => c && c.id === currentCameraId) || null; }
+            if (!chosen) {
+              const back = camsNow.find(c => /back|rear|environment/i.test(String(c && c.label || '')));
+              chosen = back || camsNow[0];
+            }
+            if (chosen && chosen.id) {
+              currentCameraId = chosen.id;
+              if (cameraSelect) { try { cameraSelect.value = chosen.id; } catch(_){ } }
+              try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
+            }
+          }
+        } catch(_){ }
 
         // Clear previous scanner if exists
         if (scanner) {
@@ -4081,27 +4100,74 @@ if (!empty($my_requests)) {
           // Prefer an explicit selected camera id if available (do not silently switch to another lens)
           if (currentCameraId) {
             try {
-              await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
+              await scanner.start({ deviceId: { exact: currentCameraId } }, config, onReturnScan, handleScannerError);
               started = true;
-            } catch(e1){
+            } catch(e0){
               try {
-                await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
+                await scanner.start(currentCameraId, config, onReturnScan, handleScannerError);
                 started = true;
-              } catch(e1b){
-                // Fallback: try deviceId constraint form, then environment-facing
+              } catch(e1){
                 try {
-                  await scanner.start({ deviceId: { exact: currentCameraId } }, configLite, onReturnScan, handleScannerError);
+                  await scanner.start(currentCameraId, configLite, onReturnScan, handleScannerError);
                   started = true;
-                } catch(e1c){
+                } catch(e1b){
                   try {
-                    await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
+                    await scanner.start({ deviceId: { exact: currentCameraId } }, configLite, onReturnScan, handleScannerError);
                     started = true;
-                  } catch(e2a){
-                    try {
-                      await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
-                      started = true;
-                    } catch(e2b){ started = false; }
+                  } catch(e1c){
+                    if (preferBack) {
+                      try {
+                        await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
+                        started = true;
+                      } catch(e2a){
+                        try {
+                          await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
+                          started = true;
+                        } catch(e2b){ /* continue */ }
+                      }
+                    }
                   }
+                  // If still not started, try other device IDs explicitly (prefer back)
+                  if (!started) {
+                    try {
+                      const cams = await Html5Qrcode.getCameras();
+                      const order = [];
+                      if (Array.isArray(cams)) {
+                        let backs = cams.filter(c => /back|rear|environment/i.test(String(c.label||'')));
+                        let others = cams.filter(c => backs.indexOf(c) === -1);
+                        if (preferBack && backs.length === 0 && cams.length > 1) {
+                          const last = cams[cams.length-1];
+                          if (last) { backs = [last]; others = cams.filter(c => c && c.id !== last.id); }
+                        }
+                        order.push(...backs, ...others);
+                      }
+                      for (const dev of (order.length ? order : [])) {
+                        if (!dev || !dev.id) continue;
+                        if (currentCameraId && dev.id === currentCameraId) continue;
+                        try {
+                          await scanner.start(dev.id, configLite, onReturnScan, handleScannerError);
+                          started = true;
+                          currentCameraId = dev.id;
+                          if (cameraSelect) { try { cameraSelect.value = dev.id; } catch(_){ } }
+                          try { userPrefs.cameraId = currentCameraId; saveUserPrefs(); } catch(_){ }
+                          break;
+                        } catch(_tryNext){ /* try next device */ }
+                      }
+                    } catch(_enumErr){ /* ignore */ }
+                  }
+                  // If still not started and user did not prefer back, try environment last
+                  if (!started && !preferBack) {
+                    try {
+                      await scanner.start({ facingMode: { exact: 'environment' } }, configLite, onReturnScan, handleScannerError);
+                      started = true;
+                    } catch(e2c){
+                      try {
+                        await scanner.start({ facingMode: 'environment' }, configLite, onReturnScan, handleScannerError);
+                        started = true;
+                      } catch(e2d){ started = false; }
+                    }
+                  }
+                }
                 }
               }
             }
@@ -4394,6 +4460,7 @@ if (!empty($my_requests)) {
           if (this.value) {
             currentCameraId = this.value;
             userPrefs.cameraId = currentCameraId;
+            try { const txt=(this.options[this.selectedIndex]&&this.options[this.selectedIndex].textContent)||''; userPrefs.facing = /back|rear|environment/i.test(String(txt)) ? 'back':'front'; } catch(_){ }
             saveUserPrefs();
             
             // If scanner is running with a different camera, restart it
