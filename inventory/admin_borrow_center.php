@@ -2660,7 +2660,11 @@ if ($act === 'admin_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       } catch (Throwable $_r2) { /* ignore */ }
     } catch (Throwable $_r) { $recent = []; }
     echo json_encode(['ok'=>true, 'pending'=>$pending, 'recent'=>$recent]);
-    exit();
+  } catch (Throwable $e) {
+    echo json_encode(['ok'=>false, 'pending'=>[], 'recent'=>[]]);
+  }
+  exit();
+}
 
 // Handle borrowable list POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
