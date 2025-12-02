@@ -132,6 +132,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       .auth-form .form-label {
         margin-bottom: .2rem;
       }
+      .auth-form label[for="school_id"],
+      .auth-form label[for="user_type"] {
+        display: block;
+        margin-top: 0;
+        margin-bottom: .2rem;
+        line-height: 1.25;
+      }
       .auth-form .form-control,
       .auth-form .form-select {
         padding-top: .35rem;
@@ -200,9 +207,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       .password-toggle-btn:focus {
         outline: none;
         box-shadow: none;
-      }
-      label[for="user_type"] {
-        margin-top: .25rem;
       }
       @media (max-width: 576px) {
         .signup-wrapper {
