@@ -686,7 +686,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
                 </div>
               </div>
               <div class="kpi-row-4">
-                <div class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="window.location.href='inventory.php'" style="cursor:pointer;">
+                <div id="kpiTotalUnits" class="kpi-card card border-0 shadow-sm h-100" role="button" tabindex="0" onclick="window.location.href='inventory.php'" style="cursor:pointer;">
                   <div class="card-body">
                     <div class="kpi-rowline">
                       <span class="kpi-title text-muted">Total Units<i class="bi bi-collection kpi-icon text-info"></i></span>
