@@ -126,6 +126,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       #userBellModalCP .ubm-head{ padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
       #userBellModalCP .ubm-close{ background:transparent; border:0; font-size:20px; line-height:1; }
       #userBellModalCP .ubm-body{ padding:0; overflow:auto; }
+      .capslock-indicator {
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #0d6efd;
+        font-size: 1rem;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity .15s ease-in-out;
+      }
+      .capslock-indicator.active {
+        opacity: 1;
+      }
+      .has-capslock-icon .form-control {
+        padding-right: 2rem;
+      }
     </style>
 </head>
 <body class="allow-mobile">
@@ -339,18 +356,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <form method="POST">
                             <div class="mb-3">
                                 <label class="form-label fw-bold" for="current_password">Current Password</label>
-                                <input type="password" id="current_password" name="current_password" class="form-control" required />
+                                <div class="position-relative has-capslock-icon">
+                                    <input type="password" id="current_password" name="current_password" class="form-control" required />
+                                    <span class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+                                        <i class="bi bi-capslock-fill"></i>
+                                    </span>
+                                </div>
                                 <small id="currentPwMsg" style="color:#dc3545; display:none; margin-top:.25rem;">Wrong password</small>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-bold" for="new_password">New Password</label>
-                                <input type="password" id="new_password" name="new_password" class="form-control" required />
+                                <div class="position-relative has-capslock-icon">
+                                    <input type="password" id="new_password" name="new_password" class="form-control" required />
+                                    <span class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+                                        <i class="bi bi-capslock-fill"></i>
+                                    </span>
+                                </div>
                                 <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
                                 <small id="pwSameMsg" style="display:none; margin-top:.25rem; color:#dc3545;">New password must be different from current password</small>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label fw-bold" for="confirm_password">Confirm New Password</label>
-                                <input type="password" id="confirm_password" name="confirm_password" class="form-control" required />
+                                <div class="position-relative has-capslock-icon">
+                                    <input type="password" id="confirm_password" name="confirm_password" class="form-control" required />
+                                    <span class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+                                        <i class="bi bi-capslock-fill"></i>
+                                    </span>
+                                </div>
                                 <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
                             </div>
                             <div class="mb-3">
@@ -728,6 +760,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const form = document.querySelector('form');
             const submitBtn = form.querySelector('button[type="submit"]');
             const toggle = document.getElementById('toggle_password_change');
+            const capsIcons = Array.prototype.slice.call(document.querySelectorAll('.capslock-indicator'));
 
             let currentOk = false;
             let timer = null;
@@ -781,6 +814,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             pwd.addEventListener('blur', () => { if (!(pwd.value||'').length) { reqMsg.style.display = 'none'; } });
             pwd.addEventListener('input', updateSubmit);
             cpwd.addEventListener('input', updateSubmit);
+            function setCapsIcon(isOn) {
+                if (!capsIcons || !capsIcons.length) return;
+                capsIcons.forEach(function(icon){
+                    if (!icon) return;
+                    if (isOn) {
+                        icon.classList.add('active');
+                    } else {
+                        icon.classList.remove('active');
+                    }
+                });
+            }
+            function handleCaps(e) {
+                if (!e || typeof e.getModifierState !== 'function') return;
+                const isCaps = e.getModifierState('CapsLock');
+                setCapsIcon(isCaps);
+            }
+            if (typeof window.addEventListener === 'function') {
+                window.addEventListener('keydown', handleCaps);
+                window.addEventListener('keyup', handleCaps);
+            }
 
             if (toggle) {
                 toggle.addEventListener('change', function(){

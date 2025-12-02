@@ -157,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         right: 0.75rem;
         top: 50%;
         transform: translateY(-50%);
-        color: #dc3545;
+        color: #0d6efd;
         font-size: 1rem;
         pointer-events: none;
         opacity: 0;
@@ -214,7 +214,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                         <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
                         <label class="form-label mt-2" for="confirm_password">Confirm Password</label>
-                        <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
+                        <div class="position-relative has-capslock-icon">
+                          <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
+                          <span id="capslock_icon_signup_confirm" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+                            <i class="bi bi-capslock-fill"></i>
+                          </span>
+                        </div>
                         <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
                         <div class="mt-2">
                           <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
@@ -243,7 +248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const idTakenMsg = document.getElementById('idTakenMsg');
         const fullTakenMsg = document.getElementById('fullTakenMsg');
         const userTakenMsg = document.getElementById('userTakenMsg');
-        const capsIcon = document.getElementById('capslock_icon_signup');
+        const capsIcons = Array.prototype.slice.call(document.querySelectorAll('.capslock-indicator'));
 
         function passwordValid() {
           const val = pwd.value || '';
@@ -324,12 +329,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (userType) { userType.addEventListener('change', validateMatch); }
         function setCapsIcon(isOn) {
-          if (!capsIcon) return;
-          if (isOn) {
-            capsIcon.classList.add('active');
-          } else {
-            capsIcon.classList.remove('active');
-          }
+          if (!capsIcons || !capsIcons.length) return;
+          capsIcons.forEach(function(icon){
+            if (!icon) return;
+            if (isOn) {
+              icon.classList.add('active');
+            } else {
+              icon.classList.remove('active');
+            }
+          });
         }
         function handleCaps(e) {
           if (!e || typeof e.getModifierState !== 'function') return;
