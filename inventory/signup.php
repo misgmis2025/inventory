@@ -181,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         opacity: 1;
       }
       .has-capslock-icon .form-control {
-        padding-right: 3.2rem;
+        padding-right: 4rem;
       }
       .password-toggle-btn {
         position: absolute;
