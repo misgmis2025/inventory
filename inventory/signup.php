@@ -219,6 +219,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           padding: 1.75rem 1.25rem;
         }
         .signup-title { font-size: 1.6rem; }
+        #school_id::placeholder,
+        #full_name::placeholder,
+        #username::placeholder,
+        #confirm_password::placeholder {
+          font-size: .7rem;
+        }
         .has-capslock-icon .form-control::placeholder {
           font-size: .75rem;
         }
