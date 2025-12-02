@@ -190,6 +190,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         outline: none;
         box-shadow: none;
       }
+      @media (min-width: 768px) {
+        .signup-card {
+          max-width: 640px;
+        }
+        .auth-form {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1rem;
+        }
+        .auth-form .col-12 {
+          grid-column: 1 / -1;
+        }
+      }
       @media (max-width: 576px) {
         .signup-card { padding: 2rem 1.5rem; }
         .signup-title { font-size: 1.6rem; }
@@ -210,44 +223,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="POST" action="" class="mt-3 auth-form">
-                        <label class="form-label" for="school_id">ID</label>
-                        <input id="school_id" class="form-control" type="text" name="school_id" placeholder="Enter your school ID" inputmode="numeric" pattern="[0-9-]+" required />
-                        <small id="idTakenMsg" class="text-danger" style="display:none;">ID already taken for this user type</small>
-                        <label class="form-label mt-2" for="user_type">User Type</label>
-                        <select id="user_type" name="user_type" class="form-select" required>
-                            <option value="">Select type</option>
-                            <option value="Student">Student</option>
-                            <option value="Staff">Staff</option>
-                            <option value="Faculty">Faculty</option>
-                        </select>
-                        <label class="form-label" for="full_name">Full Name</label>
-                        <input id="full_name" class="form-control" type="text" name="full_name" placeholder="Enter your full name" required />
-                        <small id="fullTakenMsg" class="text-danger" style="display:none;">Full name already taken</small>
-                        <label class="form-label" for="username">Username</label>
-                        <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
-                        <small id="userTakenMsg" class="text-danger" style="display:none;">Username already taken</small>
-                        <label class="form-label mt-2" for="password">Password</label>
-                        <div class="position-relative has-capslock-icon">
-                          <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
-                          <button type="button" id="view_password_signup" class="password-toggle-btn" aria-label="Show password">
-                            <i class="bi bi-eye"></i>
-                          </button>
-                          <span id="capslock_icon_signup" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
-                            <i class="bi bi-capslock-fill"></i>
-                          </span>
-                        </div>
-                        <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
-                        <label class="form-label mt-2" for="confirm_password">Confirm Password</label>
-                        <div class="position-relative has-capslock-icon">
-                          <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
-                          <span id="capslock_icon_signup_confirm" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
-                            <i class="bi bi-capslock-fill"></i>
-                          </span>
-                        </div>
-                        <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
-                        <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Sign up</button>
-                    </form>
-                    <p class="signup-switch mt-3">Already have an account? <a href="index.php">Login</a></p>
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="school_id">ID</label>
+              <input id="school_id" class="form-control" type="text" name="school_id" placeholder="Enter your school ID" inputmode="numeric" pattern="[0-9-]+" required />
+              <small id="idTakenMsg" class="text-danger" style="display:none;">ID already taken for this user type</small>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="user_type">User Type</label>
+              <select id="user_type" name="user_type" class="form-select" required>
+                <option value="">Select type</option>
+                <option value="Student">Student</option>
+                <option value="Staff">Staff</option>
+                <option value="Faculty">Faculty</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="full_name">Full Name</label>
+              <input id="full_name" class="form-control" type="text" name="full_name" placeholder="Enter your full name" required />
+              <small id="fullTakenMsg" class="text-danger" style="display:none;">Full name already taken</small>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="username">Username</label>
+              <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
+              <small id="userTakenMsg" class="text-danger" style="display:none;">Username already taken</small>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="password">Password</label>
+              <div class="position-relative has-capslock-icon">
+                <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
+                <button type="button" id="view_password_signup" class="password-toggle-btn" aria-label="Show password">
+                  <i class="bi bi-eye"></i>
+                </button>
+                <span id="capslock_icon_signup" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+                  <i class="bi bi-capslock-fill"></i>
+                </span>
+              </div>
+              <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="confirm_password">Confirm Password</label>
+              <div class="position-relative has-capslock-icon">
+                <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
+                <span id="capslock_icon_signup_confirm" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+                  <i class="bi bi-capslock-fill"></i>
+                </span>
+              </div>
+              <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Sign up</button>
+            </div>
+          </div>
+        </form>
+        <p class="signup-switch mt-3">Already have an account? <a href="index.php">Login</a></p>
       </div>
     </div>
     <script>
