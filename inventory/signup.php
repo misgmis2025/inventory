@@ -201,10 +201,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         outline: none;
         box-shadow: none;
       }
+      label[for="user_type"] {
+        margin-top: .25rem;
+      }
       @media (max-width: 576px) {
         .signup-wrapper {
-          align-items: flex-start;
-          padding-top: 1rem;
+          align-items: center;
+          padding-top: 1.25rem;
           padding-bottom: 1.25rem;
         }
         .signup-card {
