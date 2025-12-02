@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       .signup-switch a:hover { text-decoration: underline; }
       .capslock-indicator {
         position: absolute;
-        right: 0.75rem;
+        right: 2.3rem;
         top: 50%;
         transform: translateY(-50%);
         color: #0d6efd;
@@ -167,7 +167,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         opacity: 1;
       }
       .has-capslock-icon .form-control {
-        padding-right: 2rem;
+        padding-right: 3.2rem;
+      }
+      .password-toggle-btn {
+        position: absolute;
+        right: 0.65rem;
+        top: 50%;
+        transform: translateY(-50%);
+        border: 0;
+        background: transparent;
+        padding: 0;
+        color: #6b7280;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .password-toggle-btn:focus {
+        outline: none;
+        box-shadow: none;
       }
       @media (max-width: 576px) {
         .signup-card { padding: 2rem 1.5rem; }
@@ -208,6 +226,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label class="form-label mt-2" for="password">Password</label>
                         <div class="position-relative has-capslock-icon">
                           <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
+                          <button type="button" id="view_password_signup" class="password-toggle-btn" aria-label="Show password">
+                            <i class="bi bi-eye"></i>
+                          </button>
                           <span id="capslock_icon_signup" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
                             <i class="bi bi-capslock-fill"></i>
                           </span>
@@ -249,6 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const fullTakenMsg = document.getElementById('fullTakenMsg');
         const userTakenMsg = document.getElementById('userTakenMsg');
         const capsIcons = Array.prototype.slice.call(document.querySelectorAll('.capslock-indicator'));
+        const viewBtn = document.getElementById('view_password_signup');
 
         function passwordValid() {
           const val = pwd.value || '';
@@ -317,11 +339,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         pwd.addEventListener('blur', function(){ if (!(pwd.value||'').length) { reqMsg.style.display = 'none'; } });
         pwd.addEventListener('input', validateMatch);
         cpwd.addEventListener('input', validateMatch);
+        function applyPasswordVisibility(show) {
+          const type = show ? 'text' : 'password';
+          if (pwd) pwd.type = type;
+          if (cpwd) cpwd.type = type;
+          if (toggle) toggle.checked = !!show;
+          if (viewBtn) {
+            const icon = viewBtn.querySelector('i');
+            if (icon) {
+              icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+            }
+          }
+        }
         if (toggle) {
           toggle.addEventListener('change', function() {
-            const type = this.checked ? 'text' : 'password';
-            pwd.type = type;
-            cpwd.type = type;
+            applyPasswordVisibility(this.checked);
+          });
+        }
+        if (viewBtn) {
+          viewBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const show = !pwd || pwd.type === 'password';
+            applyPasswordVisibility(show);
           });
         }
         if (schoolId) {

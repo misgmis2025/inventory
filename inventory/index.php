@@ -194,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       .login-switch a:hover { text-decoration: underline; }
       .capslock-indicator {
         position: absolute;
-        right: 0.75rem;
+        right: 2.3rem;
         top: 50%;
         transform: translateY(-50%);
         color: #0d6efd;
@@ -207,7 +207,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         opacity: 1;
       }
       .has-capslock-icon .form-control {
-        padding-right: 2rem;
+        padding-right: 3.2rem;
+      }
+      .password-toggle-btn {
+        position: absolute;
+        right: 0.65rem;
+        top: 50%;
+        transform: translateY(-50%);
+        border: 0;
+        background: transparent;
+        padding: 0;
+        color: #6b7280;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .password-toggle-btn:focus {
+        outline: none;
+        box-shadow: none;
       }
       @media (max-width: 576px) {
         .login-card { padding: 2rem 1.5rem; }
@@ -230,6 +248,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <label class="form-label mt-2" for="password">Password</label>
           <div class="position-relative has-capslock-icon">
             <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
+            <button type="button" id="view_password_login" class="password-toggle-btn" aria-label="Show password">
+              <i class="bi bi-eye"></i>
+            </button>
             <span id="capslock_icon_login" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
               <i class="bi bi-capslock-fill"></i>
             </span>
@@ -256,9 +277,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const pwd = document.getElementById('password');
         const toggle = document.getElementById('toggle_password_login');
         const capsIcon = document.getElementById('capslock_icon_login');
+        const viewBtn = document.getElementById('view_password_login');
+        function applyPasswordVisibility(show) {
+          if (pwd) {
+            pwd.type = show ? 'text' : 'password';
+          }
+          if (toggle) {
+            toggle.checked = !!show;
+          }
+          if (viewBtn) {
+            const icon = viewBtn.querySelector('i');
+            if (icon) {
+              icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+            }
+          }
+        }
         if (pwd && toggle) {
           toggle.addEventListener('change', function(){
-            pwd.type = this.checked ? 'text' : 'password';
+            applyPasswordVisibility(this.checked);
+          });
+        }
+        if (pwd && viewBtn) {
+          viewBtn.addEventListener('click', function(e){
+            e.preventDefault();
+            const show = pwd.type === 'password';
+            applyPasswordVisibility(show);
           });
         }
         function setCapsIcon(isOn) {
