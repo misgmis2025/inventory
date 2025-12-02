@@ -252,17 +252,19 @@ $pages = array_chunk($history, 15);
             <table class="table table-bordered table-sm align-middle print-table">
               <colgroup>
                 <col style="width: 8%" />  <!-- User ID -->
+                <col style="width: 11%" />  <!-- Date Borrowed -->
                 <col style="width: 13%" />  <!-- User -->
                 <col style="width: 10%" />  <!-- Student ID -->
                 <col style="width: 10%" />  <!-- Serial ID -->
                 <col style="width: 12%" />  <!-- Item/Model -->
                 <col style="width: 9%" />  <!-- Category -->
-                <col style="width: 19%" />   <!-- Borrowed At -->
-                <col style="width: 19%" />   <!-- Returned At -->
+                <col style="width: 14%" />   <!-- Time Borrowed -->
+                <col style="width: 13%" />   <!-- Returned At -->
               </colgroup>
               <thead class="table-light">
                 <tr>
                   <th>User ID</th>
+                  <th class="col-datetime">Date Borrowed</th>
                   <th>User</th>
                   <th>Student ID</th>
                   <th>Serial ID</th>
@@ -274,7 +276,7 @@ $pages = array_chunk($history, 15);
               </thead>
               <tbody>
                 <?php if (empty($displayRows)): ?>
-                  <tr><td colspan="8" class="text-center text-muted py-3">No history.</td></tr>
+                  <tr><td colspan="9" class="text-center text-muted py-3">No history.</td></tr>
                 <?php else: ?>
                   <?php foreach ($displayRows as $hv): ?>
                     <?php
@@ -305,6 +307,15 @@ $pages = array_chunk($history, 15);
                     ?>
                     <tr>
                       <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['user_id'] ?? '')); ?></span></td>
+                      <td class="col-datetime"><?php
+                        if (!empty($hv['borrowed_at'])) {
+                          $ts = strtotime($hv['borrowed_at']);
+                          if ($ts !== false) {
+                            $datePart = date('F d, Y', $ts);
+                            echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span></span>';
+                          }
+                        }
+                      ?></td>
                       <td class="<?php echo $userClass; ?>"><span class="two-line"><?php echo htmlspecialchars($usr); ?></span></td>
                       <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['school_id'] ?? '')); ?></span></td>
                       <td class="<?php echo $serialClass; ?>"><span class="two-line"><?php echo htmlspecialchars($ser); ?></span></td>
@@ -314,9 +325,8 @@ $pages = array_chunk($history, 15);
                         if (!empty($hv['borrowed_at'])) {
                           $ts = strtotime($hv['borrowed_at']);
                           if ($ts !== false) {
-                            $datePart = date('F d, Y', $ts);
                             $timePart = date('g:iA', $ts);
-                            echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                            echo '<span class="dt"><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
                           }
                         }
                       ?></td>
@@ -335,12 +345,13 @@ $pages = array_chunk($history, 15);
                   <?php for ($i = 0; $i < $padRows; $i++): ?>
                     <tr>
                       <td>&nbsp;</td>
+                      <td class="col-datetime"><span class="dt"><span class="dt-date">&nbsp;</span></span></td>
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
-                      <td class="col-datetime"><span class="dt"><span class="dt-date">&nbsp;</span><span class="dt-time">&nbsp;</span></span></td>
+                      <td class="col-datetime"><span class="dt"><span class="dt-time">&nbsp;</span></span></td>
                       <td class="col-datetime"><span class="dt"><span class="dt-date">&nbsp;</span><span class="dt-time">&nbsp;</span></span></td>
                     </tr>
                   <?php endfor; ?>
