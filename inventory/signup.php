@@ -152,6 +152,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         text-decoration: none;
       }
       .signup-switch a:hover { text-decoration: underline; }
+      .capslock-indicator {
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #dc3545;
+        font-size: 1rem;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity .15s ease-in-out;
+      }
+      .capslock-indicator.active {
+        opacity: 1;
+      }
+      .has-capslock-icon .form-control {
+        padding-right: 2rem;
+      }
       @media (max-width: 576px) {
         .signup-card { padding: 2rem 1.5rem; }
         .signup-title { font-size: 1.6rem; }
@@ -189,9 +206,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
                         <small id="userTakenMsg" class="text-danger" style="display:none;">Username already taken</small>
                         <label class="form-label mt-2" for="password">Password</label>
-                        <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
+                        <div class="position-relative has-capslock-icon">
+                          <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
+                          <span id="capslock_icon_signup" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+                            <i class="bi bi-capslock-fill"></i>
+                          </span>
+                        </div>
                         <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
-                        <small id="capslock_warning_signup" class="text-danger" style="display:none; margin-top:.25rem;">Caps Lock is ON</small>
                         <label class="form-label mt-2" for="confirm_password">Confirm Password</label>
                         <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
                         <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
@@ -222,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const idTakenMsg = document.getElementById('idTakenMsg');
         const fullTakenMsg = document.getElementById('fullTakenMsg');
         const userTakenMsg = document.getElementById('userTakenMsg');
-        const capsMsg = document.getElementById('capslock_warning_signup');
+        const capsIcon = document.getElementById('capslock_icon_signup');
 
         function passwordValid() {
           const val = pwd.value || '';
@@ -302,21 +323,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           schoolId.addEventListener('input', function(){ this.value = this.value.replace(/[^\d-]/g,''); validateMatch(); });
         }
         if (userType) { userType.addEventListener('change', validateMatch); }
-
-        if (pwd && capsMsg && typeof pwd.addEventListener === 'function') {
-          function handleCaps(e) {
-            if (!e || typeof e.getModifierState !== 'function') return;
-            const isCaps = e.getModifierState('CapsLock');
-            capsMsg.style.display = isCaps ? 'block' : 'none';
+        function setCapsIcon(isOn) {
+          if (!capsIcon) return;
+          if (isOn) {
+            capsIcon.classList.add('active');
+          } else {
+            capsIcon.classList.remove('active');
           }
-          pwd.addEventListener('keydown', handleCaps);
-          pwd.addEventListener('keyup', handleCaps);
-          pwd.addEventListener('blur', function(){ capsMsg.style.display = 'none'; });
-          if (cpwd) {
-            cpwd.addEventListener('keydown', handleCaps);
-            cpwd.addEventListener('keyup', handleCaps);
-            cpwd.addEventListener('blur', function(){ capsMsg.style.display = 'none'; });
-          }
+        }
+        function handleCaps(e) {
+          if (!e || typeof e.getModifierState !== 'function') return;
+          const isCaps = e.getModifierState('CapsLock');
+          setCapsIcon(isCaps);
+        }
+        if (typeof window.addEventListener === 'function') {
+          window.addEventListener('keydown', handleCaps);
+          window.addEventListener('keyup', handleCaps);
         }
 
         // Simple debounce helper

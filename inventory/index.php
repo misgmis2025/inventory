@@ -192,6 +192,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         text-decoration: none;
       }
       .login-switch a:hover { text-decoration: underline; }
+      .capslock-indicator {
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #dc3545;
+        font-size: 1rem;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity .15s ease-in-out;
+      }
+      .capslock-indicator.active {
+        opacity: 1;
+      }
+      .has-capslock-icon .form-control {
+        padding-right: 2rem;
+      }
       @media (max-width: 576px) {
         .login-card { padding: 2rem 1.5rem; }
         .login-title { font-size: 1.6rem; }
@@ -211,8 +228,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <input id="username" class="form-control" type="text" name="username" placeholder="Enter your username" value="<?php echo htmlspecialchars($prev_username, ENT_QUOTES); ?>" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
 
           <label class="form-label mt-2" for="password">Password</label>
-          <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
-          <div id="capslock_warning_login" class="text-danger small mt-1" style="display:none;">Caps Lock is ON</div>
+          <div class="position-relative has-capslock-icon">
+            <input id="password" class="form-control" type="password" name="password" placeholder="Enter your password" required />
+            <span id="capslock_icon_login" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
+              <i class="bi bi-capslock-fill"></i>
+            </span>
+          </div>
 
           <div class="mt-2">
             <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
@@ -234,21 +255,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       (function(){
         const pwd = document.getElementById('password');
         const toggle = document.getElementById('toggle_password_login');
-        const capsMsg = document.getElementById('capslock_warning_login');
+        const capsIcon = document.getElementById('capslock_icon_login');
         if (pwd && toggle) {
           toggle.addEventListener('change', function(){
             pwd.type = this.checked ? 'text' : 'password';
           });
         }
-        if (pwd && capsMsg && typeof pwd.addEventListener === 'function') {
-          function handleCaps(e) {
-            if (!e || typeof e.getModifierState !== 'function') return;
-            const isCaps = e.getModifierState('CapsLock');
-            capsMsg.style.display = isCaps ? 'block' : 'none';
+        function setCapsIcon(isOn) {
+          if (!capsIcon) return;
+          if (isOn) {
+            capsIcon.classList.add('active');
+          } else {
+            capsIcon.classList.remove('active');
           }
-          pwd.addEventListener('keydown', handleCaps);
-          pwd.addEventListener('keyup', handleCaps);
-          pwd.addEventListener('blur', function(){ capsMsg.style.display = 'none'; });
+        }
+        function handleCaps(e) {
+          if (!e || typeof e.getModifierState !== 'function') return;
+          const isCaps = e.getModifierState('CapsLock');
+          setCapsIcon(isCaps);
+        }
+        if (typeof window.addEventListener === 'function') {
+          window.addEventListener('keydown', handleCaps);
+          window.addEventListener('keyup', handleCaps);
         }
       })();
     </script>
