@@ -203,6 +203,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         opacity: 0;
         transition: opacity .15s ease-in-out;
       }
+      .capslock-indicator i {
+        color: #0d6efd !important;
+      }
       .capslock-indicator.active {
         opacity: 1;
       }
@@ -256,12 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </span>
           </div>
 
-          <div class="mt-2">
-            <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
-              <input type="checkbox" id="toggle_password_login" />
-              <span>Show password</span>
-            </label>
-          </div>
+          
           <?php if ($login_error !== ''): ?>
             <div class="text-danger small mt-2"><?php echo htmlspecialchars($login_error); ?></div>
           <?php endif; ?>

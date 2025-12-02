@@ -137,6 +137,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         opacity: 0;
         transition: opacity .15s ease-in-out;
       }
+      .capslock-indicator i {
+        color: #0d6efd !important;
+      }
       .capslock-indicator.active {
         opacity: 1;
       }
@@ -405,12 +408,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     </span>
                                 </div>
                                 <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
-                            </div>
-                            <div class="mb-3">
-                                <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;">
-                                    <input type="checkbox" id="toggle_password_change" />
-                                    <span>Show password</span>
-                                </label>
                             </div>
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary">Update Password</button>
