@@ -129,6 +129,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
         border: 1px solid #e5e7eb;
       }
+      .auth-form .form-label {
+        margin-bottom: .2rem;
+      }
+      .auth-form .form-control,
+      .auth-form .form-select {
+        padding-top: .35rem;
+        padding-bottom: .35rem;
+      }
+      .auth-form small {
+        font-size: .78rem;
+      }
       .signup-title {
         font-size: 2rem;
         font-weight: 700;
@@ -191,6 +202,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         box-shadow: none;
       }
       @media (max-width: 576px) {
+        .signup-wrapper {
+          align-items: flex-start;
+          padding-top: 1rem;
+          padding-bottom: 1.25rem;
+        }
         .signup-card {
           max-width: 100%;
           padding: 1.75rem 1.25rem;
@@ -213,14 +229,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="POST" action="" class="mt-3 auth-form">
-          <div class="row g-2 g-md-3">
-            <div class="col-12 col-md-6">
+          <div class="row g-2">
+            <div class="col-6">
               <label class="form-label" for="school_id">ID</label>
               <input id="school_id" class="form-control" type="text" name="school_id" placeholder="Enter your school ID" inputmode="numeric" pattern="[0-9-]+" required />
               <small id="idTakenMsg" class="text-danger" style="display:none;">ID already taken for this user type</small>
             </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label mt-2 mt-md-0" for="user_type">User Type</label>
+            <div class="col-6">
+              <label class="form-label" for="user_type">User Type</label>
               <select id="user_type" name="user_type" class="form-select" required>
                 <option value="">Select type</option>
                 <option value="Student">Student</option>
@@ -228,18 +244,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <option value="Faculty">Faculty</option>
               </select>
             </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label mt-2" for="full_name">Full Name</label>
+            <div class="col-6">
+              <label class="form-label" for="full_name">Full Name</label>
               <input id="full_name" class="form-control" type="text" name="full_name" placeholder="Enter your full name" required />
               <small id="fullTakenMsg" class="text-danger" style="display:none;">Full name already taken</small>
             </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label mt-2" for="username">Username</label>
+            <div class="col-6">
+              <label class="form-label" for="username">Username</label>
               <input id="username" class="form-control" type="text" name="username" placeholder="Choose a username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
               <small id="userTakenMsg" class="text-danger" style="display:none;">Username already taken</small>
             </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label mt-2" for="password">Password</label>
+            <div class="col-6">
+              <label class="form-label" for="password">Password</label>
               <div class="position-relative has-capslock-icon">
                 <input id="password" class="form-control" type="password" name="password" placeholder="Create a password" required />
                 <button type="button" id="view_password_signup" class="password-toggle-btn" aria-label="Show password">
@@ -251,8 +267,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               </div>
               <small id="pwReqMsg" style="display:none; margin-top:.25rem; color:#dc3545;">password must be at least 6 character long</small>
             </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label mt-2" for="confirm_password">Confirm Password</label>
+            <div class="col-6">
+              <label class="form-label" for="confirm_password">Confirm Password</label>
               <div class="position-relative has-capslock-icon">
                 <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
                 <span id="capslock_icon_signup_confirm" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
