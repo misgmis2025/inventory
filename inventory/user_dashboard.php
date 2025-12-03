@@ -245,7 +245,7 @@ if (!$USED_MONGO) {
         </div>
 
         <!-- Page Content -->
-        <div class="p-4 page-fade-in" id="page-content-wrapper">
+        <div class="p-4" id="page-content-wrapper">
             <div class="page-header d-flex justify-content-between align-items-center">
                 <h2 class="page-title mb-0">
                     <i class="bi bi-speedometer2 me-2"></i>User Dashboard

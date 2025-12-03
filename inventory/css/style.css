@@ -63,6 +63,12 @@ body {
      transition: opacity 0.25s ease-in-out;
  }
 
+  #page-content-wrapper.page-fade-out,
+  body.page-fade-out {
+      opacity: 0 !important;
+      transition: opacity 0.25s ease-in-out;
+  }
+
 /* Debug styles to ensure content visibility */
 .card, .form-section, .manual-input, .camera-section, .file-upload, .info-card, .preview-section {
     background-color: #ffffff !important;

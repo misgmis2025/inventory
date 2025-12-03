@@ -417,5 +417,6 @@ $pages = array_chunk($history, 15);
       if (btn) { btn.addEventListener('click', function(){ window.print(); }); }
     })();
   </script>
+  <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
 </body>
 </html>

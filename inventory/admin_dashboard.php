@@ -618,7 +618,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         </div>
 
         <!-- Page Content -->
-        <div class="p-4 page-fade-in" id="page-content-wrapper">
+        <div class="p-4" id="page-content-wrapper">
             <div class="page-header d-flex justify-content-between align-items-center">
                 <h2 class="page-title mb-0">
                     <i class="bi bi-speedometer2 me-2"></i>Dashboard
@@ -1273,7 +1273,74 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         });
       })();
     </script>
-    <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
+</script>
+    <style>
+      @media (max-width: 768px) {
+        .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; transition: transform .2s ease-in-out; }
+        .bottom-nav.hidden{ transform: translateY(100%); }
+        .bottom-nav a{ text-decoration:none; font-size:12px; color:#333; display:flex; flex-direction:column; align-items:center; gap:4px; }
+        .bottom-nav a .bi{ font-size:18px; }
+        .bottom-nav-toggle{ position: fixed; right: 14px; bottom: 14px; z-index: 1060; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: bottom .2s ease-in-out; }
+        .bottom-nav-toggle.raised{ bottom: 78px; }
+        .bottom-nav-toggle .bi{ font-size: 1.2rem; }
+      }
+    </style>
+    <button type="button" class="btn btn-primary bottom-nav-toggle d-md-none" id="bnToggleDash" aria-controls="dashBottomNav" aria-expanded="false" title="Open menu">
+      <i class="bi bi-list"></i>
+    </button>
+    <nav class="bottom-nav d-md-none hidden" id="dashBottomNav">
+      <a href="admin_dashboard.php" aria-label="Dashboard">
+        <i class="bi bi-speedometer2"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="admin_borrow_center.php" aria-label="Borrow">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Borrow</span>
+      </a>
+      <a href="qr_scanner.php" aria-label="QR">
+        <i class="bi bi-qr-code-scan"></i>
+        <span>QR</span>
+      </a>
+      <a href="change_password.php" aria-label="Password">
+        <i class="bi bi-key"></i>
+        <span>Password</span>
+      </a>
+      <a href="logout.php" aria-label="Logout" onclick="return confirm('Logout now?');">
+        <i class="bi bi-box-arrow-right"></i>
+        <span>Logout</span>
+      </a>
+    </nav>
+    <script>
+      (function(){
+        try{
+          var btn = document.getElementById('bnToggleDash');
+          var nav = document.getElementById('dashBottomNav');
+          if (btn && nav) {
+            btn.addEventListener('click', function(){
+              var hid = nav.classList.toggle('hidden');
+              btn.setAttribute('aria-expanded', String(!hid));
+              if (!hid) {
+                btn.classList.add('raised');
+                btn.title = 'Close menu';
+                var i = btn.querySelector('i'); if (i) { i.className = 'bi bi-x'; }
+                try { if (typeof window.__adm_adjust_toast === 'function') window.__adm_adjust_toast(); } catch(_){ }
+              } else {
+                btn.classList.remove('raised');
+                btn.title = 'Open menu';
+                var i2 = btn.querySelector('i'); if (i2) { i2.className = 'bi bi-list'; }
+                try { if (typeof window.__adm_adjust_toast === 'function') window.__adm_adjust_toast(); } catch(_){ }
+              }
+            });
+          }
+          var p=(location.pathname.split('/').pop()||'').split('?')[0].toLowerCase();
+          document.querySelectorAll('.bottom-nav a[href]').forEach(function(a){
+            var h=(a.getAttribute('href')||'').split('?')[0].toLowerCase();
+            if(h===p){ a.classList.add('active'); a.setAttribute('aria-current','page'); }
+          });
+        }catch(_){ }
+      })();
+    </script>
   
 </body>
+<script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
 </html>

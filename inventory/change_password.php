@@ -1217,5 +1217,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }catch(_){ }
           })();
         </script>
+        <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
       </body>
       </html>

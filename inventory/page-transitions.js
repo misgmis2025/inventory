@@ -91,4 +91,19 @@
     }
     setTimeout(function(){ form.submit(); }, DURATION);
   });
+
+  document.addEventListener('DOMContentLoaded', function(){
+    try {
+      var root = getFadeRoot();
+      if (!root) return;
+      if (!root.classList.contains('page-fade-in')) {
+        root.classList.add('page-fade-in');
+      }
+      setTimeout(function(){
+        try {
+          root.classList.remove('page-fade-in');
+        } catch(_){ }
+      }, DURATION + 50);
+    } catch(_){ }
+  });
 })();

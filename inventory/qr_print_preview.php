@@ -335,5 +335,6 @@ $qr_api_size = max(100, min(450, (int)round($qr_px_est)));
       });
     })();
   </script>
+  <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
 </body>
 </html>

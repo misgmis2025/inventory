@@ -3084,5 +3084,6 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
       });
     })();
   </script>
+  <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
   </body>
   </html>
