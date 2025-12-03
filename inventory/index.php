@@ -233,6 +233,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       @media (max-width: 576px) {
         .login-card { padding: 2rem 1.5rem; }
         .login-title { font-size: 1.6rem; }
+        .capslock-indicator {
+          display: none;
+        }
       }
     </style>
 

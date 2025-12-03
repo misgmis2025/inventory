@@ -226,7 +226,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           font-size: .7rem;
         }
         .has-capslock-icon .form-control::placeholder {
-          font-size: .75rem;
+          font-size: .7rem;
+        }
+        .capslock-indicator {
+          display: none;
         }
       }
     </style>
