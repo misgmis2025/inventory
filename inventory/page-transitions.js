@@ -102,7 +102,7 @@
     setTimeout(function(){ form.submit(); }, DURATION);
   });
 
-  document.addEventListener('DOMContentLoaded', function(){
+  function applyInitialFadeIn(){
     try {
       var root = getFadeRoot();
       if (!root) return;
@@ -115,5 +115,11 @@
         } catch(_){ }
       }, DURATION + 50);
     } catch(_){ }
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyInitialFadeIn);
+  } else {
+    applyInitialFadeIn();
+  }
 })();
