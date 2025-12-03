@@ -306,12 +306,6 @@ $pages = array_chunk($history, 15);
               }
             ?>
             <?php foreach ($groupOrder as $gi => $dateLabel): ?>
-              <div>
-                <span class="date-group-header">
-                  <i class="bi bi-calendar3"></i>
-                  <span><?php echo htmlspecialchars($dateLabel); ?></span>
-                </span>
-              </div>
               <div class="table-responsive">
                 <table class="table table-bordered table-sm align-middle print-table">
                   <colgroup>
@@ -324,6 +318,14 @@ $pages = array_chunk($history, 15);
                     <col style="width: 14%" /> <!-- Time Returned -->
                   </colgroup>
                   <thead class="table-light">
+                    <tr>
+                      <th colspan="7">
+                        <span class="date-group-header">
+                          <i class="bi bi-calendar3"></i>
+                          <span><?php echo htmlspecialchars($dateLabel); ?></span>
+                        </span>
+                      </th>
+                    </tr>
                     <tr>
                       <th>User</th>
                       <th>Student ID</th>
