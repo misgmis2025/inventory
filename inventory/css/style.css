@@ -52,7 +52,7 @@ body {
 }
 
  .page-fade-in {
-     animation: pageFadeIn 0.25s ease-in-out;
+     animation: pageFadeIn 0.15s ease-in-out;
  }
  @keyframes pageFadeIn {
      from { opacity: 0; }
@@ -60,13 +60,13 @@ body {
  }
  .page-fade-out {
      opacity: 0;
-     transition: opacity 0.25s ease-in-out;
+     transition: opacity 0.15s ease-in-out;
  }
 
   #page-content-wrapper.page-fade-out,
   body.page-fade-out {
       opacity: 0 !important;
-      transition: opacity 0.25s ease-in-out;
+      transition: opacity 0.15s ease-in-out;
   }
 
 /* Debug styles to ensure content visibility */

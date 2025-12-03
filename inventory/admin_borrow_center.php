@@ -6977,5 +6977,6 @@ try {
       }
     })();
   </script>
+  <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
 </body>
 </html>

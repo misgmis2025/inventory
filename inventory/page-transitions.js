@@ -2,7 +2,7 @@
   if (!document || !document.addEventListener) return;
 
   var body = document.body;
-  var DURATION = 250;
+  var DURATION = 150;
   var fadeRoot = null;
 
   function ensureBody(){
