@@ -260,126 +260,105 @@ $pages = array_chunk($history, 15);
           <div class="table-responsive">
             <table class="table table-bordered table-sm align-middle print-table">
               <colgroup>
-                <col style="width: 8%" />  <!-- User ID -->
-                <col style="width: 14%" /> <!-- User -->
-                <col style="width: 11%" /> <!-- Student ID -->
-                <col style="width: 10%" /> <!-- Serial ID -->
-                <col style="width: 19%" /> <!-- Item/Model -->
+                <col style="width: 16%" /> <!-- User -->
+                <col style="width: 12%" /> <!-- Student ID -->
+                <col style="width: 12%" /> <!-- Serial ID -->
+                <col style="width: 22%" /> <!-- Item/Model -->
                 <col style="width: 10%" /> <!-- Category -->
                 <col style="width: 14%" /> <!-- Time Borrowed -->
                 <col style="width: 14%" /> <!-- Time Returned -->
               </colgroup>
               <thead class="table-light">
                 <tr>
-                  <th colspan="8">&nbsp;</th>
+                  <th>User</th>
+                  <th>Student ID</th>
+                  <th>Serial ID</th>
+                  <th>Item/Model</th>
+                  <th>Category</th>
+                  <th class="col-datetime">Time Borrowed</th>
+                  <th class="col-datetime">Time Returned</th>
                 </tr>
               </thead>
               <tbody>
                 <?php if (empty($displayRows)): ?>
-                  <tr><td colspan="8" class="text-center text-muted py-3">No history.</td></tr>
+                  <tr><td colspan="7" class="text-center text-muted py-3">No history.</td></tr>
                 <?php else: ?>
-                  <?php
-                    // Group rows by borrowed date label while preserving original order
-                    $groups = [];
-                    $groupOrder = [];
-                    foreach ($displayRows as $hvTmp) {
-                      $label = 'Unknown date';
-                      if (!empty($hvTmp['borrowed_at'])) {
-                        $tsTmp = strtotime($hvTmp['borrowed_at']);
-                        if ($tsTmp !== false) {
-                          $label = date('F j, Y', $tsTmp);
+                  <?php $lastDateLabel = null; ?>
+                  <?php foreach ($displayRows as $hv): ?>
+                    <?php
+                      $mn = trim((string)($hv['model_name'] ?? ''));
+                      $cat = trim((string)($hv['category'] ?? ''));
+                      $usr = trim((string)($hv['full_name'] ?? ($hv['username'] ?? '')));
+                      $ser = trim((string)($hv['serial_no'] ?? ''));
+                      $modelClass = '';
+                      $catClass = '';
+                      $userClass = '';
+                      $serialClass = '';
+                      $lenMn = strlen($mn);
+                      $lenCat = strlen($cat);
+                      $lenUsr = strlen($usr);
+                      $lenSer = strlen($ser);
+                      if ($lenMn > 30 && $lenMn <= 45) { $modelClass = 'shrink-1'; }
+                      elseif ($lenMn > 45 && $lenMn <= 60) { $modelClass = 'shrink-2'; }
+                      elseif ($lenMn > 60) { $modelClass = 'shrink-3'; }
+                      if ($lenCat > 20 && $lenCat <= 30) { $catClass = 'shrink-1'; }
+                      elseif ($lenCat > 30 && $lenCat <= 45) { $catClass = 'shrink-2'; }
+                      elseif ($lenCat > 45) { $catClass = 'shrink-3'; }
+                      if ($lenUsr > 18 && $lenUsr <= 26) { $userClass = 'shrink-1'; }
+                      elseif ($lenUsr > 26 && $lenUsr <= 34) { $userClass = 'shrink-2'; }
+                      elseif ($lenUsr > 34) { $userClass = 'shrink-3'; }
+                      if ($lenSer > 12 && $lenSer <= 18) { $serialClass = 'shrink-1'; }
+                      elseif ($lenSer > 18 && $lenSer <= 24) { $serialClass = 'shrink-2'; }
+                      elseif ($lenSer > 24) { $serialClass = 'shrink-3'; }
+
+                      $dateLabel = 'Unknown date';
+                      if (!empty($hv['borrowed_at'])) {
+                        $tsLabel = strtotime($hv['borrowed_at']);
+                        if ($tsLabel !== false) {
+                          $dateLabel = date('F j, Y', $tsLabel);
                         }
                       }
-                      if (!isset($groups[$label])) {
-                        $groups[$label] = [];
-                        $groupOrder[] = $label;
-                      }
-                      $groups[$label][] = $hvTmp;
-                    }
-                  ?>
-                  <?php foreach ($groupOrder as $gi => $dateLabel): ?>
-                    <tr>
-                      <td colspan="8">
-                        <span class="date-group-header">
-                          <i class="bi bi-calendar3"></i>
-                          <span><?php echo htmlspecialchars($dateLabel); ?></span>
-                        </span>
-                      </td>
-                    </tr>
-                    <tr class="table-light">
-                      <th>User ID</th>
-                      <th>User</th>
-                      <th>Student ID</th>
-                      <th>Serial ID</th>
-                      <th>Item/Model</th>
-                      <th>Category</th>
-                      <th class="col-datetime">Time Borrowed</th>
-                      <th class="col-datetime">Time Returned</th>
-                    </tr>
-                    <?php foreach ($groups[$dateLabel] as $hv): ?>
-                      <?php
-                        $mn = trim((string)($hv['model_name'] ?? ''));
-                        $cat = trim((string)($hv['category'] ?? ''));
-                        $usr = trim((string)($hv['full_name'] ?? ($hv['username'] ?? '')));
-                        $ser = trim((string)($hv['serial_no'] ?? ''));
-                        $modelClass = '';
-                        $catClass = '';
-                        $userClass = '';
-                        $serialClass = '';
-                        $lenMn = strlen($mn);
-                        $lenCat = strlen($cat);
-                        $lenUsr = strlen($usr);
-                        $lenSer = strlen($ser);
-                        if ($lenMn > 30 && $lenMn <= 45) { $modelClass = 'shrink-1'; }
-                        elseif ($lenMn > 45 && $lenMn <= 60) { $modelClass = 'shrink-2'; }
-                        elseif ($lenMn > 60) { $modelClass = 'shrink-3'; }
-                        if ($lenCat > 20 && $lenCat <= 30) { $catClass = 'shrink-1'; }
-                        elseif ($lenCat > 30 && $lenCat <= 45) { $catClass = 'shrink-2'; }
-                        elseif ($lenCat > 45) { $catClass = 'shrink-3'; }
-                        if ($lenUsr > 18 && $lenUsr <= 26) { $userClass = 'shrink-1'; }
-                        elseif ($lenUsr > 26 && $lenUsr <= 34) { $userClass = 'shrink-2'; }
-                        elseif ($lenUsr > 34) { $userClass = 'shrink-3'; }
-                        if ($lenSer > 12 && $lenSer <= 18) { $serialClass = 'shrink-1'; }
-                        elseif ($lenSer > 18 && $lenSer <= 24) { $serialClass = 'shrink-2'; }
-                        elseif ($lenSer > 24) { $serialClass = 'shrink-3'; }
-                      ?>
+                    ?>
+                    <?php if ($dateLabel !== $lastDateLabel): ?>
                       <tr>
-                        <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['user_id'] ?? '')); ?></span></td>
-                        <td class="<?php echo $userClass; ?>"><span class="two-line"><?php echo htmlspecialchars($usr); ?></span></td>
-                        <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['school_id'] ?? '')); ?></span></td>
-                        <td class="<?php echo $serialClass; ?>"><span class="two-line"><?php echo htmlspecialchars($ser); ?></span></td>
-                        <td class="<?php echo $modelClass; ?>" title="<?php echo htmlspecialchars($mn); ?>"><span class="two-line"><?php echo htmlspecialchars($mn); ?></span></td>
-                        <td class="<?php echo $catClass; ?>"><span class="two-line"><?php echo htmlspecialchars($cat); ?></span></td>
-                        <td class="col-datetime"><?php
-                          if (!empty($hv['borrowed_at'])) {
-                            $ts = strtotime($hv['borrowed_at']);
-                            if ($ts !== false) {
-                              $timePart = date('g:iA', $ts);
-                              echo '<span class="dt"><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
-                            }
-                          }
-                        ?></td>
-                        <td class="col-datetime"><?php
-                          if (!empty($hv['returned_at'])) {
-                            $ts = strtotime($hv['returned_at']);
-                            if ($ts !== false) {
-                              $datePart = date('F d, Y', $ts);
-                              $timePart = date('g:iA', $ts);
-                              echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
-                            }
-                          }
-                        ?></td>
+                        <td colspan="7">
+                          <span class="date-group-header">
+                            <i class="bi bi-calendar3"></i>
+                            <span><?php echo htmlspecialchars($dateLabel); ?></span>
+                          </span>
+                        </td>
                       </tr>
-                    <?php endforeach; ?>
-                    <?php if ($gi < count($groupOrder) - 1): ?>
-                      <tr>
-                        <td colspan="8" class="p-0"><div class="date-separator"></div></td>
-                      </tr>
+                      <?php $lastDateLabel = $dateLabel; ?>
                     <?php endif; ?>
+                    <tr>
+                      <td class="<?php echo $userClass; ?>"><span class="two-line"><?php echo htmlspecialchars($usr); ?></span></td>
+                      <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['school_id'] ?? '')); ?></span></td>
+                      <td class="<?php echo $serialClass; ?>"><span class="two-line"><?php echo htmlspecialchars($ser); ?></span></td>
+                      <td class="<?php echo $modelClass; ?>" title="<?php echo htmlspecialchars($mn); ?>"><span class="two-line"><?php echo htmlspecialchars($mn); ?></span></td>
+                      <td class="<?php echo $catClass; ?>"><span class="two-line"><?php echo htmlspecialchars($cat); ?></span></td>
+                      <td class="col-datetime"><?php
+                        if (!empty($hv['borrowed_at'])) {
+                          $ts = strtotime($hv['borrowed_at']);
+                          if ($ts !== false) {
+                            $timePart = date('g:iA', $ts);
+                            echo '<span class="dt"><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                          }
+                        }
+                      ?></td>
+                      <td class="col-datetime"><?php
+                        if (!empty($hv['returned_at'])) {
+                          $ts = strtotime($hv['returned_at']);
+                          if ($ts !== false) {
+                            $datePart = date('F d, Y', $ts);
+                            $timePart = date('g:iA', $ts);
+                            echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                          }
+                        }
+                      ?></td>
+                    </tr>
                   <?php endforeach; ?>
                   <?php for ($i = 0; $i < $padRows; $i++): ?>
                     <tr>
-                      <td>&nbsp;</td>
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
                       <td>&nbsp;</td>
