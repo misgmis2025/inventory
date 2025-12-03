@@ -145,13 +145,14 @@ $pages = !empty($history) ? [$history] : [];
     @media print {
       .no-print { display: none !important; }
       html, body { margin: 0 !important; background: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { padding-bottom: 0.90in !important; }
       * { background: #ffffff !important; color: #000 !important; box-shadow: none !important; }
       .print-table thead { display: table-header-group; }
-      .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 10px; }
-      .print-table th, .print-table td { padding: .40rem .45rem; vertical-align: middle; line-height: 1.30; text-align: left; }
-      .print-table thead th { font-size: 11px; }
-      .print-table tbody td { font-size: 9px; }
-      .print-table .col-datetime { white-space: normal; font-size: 9px; }
+      .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 9px; }
+      .print-table th, .print-table td { padding: .30rem .35rem; vertical-align: middle; line-height: 1.20; text-align: left; }
+      .print-table thead th { font-size: 10px; }
+      .print-table tbody td { font-size: 8px; }
+      .print-table .col-datetime { white-space: normal; font-size: 8px; }
       .col-datetime .dt { white-space: normal; }
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
@@ -163,20 +164,20 @@ $pages = !empty($history) ? [$history] : [];
       .container-fluid { padding-left: 0 !important; padding-right: 0 !important; }
       #page-content-wrapper, .print-doc { margin-left: 0 !important; margin-right: 0 !important; }
       .report-title { margin: 6px 0 14px !important; }
-      .print-doc .print-table { margin-top: 10px !important; }
+      .print-doc .print-table { margin-top: 6px !important; }
       .container-fluid.pb-3 { padding-bottom: 0 !important; }
       .eca-footer { margin-top: 16px !important; }
       .print-footer-fixed { position: fixed; left: 0; right: 0; bottom: 0.20in; }
       /* Responsive font shrinking helpers */
-      .shrink-1 { font-size: 11px !important; }
-      .shrink-2 { font-size: 10px !important; }
-      .shrink-3 { font-size: 9px !important; }
+      .shrink-1 { font-size: 10px !important; }
+      .shrink-2 { font-size: 9px !important; }
+      .shrink-3 { font-size: 8px !important; }
       /* Datetime text container to enforce ellipsis */
       .dt { display: inline-block; max-width: 100%; white-space: nowrap; }
       .col-datetime .dt .dt-date,
       .col-datetime .dt .dt-time { display: block; }
-      .col-datetime .dt { line-height: 1.35; min-height: calc(1.35em * 2); }
-      .two-line { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.35; max-height: calc(1.35em * 2); }
+      .col-datetime .dt { line-height: 1.25; min-height: calc(1.25em * 2); }
+      .two-line { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; line-height: 1.25; max-height: calc(1.25em * 2); }
     }
     .table-scroll { max-height: 480px; overflow-y: auto; }
     .table-responsive { margin-top: 8px; }
