@@ -156,7 +156,8 @@ $pages = !empty($history) ? [$history] : [];
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
       .print-doc { width: 100% !important; border-collapse: collapse !important; border-spacing: 0 !important; }
-      .print-doc thead, .print-doc tfoot { display: table-row-group !important; }
+      .print-doc thead { display: table-row-group !important; }
+      .print-doc tfoot { display: none !important; }
       .print-doc thead tr:first-child { page-break-before: avoid !important; break-before: avoid-page !important; }
       .page-break { page-break-before: always !important; break-before: page !important; }
       .container-fluid { padding-left: 0 !important; padding-right: 0 !important; }
@@ -165,6 +166,7 @@ $pages = !empty($history) ? [$history] : [];
       .print-doc .print-table { margin-top: 10px !important; }
       .container-fluid.pb-3 { padding-bottom: 0 !important; }
       .eca-footer { margin-top: 16px !important; }
+      .print-footer-fixed { position: fixed; left: 0.30in; right: 0.30in; bottom: 0.30in; }
       /* Responsive font shrinking helpers */
       .shrink-1 { font-size: 11px !important; }
       .shrink-2 { font-size: 10px !important; }
@@ -195,7 +197,10 @@ $pages = !empty($history) ? [$history] : [];
     .eca-form-row label { font-weight: 600; font-size: 10pt; }
     .eca-input { border: none; border-bottom: 1px solid #000; outline: none; padding: 2px 4px; min-width: 200px; font-size: 10pt; }
     .eca-input.date-field { min-width: 160px; }
-    @media screen { .eca-print-value { display: none !important; } }
+    @media screen {
+      .eca-print-value { display: none !important; }
+      .print-footer-fixed { display: none !important; }
+    }
     @media print {
       #prepInputFoot, #checkInputFoot,
       #deptInput, #dateInput { display: none !important; }
@@ -441,6 +446,20 @@ $pages = !empty($history) ? [$history] : [];
       </td></tr>
     </tfoot>
   </table>
+  <div class="print-footer-fixed">
+    <div class="eca-footer">
+      <div class="eca-form-row">
+        <div class="field">
+          <label>Prepared by:</label>
+          <span id="prepPrintSpanFootFixed" class="eca-print-value"></span>
+        </div>
+        <div class="field">
+          <label>Checked by:</label>
+          <span id="checkPrintSpanFootFixed" class="eca-print-value"></span>
+        </div>
+      </div>
+    </div>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     // Mirror Department/Date (header) and Prepared/Checked (footer inputs) to print spans
@@ -450,14 +469,14 @@ $pages = !empty($history) ? [$history] : [];
         var date = document.getElementById('dateInput')?.value || '';
         var prep = document.getElementById('prepInputFoot')?.value || '';
         var check = document.getElementById('checkInputFoot')?.value || '';
+        var prepText = (prep && prep.trim() !== '') ? prep : '\u00A0';
+        var checkText = (check && check.trim() !== '') ? check : '\u00A0';
         try { document.getElementById('deptPrintSpan').textContent = dept; } catch(_){ }
         try { document.getElementById('datePrintSpan').textContent = date; } catch(_){ }
-        try {
-          document.getElementById('prepPrintSpanFoot').textContent = (prep && prep.trim() !== '') ? prep : '\u00A0';
-        } catch(_){ }
-        try {
-          document.getElementById('checkPrintSpanFoot').textContent = (check && check.trim() !== '') ? check : '\u00A0';
-        } catch(_){ }
+        try { document.getElementById('prepPrintSpanFoot').textContent = prepText; } catch(_){ }
+        try { document.getElementById('checkPrintSpanFoot').textContent = checkText; } catch(_){ }
+        try { document.getElementById('prepPrintSpanFootFixed').textContent = prepText; } catch(_){ }
+        try { document.getElementById('checkPrintSpanFootFixed').textContent = checkText; } catch(_){ }
       }
       document.addEventListener('DOMContentLoaded', function(){
         syncMirrors();
