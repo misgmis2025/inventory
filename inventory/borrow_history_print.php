@@ -127,8 +127,8 @@ try {
 
 // If Mongo failed, leave $history empty and render safely
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
-// Build fixed-size pages for printing (15 rows per page)
-$pages = array_chunk($history, 15);
+// Let the browser handle page breaks; render all rows in a single sequence
+$pages = !empty($history) ? [$history] : [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -147,7 +147,6 @@ $pages = array_chunk($history, 15);
       html, body { margin: 0 !important; background: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       * { background: #ffffff !important; color: #000 !important; box-shadow: none !important; }
       .print-table thead { display: table-header-group; }
-      .print-doc tfoot { display: table-footer-group; }
       .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 10px; }
       .print-table th, .print-table td { padding: .40rem .45rem; vertical-align: middle; line-height: 1.30; text-align: left; }
       .print-table thead th { font-size: 11px; }
@@ -157,6 +156,7 @@ $pages = array_chunk($history, 15);
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
       .print-doc { width: 100% !important; border-collapse: collapse !important; border-spacing: 0 !important; }
+      .print-doc thead, .print-doc tfoot { display: table-row-group !important; }
       .print-doc thead tr:first-child { page-break-before: avoid !important; break-before: avoid-page !important; }
       .page-break { page-break-before: always !important; break-before: page !important; }
       .container-fluid { padding-left: 0 !important; padding-right: 0 !important; }
@@ -258,7 +258,7 @@ $pages = array_chunk($history, 15);
     <tbody>
       <tr><td style="padding:0;">
         <?php $pagesToRender = !empty($pages) ? $pages : [[]]; ?>
-        <?php foreach ($pagesToRender as $pi => $displayRows): $padRows = 15 - count($displayRows); ?>
+        <?php foreach ($pagesToRender as $pi => $displayRows): $padRows = 0; ?>
           <?php if (empty($displayRows)): ?>
             <div class="table-responsive">
               <table class="table table-bordered table-sm align-middle print-table">
