@@ -213,7 +213,7 @@ if (!$USED_MONGO) {
       #userBellModal .ubm-body{ padding:0; overflow:auto; }
     </style>
 </head>
-<body class="allow-mobile">
+<body class="allow-mobile page-fade-in">
     <!-- Mobile Menu Toggle Button -->
     <button class="mobile-menu-toggle d-md-none" onclick="toggleSidebar()">
         <i class="bi bi-list"></i>

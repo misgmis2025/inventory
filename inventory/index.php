@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="css/style.css" />
     <link rel="icon" type="image/png" href="images/logo-removebg.png?v=<?php echo filemtime(__DIR__.'/images/logo-removebg.png').'-'.filesize(__DIR__.'/images/logo-removebg.png'); ?>" />
 </head>
-<body class="bg-light allow-mobile">
+<body class="bg-light allow-mobile page-fade-in">
     <style>
       .login-wrapper {
         min-height: 100vh;
@@ -322,6 +322,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           window.addEventListener('keydown', handleCaps);
           window.addEventListener('keyup', handleCaps);
         }
+      })();
+    </script>
+    <script>
+      (function(){
+        var body = document.body;
+        if (!body) return;
+        var DURATION = 250;
+        function fadeAndGo(url) {
+          if (!url) return;
+          if (!body.classList.contains('page-fade-out')) {
+            body.classList.add('page-fade-out');
+          }
+          setTimeout(function(){ window.location.href = url; }, DURATION);
+        }
+        document.addEventListener('click', function(e){
+          if (e.defaultPrevented) return;
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          var link = e.target.closest && e.target.closest('a');
+          if (!link) return;
+          var href = link.getAttribute('href');
+          if (!href || href.charAt(0) === '#' || /^javascript:/i.test(href)) return;
+          if (link.target && link.target !== '' && link.target !== '_self') return;
+          if (link.hasAttribute('download')) return;
+          if (link.dataset && link.dataset.noTransition === '1') return;
+          if (link.classList && link.classList.contains('no-page-transition')) return;
+          if (link.origin && link.origin !== window.location.origin) return;
+          e.preventDefault();
+          fadeAndGo(href);
+        });
+        document.addEventListener('submit', function(e){
+          if (e.defaultPrevented) return;
+          var form = e.target;
+          if (!form || form.nodeName !== 'FORM') return;
+          if (form.target && form.target !== '' && form.target !== '_self') return;
+          if (form.dataset && form.dataset.noTransition === '1') return;
+          e.preventDefault();
+          body.classList.add('page-fade-out');
+          setTimeout(function(){ form.submit(); }, DURATION);
+        });
       })();
     </script>
 </body>

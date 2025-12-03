@@ -576,7 +576,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
       }
     </style>
 </head>
-<body class="allow-mobile">
+<body class="allow-mobile page-fade-in">
     
     <div class="d-flex">
         <!-- Sidebar -->
@@ -1273,71 +1273,43 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         });
       })();
     </script>
-</script>
-    <style>
-      @media (max-width: 768px) {
-        .bottom-nav{ position: fixed; bottom: 0; left:0; right:0; z-index: 1050; background:#fff; border-top:1px solid #dee2e6; display:flex; justify-content:space-around; padding:8px 6px; transition: transform .2s ease-in-out; }
-        .bottom-nav.hidden{ transform: translateY(100%); }
-        .bottom-nav a{ text-decoration:none; font-size:12px; color:#333; display:flex; flex-direction:column; align-items:center; gap:4px; }
-        .bottom-nav a .bi{ font-size:18px; }
-        .bottom-nav-toggle{ position: fixed; right: 14px; bottom: 14px; z-index: 1060; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: bottom .2s ease-in-out; }
-        .bottom-nav-toggle.raised{ bottom: 78px; }
-        .bottom-nav-toggle .bi{ font-size: 1.2rem; }
-      }
-    </style>
-    <button type="button" class="btn btn-primary bottom-nav-toggle d-md-none" id="bnToggleDash" aria-controls="dashBottomNav" aria-expanded="false" title="Open menu">
-      <i class="bi bi-list"></i>
-    </button>
-    <nav class="bottom-nav d-md-none hidden" id="dashBottomNav">
-      <a href="admin_dashboard.php" aria-label="Dashboard">
-        <i class="bi bi-speedometer2"></i>
-        <span>Dashboard</span>
-      </a>
-      <a href="admin_borrow_center.php" aria-label="Borrow">
-        <i class="bi bi-clipboard-check"></i>
-        <span>Borrow</span>
-      </a>
-      <a href="qr_scanner.php" aria-label="QR">
-        <i class="bi bi-qr-code-scan"></i>
-        <span>QR</span>
-      </a>
-      <a href="change_password.php" aria-label="Password">
-        <i class="bi bi-key"></i>
-        <span>Password</span>
-      </a>
-      <a href="logout.php" aria-label="Logout" onclick="return confirm('Logout now?');">
-        <i class="bi bi-box-arrow-right"></i>
-        <span>Logout</span>
-      </a>
-    </nav>
     <script>
       (function(){
-        try{
-          var btn = document.getElementById('bnToggleDash');
-          var nav = document.getElementById('dashBottomNav');
-          if (btn && nav) {
-            btn.addEventListener('click', function(){
-              var hid = nav.classList.toggle('hidden');
-              btn.setAttribute('aria-expanded', String(!hid));
-              if (!hid) {
-                btn.classList.add('raised');
-                btn.title = 'Close menu';
-                var i = btn.querySelector('i'); if (i) { i.className = 'bi bi-x'; }
-                try { if (typeof window.__adm_adjust_toast === 'function') window.__adm_adjust_toast(); } catch(_){ }
-              } else {
-                btn.classList.remove('raised');
-                btn.title = 'Open menu';
-                var i2 = btn.querySelector('i'); if (i2) { i2.className = 'bi bi-list'; }
-                try { if (typeof window.__adm_adjust_toast === 'function') window.__adm_adjust_toast(); } catch(_){ }
-              }
-            });
+        var body = document.body;
+        if (!body) return;
+        var DURATION = 250;
+        function fadeAndGo(url) {
+          if (!url) return;
+          if (!body.classList.contains('page-fade-out')) {
+            body.classList.add('page-fade-out');
           }
-          var p=(location.pathname.split('/').pop()||'').split('?')[0].toLowerCase();
-          document.querySelectorAll('.bottom-nav a[href]').forEach(function(a){
-            var h=(a.getAttribute('href')||'').split('?')[0].toLowerCase();
-            if(h===p){ a.classList.add('active'); a.setAttribute('aria-current','page'); }
-          });
-        }catch(_){ }
+          setTimeout(function(){ window.location.href = url; }, DURATION);
+        }
+        document.addEventListener('click', function(e){
+          if (e.defaultPrevented) return;
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          var link = e.target.closest && e.target.closest('a');
+          if (!link) return;
+          var href = link.getAttribute('href');
+          if (!href || href.charAt(0) === '#' || /^javascript:/i.test(href)) return;
+          if (link.target && link.target !== '' && link.target !== '_self') return;
+          if (link.hasAttribute('download')) return;
+          if (link.dataset && link.dataset.noTransition === '1') return;
+          if (link.classList && link.classList.contains('no-page-transition')) return;
+          if (link.origin && link.origin !== window.location.origin) return;
+          e.preventDefault();
+          fadeAndGo(href);
+        });
+        document.addEventListener('submit', function(e){
+          if (e.defaultPrevented) return;
+          var form = e.target;
+          if (!form || form.nodeName !== 'FORM') return;
+          if (form.target && form.target !== '' && form.target !== '_self') return;
+          if (form.dataset && form.dataset.noTransition === '1') return;
+          e.preventDefault();
+          body.classList.add('page-fade-out');
+          setTimeout(function(){ form.submit(); }, DURATION);
+        });
       })();
     </script>
   

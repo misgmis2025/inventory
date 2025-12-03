@@ -391,6 +391,19 @@ button[data-bs-target="#addItemModal"],
     font-size: 1.1rem;
 }
 
+/* Page transition helpers */
+.page-fade-in {
+    animation: pageFadeIn 0.25s ease-in-out;
+}
+@keyframes pageFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.page-fade-out {
+    opacity: 0;
+    transition: opacity 0.25s ease-in-out;
+}
+
 /* ===== SCROLLABLE TABLES (show ~5 rows) ===== */
 /* Top-level tables within card bodies (e.g., Items summary and Recent Scans) */
 #page-content-wrapper .card-body.p-0 > .table-responsive {
