@@ -3,11 +3,26 @@
 
   var body = document.body;
   var DURATION = 250;
+  var fadeRoot = null;
 
   function ensureBody(){
     if (body) return body;
     body = document.body || body;
     return body;
+  }
+
+  function getFadeRoot(){
+    if (fadeRoot && fadeRoot.ownerDocument === document && document.contains(fadeRoot)) {
+      return fadeRoot;
+    }
+    var el = null;
+    try {
+      el = document.querySelector('[data-page-shell]');
+      if (!el) el = document.getElementById('page-content-wrapper');
+    } catch(_){ }
+    if (!el) el = ensureBody();
+    fadeRoot = el;
+    return fadeRoot;
   }
 
   function isSameOrigin(link){
@@ -34,7 +49,7 @@
   }
 
   function fadeAndGo(url){
-    var b = ensureBody();
+    var b = getFadeRoot();
     if (!b){ window.location.href = url; return; }
     if (!b.classList.contains('page-fade-out')) {
       b.classList.add('page-fade-out');
@@ -70,7 +85,7 @@
     if (form.dataset && form.dataset.noTransition === '1') return;
 
     e.preventDefault();
-    var b = ensureBody();
+    var b = getFadeRoot();
     if (b) {
       b.classList.add('page-fade-out');
     }
