@@ -146,8 +146,8 @@ $pages = array_chunk($history, 15);
       .no-print { display: none !important; }
       html, body { margin: 0 !important; background: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       * { background: #ffffff !important; color: #000 !important; box-shadow: none !important; }
-      thead { display: table-header-group; }
-      tfoot { display: table-footer-group; }
+      .print-table thead { display: table-header-group; }
+      .print-doc tfoot { display: table-footer-group; }
       .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 10px; }
       .print-table th, .print-table td { padding: .40rem .45rem; vertical-align: middle; line-height: 1.30; text-align: left; }
       .print-table thead th { font-size: 11px; }
