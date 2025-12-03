@@ -148,9 +148,11 @@ $pages = array_chunk($history, 15);
       * { background: #ffffff !important; color: #000 !important; box-shadow: none !important; }
       thead { display: table-header-group; }
       tfoot { display: table-footer-group; }
-      .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 11px; }
-      .print-table th, .print-table td { padding: .55rem .60rem; vertical-align: middle; line-height: 1.35; text-align: left; }
-      .print-table .col-datetime { white-space: normal; font-size: 10px; }
+      .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 10px; }
+      .print-table th, .print-table td { padding: .40rem .45rem; vertical-align: middle; line-height: 1.30; text-align: left; }
+      .print-table thead th { font-size: 11px; }
+      .print-table tbody td { font-size: 9px; }
+      .print-table .col-datetime { white-space: normal; font-size: 9px; }
       .col-datetime .dt { white-space: normal; }
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
@@ -326,6 +328,7 @@ $pages = array_chunk($history, 15);
                         </span>
                       </th>
                     </tr>
+                    <?php if ($gi === 0): ?>
                     <tr>
                       <th>User</th>
                       <th>Student ID</th>
@@ -335,6 +338,7 @@ $pages = array_chunk($history, 15);
                       <th class="col-datetime">Time Borrowed</th>
                       <th class="col-datetime">Time Returned</th>
                     </tr>
+                    <?php endif; ?>
                   </thead>
                   <tbody>
                     <?php foreach ($groups[$dateLabel] as $hv): ?>
