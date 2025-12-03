@@ -166,7 +166,7 @@ $pages = !empty($history) ? [$history] : [];
       .print-doc .print-table { margin-top: 10px !important; }
       .container-fluid.pb-3 { padding-bottom: 0 !important; }
       .eca-footer { margin-top: 16px !important; }
-      .print-footer-fixed { position: fixed; left: 0.30in; right: 0.30in; bottom: 0.30in; }
+      .print-footer-fixed { position: fixed; left: 0; right: 0; bottom: 0.20in; }
       /* Responsive font shrinking helpers */
       .shrink-1 { font-size: 11px !important; }
       .shrink-2 { font-size: 10px !important; }
@@ -447,15 +447,17 @@ $pages = !empty($history) ? [$history] : [];
     </tfoot>
   </table>
   <div class="print-footer-fixed">
-    <div class="eca-footer">
-      <div class="eca-form-row">
-        <div class="field">
-          <label>Prepared by:</label>
-          <span id="prepPrintSpanFootFixed" class="eca-print-value"></span>
-        </div>
-        <div class="field">
-          <label>Checked by:</label>
-          <span id="checkPrintSpanFootFixed" class="eca-print-value"></span>
+    <div class="container-fluid pb-3">
+      <div class="eca-footer">
+        <div class="eca-form-row">
+          <div class="field">
+            <label>Prepared by:</label>
+            <span id="prepPrintSpanFootFixed" class="eca-print-value"></span>
+          </div>
+          <div class="field">
+            <label>Checked by:</label>
+            <span id="checkPrintSpanFootFixed" class="eca-print-value"></span>
+          </div>
         </div>
       </div>
     </div>
