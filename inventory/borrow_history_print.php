@@ -271,14 +271,7 @@ $pages = array_chunk($history, 15);
               </colgroup>
               <thead class="table-light">
                 <tr>
-                  <th>User ID</th>
-                  <th>User</th>
-                  <th>Student ID</th>
-                  <th>Serial ID</th>
-                  <th>Item/Model</th>
-                  <th>Category</th>
-                  <th class="col-datetime">Time Borrowed</th>
-                  <th class="col-datetime">Time Returned</th>
+                  <th colspan="8">&nbsp;</th>
                 </tr>
               </thead>
               <tbody>
@@ -312,6 +305,16 @@ $pages = array_chunk($history, 15);
                           <span><?php echo htmlspecialchars($dateLabel); ?></span>
                         </span>
                       </td>
+                    </tr>
+                    <tr class="table-light">
+                      <th>User ID</th>
+                      <th>User</th>
+                      <th>Student ID</th>
+                      <th>Serial ID</th>
+                      <th>Item/Model</th>
+                      <th>Category</th>
+                      <th class="col-datetime">Time Borrowed</th>
+                      <th class="col-datetime">Time Returned</th>
                     </tr>
                     <?php foreach ($groups[$dateLabel] as $hv): ?>
                       <?php
