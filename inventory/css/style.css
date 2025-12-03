@@ -51,6 +51,18 @@ body {
     color: #212529; /* Ensure text is visible */
 }
 
+ .page-fade-in {
+     animation: pageFadeIn 0.25s ease-in-out;
+ }
+ @keyframes pageFadeIn {
+     from { opacity: 0; }
+     to { opacity: 1; }
+ }
+ .page-fade-out {
+     opacity: 0;
+     transition: opacity 0.25s ease-in-out;
+ }
+
 /* Debug styles to ensure content visibility */
 .card, .form-section, .manual-input, .camera-section, .file-upload, .info-card, .preview-section {
     background-color: #ffffff !important;
