@@ -48,8 +48,8 @@
     return false;
   }
 
-  function fadeAndGo(url){
-    var b = getFadeRoot();
+  function fadeAndGo(url, useBody){
+    var b = useBody ? ensureBody() : getFadeRoot();
     if (!b){ window.location.href = url; return; }
     if (!b.classList.contains('page-fade-out')) {
       b.classList.add('page-fade-out');
@@ -73,8 +73,18 @@
       return;
     }
 
+    var useBodyForFade = false;
+    try {
+      var urlObj = new URL(href, window.location.href);
+      var path = urlObj.pathname || '';
+      var lastSegment = path.split('/').pop().toLowerCase();
+      if (lastSegment === 'logout.php') {
+        useBodyForFade = true;
+      }
+    } catch(_){ }
+
     e.preventDefault();
-    fadeAndGo(href);
+    fadeAndGo(href, useBodyForFade);
   });
 
   document.addEventListener('submit', function(e){

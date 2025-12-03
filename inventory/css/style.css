@@ -53,6 +53,7 @@ body {
 
  .page-fade-in {
      animation: pageFadeIn 0.15s ease-in-out;
+     animation-fill-mode: both;
  }
  @keyframes pageFadeIn {
      from { opacity: 0; }
