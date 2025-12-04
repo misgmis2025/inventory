@@ -403,6 +403,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <label class="form-label fw-bold" for="confirm_password">Confirm New Password</label>
                                 <div class="position-relative has-capslock-icon">
                                     <input type="password" id="confirm_password" name="confirm_password" class="form-control" required />
+                                    <button type="button" id="view_confirm_password_change" class="password-toggle-btn" aria-label="Show password">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
                                     <span class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
                                         <i class="bi bi-capslock-fill"></i>
                                     </span>
@@ -780,6 +783,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const toggle = document.getElementById('toggle_password_change');
             const capsIcons = Array.prototype.slice.call(document.querySelectorAll('.capslock-indicator'));
             const viewBtn = document.getElementById('view_password_change');
+            const viewConfirmBtn = document.getElementById('view_confirm_password_change');
 
             let currentOk = false;
             let timer = null;
@@ -845,6 +849,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
                     }
                 }
+                if (viewConfirmBtn) {
+                    const icon2 = viewConfirmBtn.querySelector('i');
+                    if (icon2) {
+                        icon2.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+                    }
+                }
             }
             function setCapsIcon(isOn) {
                 if (!capsIcons || !capsIcons.length) return;
@@ -875,6 +885,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (viewBtn) {
                 viewBtn.addEventListener('click', function(e){
+                    e.preventDefault();
+                    const show = !pwd || pwd.type === 'password';
+                    applyPasswordVisibility(show);
+                });
+            }
+
+            if (viewConfirmBtn) {
+                viewConfirmBtn.addEventListener('click', function(e){
                     e.preventDefault();
                     const show = !pwd || pwd.type === 'password';
                     applyPasswordVisibility(show);

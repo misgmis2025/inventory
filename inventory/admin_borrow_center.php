@@ -2560,6 +2560,74 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
 }
 // JSON endpoints handled above via Mongo
 
+// Admin notification clear: mark a single processed request as cleared for this admin
+if ($act === 'admin_notif_clear' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $clears = $db->selectCollection('admin_notif_clears');
+    $admin = (string)($_SESSION['username'] ?? '');
+    $rid = (int)($_POST['request_id'] ?? 0);
+    if ($admin !== '' && $rid > 0) {
+      $clears->updateOne(
+        ['admin' => $admin, 'request_id' => $rid],
+        ['$set' => ['admin' => $admin, 'request_id' => $rid, 'cleared_at' => date('Y-m-d H:i:s')]],
+        ['upsert' => true]
+      );
+    }
+    echo json_encode(['ok' => true]);
+  } catch (Throwable $e) {
+    echo json_encode(['ok' => false]);
+  }
+  exit();
+}
+
+// Admin notification clear all: mark current processed notifications as cleared for this admin
+if ($act === 'admin_notif_clear_all' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  try {
+    @require_once __DIR__ . '/../vendor/autoload.php';
+    @require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $er = $db->selectCollection('equipment_requests');
+    $rf = $db->selectCollection('return_events');
+    $clears = $db->selectCollection('admin_notif_clears');
+    $admin = (string)($_SESSION['username'] ?? '');
+    if ($admin !== '') {
+      $limit = isset($_POST['limit']) ? max(1, min((int)$_POST['limit'], 1000)) : 300;
+      $ids = [];
+      try {
+        $cur = $er->find(['status' => ['$in' => ['Approved','Rejected']]], ['sort' => ['updated_at' => -1, 'approved_at' => -1, 'rejected_at' => -1, 'id' => -1], 'limit' => $limit]);
+        foreach ($cur as $row) {
+          $rid = (int)($row['id'] ?? 0); if ($rid > 0) { $ids[$rid] = true; }
+        }
+      } catch (Throwable $_a) {}
+      try {
+        $curR = $rf->find([], ['sort' => ['id' => -1], 'limit' => $limit]);
+        foreach ($curR as $e) {
+          $rid2 = (int)($e['request_id'] ?? 0); if ($rid2 > 0) { $ids[$rid2] = true; }
+        }
+      } catch (Throwable $_r) {}
+      if (!empty($ids)) {
+        $now = date('Y-m-d H:i:s');
+        foreach (array_keys($ids) as $rid) {
+          $clears->updateOne(
+            ['admin' => $admin, 'request_id' => (int)$rid],
+            ['$set' => ['admin' => $admin, 'request_id' => (int)$rid, 'cleared_at' => $now]],
+            ['upsert' => true]
+          );
+        }
+      }
+    }
+    echo json_encode(['ok' => true]);
+  } catch (Throwable $e) {
+    echo json_encode(['ok' => false]);
+  }
+  exit();
+}
+
 // Admin notifications: combined pending + processed (Approved/Rejected) with per-admin clears
 if ($act === 'admin_notifications' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   header('Content-Type: application/json');

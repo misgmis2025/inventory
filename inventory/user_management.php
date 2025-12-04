@@ -99,6 +99,18 @@ try {
             'school_id' => isset($u['school_id']) ? (string)$u['school_id'] : '',
         ];
     }
+    if (!empty($users)) {
+        $me = (string)($_SESSION['username'] ?? '');
+        if ($me !== '') {
+            usort($users, function($a, $b) use ($me) {
+                $isMeA = ($a['username'] === $me);
+                $isMeB = ($b['username'] === $me);
+                if ($isMeA && !$isMeB) return -1;
+                if ($isMeB && !$isMeA) return 1;
+                return strcasecmp($a['username'], $b['username']);
+            });
+        }
+    }
     $UM_MONGO_FILLED = true;
 } catch (Throwable $e) {
     $UM_MONGO_FILLED = false;

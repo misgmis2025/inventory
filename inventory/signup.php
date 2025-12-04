@@ -290,6 +290,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <label class="form-label" for="confirm_password">Confirm Password</label>
               <div class="position-relative has-capslock-icon">
                 <input id="confirm_password" class="form-control" type="password" name="confirm_password" placeholder="Re-enter your password" required />
+                <button type="button" id="view_confirm_password_signup" class="password-toggle-btn" aria-label="Show password">
+                  <i class="bi bi-eye"></i>
+                </button>
                 <span id="capslock_icon_signup_confirm" class="capslock-indicator" title="Caps Lock is ON" aria-hidden="true">
                   <i class="bi bi-capslock-fill"></i>
                 </span>
@@ -322,6 +325,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const userTakenMsg = document.getElementById('userTakenMsg');
         const capsIcons = Array.prototype.slice.call(document.querySelectorAll('.capslock-indicator'));
         const viewBtn = document.getElementById('view_password_signup');
+        const viewConfirmBtn = document.getElementById('view_confirm_password_signup');
 
         function passwordValid() {
           const val = pwd.value || '';
@@ -401,6 +405,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
             }
           }
+          if (viewConfirmBtn) {
+            const icon2 = viewConfirmBtn.querySelector('i');
+            if (icon2) {
+              icon2.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+            }
+          }
         }
         if (toggle) {
           toggle.addEventListener('change', function() {
@@ -409,6 +419,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (viewBtn) {
           viewBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const show = !pwd || pwd.type === 'password';
+            applyPasswordVisibility(show);
+          });
+        }
+        if (viewConfirmBtn) {
+          viewConfirmBtn.addEventListener('click', function(e) {
             e.preventDefault();
             const show = !pwd || pwd.type === 'password';
             applyPasswordVisibility(show);
