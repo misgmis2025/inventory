@@ -5301,7 +5301,7 @@ try {
                               </button>
                               <ul class="dropdown-menu dropdown-menu-end">
                                 <li>
-                                  <form method="POST" class="px-3 py-1">
+                                  <form method="POST" class="m-0">
                                     <input type="hidden" name="do" value="toggle_borrowable" />
                                     <input type="hidden" name="category" value="<?php echo htmlspecialchars($bm['category']); ?>" />
                                     <input type="hidden" name="model" value="<?php echo htmlspecialchars($bm['model_name']); ?>" />
@@ -5742,6 +5742,26 @@ try {
               <button type="submit" id="asApproveBtn" class="btn btn-primary" disabled><i class="bi bi-check2 me-1"></i>Approve</button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- QR Borrowed Item View Modal -->
+  <div class="modal fade" id="qrReturnAdminModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Borrowed Item (QR)</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><strong>Request ID:</strong> <span id="qrAdmReq"></span></div>
+          <div class="mb-2"><strong>Model:</strong> <span id="qrAdmModel"></span></div>
+          <div class="mb-2"><strong>Serial:</strong> <span id="qrAdmSerial"></span></div>
+          <div class="mb-2"><strong>Location:</strong> <span id="qrAdmLoc"></span></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
         </div>
       </div>
     </div>
