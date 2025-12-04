@@ -2888,9 +2888,20 @@ if (!empty($my_requests)) {
         </div>
       </div>
 
-      <?php if (isset($_GET['submitted'])): ?><div class="alert alert-success alert-dismissible fade show">Request submitted successfully!<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
-      <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show"><?php echo htmlspecialchars($message); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
-      <?php if ($error): ?><div class="alert alert-danger alert-dismissible fade show"><?php echo htmlspecialchars($error); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
+      <?php if (isset($_GET['submitted']) || $message || $error): ?>
+        <script>
+          window.__UR_FLASH = window.__UR_FLASH || {};
+          <?php if (isset($_GET['submitted'])): ?>
+          window.__UR_FLASH.submitted = true;
+          <?php endif; ?>
+          <?php if ($message): ?>
+          window.__UR_FLASH.message = <?php echo json_encode((string)$message, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+          <?php endif; ?>
+          <?php if ($error): ?>
+          window.__UR_FLASH.error = <?php echo json_encode((string)$error, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+          <?php endif; ?>
+        </script>
+      <?php endif; ?>
 
       <div class="row">
         <div class="d-none">
@@ -4477,16 +4488,11 @@ if (!empty($my_requests)) {
               // Close modal immediately
               try { const inst = bootstrap.Modal.getOrCreateInstance(document.getElementById('userQrReturnModal')); inst.hide(); } catch(_){ }
               
-              // Show green success alert to the user
+              // Show floating success toast to the user
               try {
-                const alert = document.createElement('div');
-                alert.className = 'alert alert-success alert-dismissible fade show';
-                alert.setAttribute('role','alert');
-                alert.innerHTML = '<i class="bi bi-check2-circle me-2"></i>Return processed successfully via QR.'+
-                  '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
-                const container = document.querySelector('#content') || document.body;
-                container.insertBefore(alert, container.firstChild);
-                setTimeout(()=>{ try{ alert.classList.remove('show'); alert.addEventListener('transitionend', ()=>{ try{ alert.remove(); }catch(__){} }, {once:true}); }catch(__){} }, 3500);
+                if (typeof showToastCustom === 'function') {
+                  showToastCustom('Return processed successfully via QR.','alert-success');
+                }
               } catch(__){}
               
               // Refresh My Borrowed and Overdue lists without full reload
@@ -5200,6 +5206,22 @@ if (!empty($my_requests)) {
         attachSwipeForToast(el);
         setTimeout(()=>{ try{ el.classList.add('toast-fade-out'); setTimeout(()=>{ try{ el.remove(); adjustToastOffsets(); }catch(_){ } }, 220); }catch(_){ } }, 5000);
       }
+
+      // Show any server-side flash messages (submitted/message/error) as toasts
+      try {
+        if (window.__UR_FLASH) {
+          if (window.__UR_FLASH.submitted) {
+            showToastCustom('Request submitted successfully!','alert-success');
+          }
+          if (window.__UR_FLASH.message) {
+            showToastCustom(window.__UR_FLASH.message,'alert-success');
+          }
+          if (window.__UR_FLASH.error) {
+            showToastCustom(window.__UR_FLASH.error,'alert-danger');
+          }
+          window.__UR_FLASH = null;
+        }
+      } catch(_){ }
       function adjustToastOffsets(){
         try{
           const tw = document.getElementById('userToastWrap'); if (!tw) return;

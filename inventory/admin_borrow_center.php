@@ -4022,6 +4022,25 @@ try {
           try{ window.adjustAdminToastOffset(); }catch(_){ }
           function attachSwipeForToast(el){ try{ var sx=0, sy=0, dx=0, moving=false, removed=false; var onStart=function(ev){ try{ var t=ev.touches?ev.touches[0]:ev; sx=t.clientX; sy=t.clientY; dx=0; moving=true; el.style.willChange='transform,opacity'; el.classList.add('toast-slide'); el.style.transition='none'; }catch(_){}}; var onMove=function(ev){ if(!moving||removed) return; try{ var t=ev.touches?ev.touches[0]:ev; dx=t.clientX - sx; var adx=Math.abs(dx); var od=1 - Math.min(1, adx/140); el.style.transform='translateX('+dx+'px)'; el.style.opacity=String(od); }catch(_){}}; var onEnd=function(){ if(!moving||removed) return; moving=false; try{ el.style.transition='transform 180ms ease, opacity 180ms ease'; var adx=Math.abs(dx); if (adx>80){ removed=true; el.classList.add(dx>0?'toast-remove-right':'toast-remove-left'); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 200); } else { el.style.transform=''; el.style.opacity=''; } }catch(_){ } }; el.addEventListener('touchstart', onStart, {passive:true}); el.addEventListener('touchmove', onMove, {passive:true}); el.addEventListener('touchend', onEnd, {passive:true}); }catch(_){ } }
           function showToast(msg, cls){ var el=document.createElement('div'); el.className='alert '+(cls||'alert-info')+' shadow-sm border-0 toast-slide toast-enter'; el.style.minWidth='300px'; el.style.maxWidth='340px'; try{ if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches){ el.style.minWidth='180px'; el.style.maxWidth='200px'; el.style.fontSize='12px'; } }catch(_){ } el.innerHTML='<i class="bi bi-bell me-2"></i>'+String(msg||''); toastWrap.appendChild(el); try{ window.adjustAdminToastOffset(); }catch(_){ } attachSwipeForToast(el); setTimeout(function(){ try{ el.classList.add('toast-fade-out'); setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 220); }catch(_){ } }, 5000); }
+
+          // Show any server-side flash messages (approved/rejected/etc.) as admin toasts
+          try {
+            if (window.__AB_FLASH) {
+              if (window.__AB_FLASH.approved) {
+                showToast('Request approved successfully.','alert-success');
+              }
+              if (window.__AB_FLASH.rejected) {
+                showToast('Request rejected successfully.','alert-secondary');
+              }
+              if (window.__AB_FLASH.insufficient) {
+                showToast('Insufficient available units to fulfill the request.','alert-warning');
+              }
+              if (window.__AB_FLASH.error) {
+                showToast(window.__AB_FLASH.error,'alert-danger');
+              }
+              window.__AB_FLASH = null;
+            }
+          } catch(_){ }
           function playBeep(){ try{ if(!window.__brAudioCtx){ window.__brAudioCtx = new (window.AudioContext||window.webkitAudioContext)(); } var ctx = window.__brAudioCtx; if (ctx.state === 'suspended') { try{ ctx.resume(); }catch(_e){} } var o = ctx.createOscillator(); var g = ctx.createGain(); o.type='square'; o.frequency.setValueAtTime(880, ctx.currentTime); g.gain.setValueAtTime(0.0001, ctx.currentTime); o.connect(g); g.connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime+0.03); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.6); o.stop(ctx.currentTime+0.65); } catch(_e){} }
           var baseVerif = new Set(); var initFeed=false; var feeding=false;
           function pollVerif(){ if (feeding) return; feeding=true;
@@ -4427,20 +4446,33 @@ try {
     })();
   </script>
 
-      <?php if (isset($_GET['approved'])): ?>
-        <div class="alert alert-success alert-dismissible fade show mt-3"><i class="bi bi-check2-circle me-2"></i>Request approved successfully.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-      <?php endif; ?>
-      <?php if (isset($_GET['rejected'])): ?>
-        <div class="alert alert-secondary alert-dismissible fade show mt-3"><i class="bi bi-x-circle me-2"></i>Request rejected successfully.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-      <?php endif; ?>
-      <?php if (isset($_GET['insufficient'])): ?>
-        <div class="alert alert-warning alert-dismissible fade show mt-3"><i class="bi bi-exclamation-triangle me-2"></i>Insufficient available units to fulfill the request.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-      <?php endif; ?>
-      <?php if (!empty($_GET['error'])): $err=trim($_GET['error']); ?>
-        <div class="alert alert-danger alert-dismissible fade show mt-3"><i class="bi bi-x-circle me-2"></i>
-          <?php if ($err==='notpend'): ?><?php elseif ($err==='preferred_unavailable'): ?>The specified Model ID is not available.<?php elseif ($err==='item_mismatch'): ?>The scanned/typed item does not match the requested model and category. Please scan the correct item.<?php elseif ($err==='pick'): ?>Failed to lock items for this request. Try again.<?php elseif ($err==='stale'): ?>Update conflict. Refresh and retry.<?php elseif ($err==='tx'): ?>Transaction failed. Please retry.<?php elseif ($err==='time_required'): ?>Please provide valid time values. For Immediate, set Expected Return. For Reservation, set a future Start and End.<?php elseif ($err==='reservation_conflict'): ?>Expected return exceeds the cutoff due to an upcoming reservation. Please set an earlier return time.<?php else: ?>Action failed.<?php endif; ?>
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
+      <?php if (isset($_GET['approved']) || isset($_GET['rejected']) || isset($_GET['insufficient']) || !empty($_GET['error'])): ?>
+        <script>
+          window.__AB_FLASH = window.__AB_FLASH || {};
+          <?php if (isset($_GET['approved'])): ?>
+          window.__AB_FLASH.approved = true;
+          <?php endif; ?>
+          <?php if (isset($_GET['rejected'])): ?>
+          window.__AB_FLASH.rejected = true;
+          <?php endif; ?>
+          <?php if (isset($_GET['insufficient'])): ?>
+          window.__AB_FLASH.insufficient = true;
+          <?php endif; ?>
+          <?php if (!empty($_GET['error'])): $err=trim($_GET['error']); ?>
+          window.__AB_FLASH.error = <?php
+            $msg = '';
+            if ($err==='preferred_unavailable') $msg = 'The specified Model ID is not available.';
+            elseif ($err==='item_mismatch') $msg = 'The scanned/typed item does not match the requested model and category. Please scan the correct item.';
+            elseif ($err==='pick') $msg = 'Failed to lock items for this request. Try again.';
+            elseif ($err==='stale') $msg = 'Update conflict. Refresh and retry.';
+            elseif ($err==='tx') $msg = 'Transaction failed. Please retry.';
+            elseif ($err==='time_required') $msg = 'Please provide valid time values. For Immediate, set Expected Return. For Reservation, set a future Start and End.';
+            elseif ($err==='reservation_conflict') $msg = 'Expected return exceeds the cutoff due to an upcoming reservation. Please set an earlier return time.';
+            else $msg = 'Action failed.';
+            echo json_encode($msg, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+          ?>;
+          <?php endif; ?>
+        </script>
       <?php endif; ?>
 
       
