@@ -4,6 +4,8 @@
   var body = document.body;
   var DURATION = 150;
   var fadeRoot = null;
+  var loaderEl = null;
+  var loaderVisible = false;
 
   function ensureBody(){
     if (body) return body;
@@ -23,6 +25,52 @@
     if (!el) el = ensureBody();
     fadeRoot = el;
     return fadeRoot;
+  }
+
+  function ensureLoader(){
+    if (loaderEl && loaderEl.ownerDocument === document && document.contains(loaderEl)) {
+      return loaderEl;
+    }
+    var b = ensureBody();
+    if (!b) return null;
+    var el = null;
+    try {
+      el = document.getElementById('page-loader');
+    } catch(_){ }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'page-loader';
+      var inner = document.createElement('div');
+      inner.className = 'page-loader-inner';
+      var spinner = document.createElement('div');
+      spinner.className = 'page-loader-spinner';
+      var text = document.createElement('div');
+      text.className = 'page-loader-text';
+      text.textContent = 'Loading...';
+      inner.appendChild(spinner);
+      inner.appendChild(text);
+      el.appendChild(inner);
+      b.appendChild(el);
+    }
+    loaderEl = el;
+    return loaderEl;
+  }
+
+  function showLoader(){
+    var el = ensureLoader();
+    if (!el) return;
+    loaderVisible = true;
+    if (!el.classList.contains('page-loader-visible')) {
+      el.classList.add('page-loader-visible');
+    }
+  }
+
+  function hideLoader(){
+    if (!loaderVisible && !loaderEl) return;
+    var el = ensureLoader();
+    if (!el) return;
+    loaderVisible = false;
+    el.classList.remove('page-loader-visible');
   }
 
   function isSameOrigin(link){
@@ -49,6 +97,7 @@
   }
 
   function fadeAndGo(url, useBody){
+    showLoader();
     var b = useBody ? ensureBody() : getFadeRoot();
     if (!b){ window.location.href = url; return; }
     if (!b.classList.contains('page-fade-out')) {
@@ -95,6 +144,7 @@
     if (form.dataset && form.dataset.noTransition === '1') return;
 
     e.preventDefault();
+    showLoader();
     var b = getFadeRoot();
     if (b) {
       b.classList.add('page-fade-out');
@@ -112,6 +162,7 @@
       setTimeout(function(){
         try {
           root.classList.remove('page-fade-in');
+          hideLoader();
         } catch(_){ }
       }, DURATION + 50);
     } catch(_){ }
