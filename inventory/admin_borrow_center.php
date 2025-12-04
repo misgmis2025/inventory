@@ -4549,7 +4549,12 @@ try {
                                 <?php $isQr = isset($r['qr_serial_no']) && trim((string)$r['qr_serial_no']) !== ''; ?>
                                 <i class="bi <?php echo $isQr ? 'bi-check2-circle' : 'bi-qr-code-scan'; ?>"></i>
                               </button>
-                              <a href="admin_borrow_center.php?action=reject&id=<?php echo (int)$r['id']; ?>" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Reject" aria-label="Reject" onclick="return confirm('Reject this request?');"><i class="bi bi-x"></i></a>
+                              <button type="button" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6 reject-btn" title="Reject" aria-label="Reject"
+                                      data-reject-id="<?php echo (int)$r['id']; ?>"
+                                      data-reject-item="<?php echo htmlspecialchars($r['item_name']); ?>"
+                                      data-reject-user="<?php echo htmlspecialchars($r['user_full_name'] ?? $r['username']); ?>">
+                                <i class="bi bi-x"></i>
+                              </button>
                           </div>
                             </div>
                           </td>
@@ -4646,9 +4651,24 @@ try {
           (function(){
             document.addEventListener('DOMContentLoaded', function(){
               var tbody = document.getElementById('pendingTbody');
+              if (!tbody) return;
+
+              var detailsModal = null;
               var mdlEl = document.getElementById('requestDetailsModal');
-              if (!tbody || !mdlEl || !window.bootstrap || !bootstrap.Modal) return;
-              var detailsModal = bootstrap.Modal.getOrCreateInstance(mdlEl);
+              if (mdlEl && window.bootstrap && bootstrap.Modal) {
+                detailsModal = bootstrap.Modal.getOrCreateInstance(mdlEl);
+              }
+
+              var rejectModal = null;
+              var rEl = document.getElementById('rejectConfirmModal');
+              if (rEl && window.bootstrap && bootstrap.Modal) {
+                rejectModal = bootstrap.Modal.getOrCreateInstance(rEl);
+              }
+              var rejReq = document.getElementById('rejReqId');
+              var rejUser = document.getElementById('rejUser');
+              var rejItem = document.getElementById('rejItem');
+              var rejBtn = document.getElementById('rejConfirmBtn');
+              var pendingRejectId = '';
 
               function shouldIgnoreTarget(target){
                 if (!target || !target.closest) return false;
@@ -4657,11 +4677,44 @@ try {
               }
 
               tbody.addEventListener('click', function(e){
-                var row = e.target && e.target.closest && e.target.closest('tr.pending-row');
+                var t = e.target;
+                if (t && t.closest) {
+                  var rbtn = t.closest('.reject-btn');
+                  if (rbtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    pendingRejectId = rbtn.getAttribute('data-reject-id') || '';
+                    var u = rbtn.getAttribute('data-reject-user') || '';
+                    var it = rbtn.getAttribute('data-reject-item') || '';
+                    if (rejReq) rejReq.textContent = pendingRejectId;
+                    if (rejUser) rejUser.textContent = u;
+                    if (rejItem) rejItem.textContent = it;
+                    if (rejectModal) {
+                      rejectModal.show();
+                    } else if (pendingRejectId) {
+                      // Fallback if Bootstrap modal is unavailable
+                      if (window.confirm('Reject this request?')) {
+                        window.location.href = 'admin_borrow_center.php?action=reject&id=' + encodeURIComponent(pendingRejectId);
+                      }
+                    }
+                    return;
+                  }
+                }
+
+                var row = t && t.closest && t.closest('tr.pending-row');
                 if (!row) return;
-                if (shouldIgnoreTarget(e.target)) return;
-                detailsModal.show(row);
+                if (shouldIgnoreTarget(t)) return;
+                if (detailsModal) {
+                  detailsModal.show(row);
+                }
               });
+
+              if (rejBtn) {
+                rejBtn.addEventListener('click', function(){
+                  if (!pendingRejectId) return;
+                  window.location.href = 'admin_borrow_center.php?action=reject&id=' + encodeURIComponent(pendingRejectId);
+                });
+              }
 
               // Keyboard support: Enter/Space on a focused pending row opens details
               tbody.addEventListener('keydown', function(e){
@@ -4670,7 +4723,9 @@ try {
                 if (!row) return;
                 if (shouldIgnoreTarget(e.target)) return;
                 e.preventDefault();
-                detailsModal.show(row);
+                if (detailsModal) {
+                  detailsModal.show(row);
+                }
               });
             });
           })();
@@ -5359,24 +5414,26 @@ try {
   <script>
     // Live 1s polling for Pending, Borrowed, and Reservations tables
     function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
-    function renderPending(d){ const tb=document.getElementById('pendingTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.pending))?d.pending:[]; if(!list.length){ rows.push('<tr><td colspan="5" class="text-center text-muted">No pending requests.</td></tr>'); } else { list.forEach(function(r){ const dt = r.created_at_display? String(r.created_at_display) : (r.created_at? String(r.created_at):''); const typ = (r && r.qr_serial_no && String(r.qr_serial_no).trim()!=='') ? 'QR' : 'Manual'; rows.push('<tr class="pending-row" role="button" tabindex="0" data-bs-toggle="modal" data-bs-target="#requestDetailsModal"'+
-      ' data-user="'+escapeHtml((r.user_full_name||r.username||''))+'"'+
+    function renderPending(d){ const tb=document.getElementById('pendingTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.pending))?d.pending:[]; if(!list.length){ rows.push('<tr><td colspan="5" class="text-center text-muted">No pending requests.</td></tr>'); } else { list.forEach(function(r){ const dt = r.created_at_display? String(r.created_at_display) : (r.created_at? String(r.created_at):''); const typ = (r && r.qr_serial_no && String(r.qr_serial_no).trim()!=='') ? 'QR' : 'Manual'; const id = parseInt(r.id||0,10); const user = (r.user_full_name||r.username||''); const qty = parseInt((r.remaining!=null?r.remaining:r.quantity)||0,10); const schoolId = (r.student_school_id||r.student_id||r.school_id||''); const avail = parseInt(r.available_count||0,10); rows.push('<tr class="pending-row" role="button" tabindex="0"'+
+      ' data-user="'+escapeHtml(user)+'"'+
+      ' data-reqid="'+id+'"'+
+      ' data-student="'+escapeHtml(String(schoolId||''))+'"'+
       ' data-item="'+escapeHtml(r.item_name||'')+'"'+
-      ' data-qty="'+parseInt((r.remaining!=null?r.remaining:r.quantity)||0,10)+'"'+
+      ' data-qty="'+qty+'"'+
       ' data-loc="'+escapeHtml(r.request_location||'')+'"'+
       ' data-details="'+escapeHtml(r.details||'')+'"'+
-      ' data-avail="'+parseInt(r.available_count||0,10)+'"'+
+      ' data-avail="'+avail+'"'+
       ' data-requested="'+escapeHtml(dt)+'"'+
       ' data-reqtype="'+escapeHtml(String(r.type||'immediate'))+'"'+
       '>'+ 
-      '<td>'+parseInt(r.id||0,10)+'</td>'+ 
+      '<td>'+id+'</td>'+ 
       '<td>'+escapeHtml(typ)+'</td>'+ 
-      '<td>'+escapeHtml((r.user_full_name||r.username||''))+'</td>'+ 
+      '<td>'+escapeHtml(user)+'</td>'+ 
       '<td>'+escapeHtml(r.school_id||'')+'</td>'+ 
       '<td class="text-end">'+ 
         '<div class="btn-group btn-group-sm segmented-actions" role="group" aria-label="Actions">'+
-          '<button type="button" class="btn btn-sm btn-success border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Approve/Scan" aria-label="Approve/Scan" data-bs-toggle="modal" data-bs-target="#approveScanModal" data-reqid="'+parseInt(r.id||0,10)+'" data-item="'+escapeHtml(r.item_name||'')+'" data-qty="'+parseInt((r.remaining!=null?r.remaining:r.quantity)||0,10)+'" data-reqtype="'+escapeHtml(String(r.type||''))+'" data-expected_return_at="'+escapeHtml(String(r.expected_return_at||''))+'" data-reserved_from="'+escapeHtml(String(r.reserved_from||''))+'" data-reserved_to="'+escapeHtml(String(r.reserved_to||''))+'" data-qr_serial="'+escapeHtml(String(r.qr_serial_no||''))+'"><i class=\"bi '+(typ==='QR'?'bi-check2-circle':'bi-qr-code-scan')+'\"></i></button>'+
-          '<a href="admin_borrow_center.php?action=reject&id='+parseInt(r.id||0,10)+'" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6" title="Reject" aria-label="Reject" onclick="return confirm(\'Reject this request?\');"><i class=\"bi bi-x\"></i></a>'+
+          '<button type="button" class="btn btn-sm btn-success border border-dark rounded-start py-1 px-1 lh-1 fs-6" title="Approve/Scan" aria-label="Approve/Scan" data-bs-toggle="modal" data-bs-target="#approveScanModal" data-reqid="'+id+'" data-item="'+escapeHtml(r.item_name||'')+'" data-qty="'+qty+'" data-reqtype="'+escapeHtml(String(r.type||''))+'" data-expected_return_at="'+escapeHtml(String(r.expected_return_at||''))+'" data-reserved_from="'+escapeHtml(String(r.reserved_from||''))+'" data-reserved_to="'+escapeHtml(String(r.reserved_to||''))+'" data-qr_serial="'+escapeHtml(String(r.qr_serial_no||''))+'"><i class=\"bi '+(typ==='QR'?'bi-check2-circle':'bi-qr-code-scan')+'\"></i></button>'+
+          '<button type="button" class="btn btn-sm btn-danger border border-dark rounded-end py-1 px-1 lh-1 fs-6 reject-btn" title="Reject" aria-label="Reject" data-reject-id="'+id+'" data-reject-item="'+escapeHtml(r.item_name||'')+'" data-reject-user="'+escapeHtml(user)+'"><i class=\"bi bi-x\"></i></button>'+
         '</div>'+
       '</td>'+
     '</tr>'); }); }
@@ -5748,6 +5805,26 @@ try {
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Reject Pending Request Modal -->
+  <div class="modal fade" id="rejectConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Reject Request</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">You are about to reject request <strong>#<span id="rejReqId"></span></strong>.</p>
+          <p class="mb-2"><strong>User:</strong> <span id="rejUser"></span></p>
+          <p class="mb-0"><strong>Item:</strong> <span id="rejItem"></span></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="rejConfirmBtn">Reject</button>
         </div>
       </div>
     </div>
