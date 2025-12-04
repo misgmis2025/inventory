@@ -2682,7 +2682,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($m !== '') { $models = [$m]; }
     }
     // Mongo-first implementation when ABC_MONGO_FILLED is true
-    if (!empty($ABC_MONGO_FILLED)) {
       try {
         @require_once __DIR__ . '/../vendor/autoload.php';
         @require_once __DIR__ . '/db/mongo.php';
@@ -2883,7 +2882,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       } catch (Throwable $e) {
         // Fall back to MySQL path below on error
       }
-    }
     // Removed MySQL fallback path; handled above with MongoDB
     header('Location: admin_borrow_center.php?bm=added'); exit();
   } elseif ($do === 'toggle_borrowable') {
