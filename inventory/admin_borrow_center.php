@@ -4507,7 +4507,7 @@ try {
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="input-group input-group-sm search-pill" style="max-width:260px;">
                   <span class="input-group-text"><i class="bi bi-search"></i></span>
-                  <input type="search" id="pendingSearch" class="form-control" placeholder="Search user/ID" />
+		          <input type="search" id="pendingSearch" class="form-control" placeholder="Search Req ID or item" />
                 </div>
               </div>
             </div>
@@ -4742,7 +4742,7 @@ try {
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="input-group input-group-sm search-pill" style="max-width:260px;">
                   <span class="input-group-text"><i class="bi bi-search"></i></span>
-                  <input type="search" id="borrowedSearch" class="form-control" placeholder="Search user/serial/model" />
+		          <input type="search" id="borrowedSearch" class="form-control" placeholder="Search Req ID or model" />
                 </div>
               </div>
             </div>
@@ -5435,6 +5435,7 @@ try {
       tb.innerHTML=rows.join(''); }
     function renderBorrowed(d){ const tb=document.getElementById('borrowedTbody'); if(!tb) return; const rows=[]; const list=(d&&Array.isArray(d.borrowed))?d.borrowed:[]; if(!list.length){ rows.push('<tr><td colspan="6" class="text-center text-muted">No active borrowed items.</td></tr>'); } else { list.forEach(function(b){ const dt = b.expected_return_display? String(b.expected_return_display) : (b.expected_return_at? String(b.expected_return_at):''); const typ = (b && b.type) ? String(b.type) : (((b && b.qr_serial_no) ? 'QR' : 'Manual')); const rawExp=(b && (b.expected_return_at||b.reserved_to))? String(b.expected_return_at||b.reserved_to):''; let t=NaN; if(rawExp){ try{ t=new Date(rawExp.replace(' ','T')).getTime(); }catch(_){ t=NaN; } } const overdue = !!(rawExp && !isNaN(t) && t < Date.now()); const expHtml = escapeHtml(dt) + (overdue ? ' <span class="text-danger" title="Overdue"><i class="bi bi-exclamation-circle-fill"></i></span>' : ''); rows.push('<tr class="borrowed-row" role="button" tabindex="0" data-bs-toggle="modal" data-bs-target="#borrowedDetailsModal"'+
       ' data-user="'+escapeHtml((b.user_full_name||b.username||''))+'"'+
+      ' data-reqid="'+parseInt(b.request_id||0,10)+'"'+
       ' data-serial="'+escapeHtml(b.serial_no||'')+'"'+
       ' data-model="'+escapeHtml(b.model||'')+'"'+
       ' data-category="'+escapeHtml(b.category||'')+'"'+
@@ -7124,7 +7125,6 @@ try {
           tb.querySelectorAll(rowSelector).forEach(function(tr){
             var hay = '';
             (attrKeys||[]).forEach(function(k){ hay += ' ' + norm(tr.getAttribute(k)||''); });
-            hay += ' ' + norm(tr.textContent||'');
             var match = (!q || hay.indexOf(q) !== -1);
             tr.setAttribute('data-filtered', match ? '1' : '0');
             if (match) { try{ tr.style.removeProperty('display'); }catch(_){} } else { tr.style.display = 'none'; }
@@ -7143,12 +7143,14 @@ try {
       }
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function(){
-          attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid','data-student']);
-          attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model','data-student']);
+          // Pending: search only by Request ID and item name
+          attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-reqid','data-item']);
+          // Borrowed: search only by Request ID and model name
+          attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-reqid','data-model']);
         });
       } else {
-        attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-user','data-reqid','data-student']);
-        attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-user','data-reqid','data-serial','data-model','data-student']);
+        attachScopedSearch('pendingSearch', 'pendingTbody', 'tr.pending-row', ['data-reqid','data-item']);
+        attachScopedSearch('borrowedSearch', 'borrowedTbody', 'tr.borrowed-row', ['data-reqid','data-model']);
       }
     })();
   </script>
