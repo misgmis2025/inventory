@@ -43,7 +43,6 @@ try {
         else {
             $last = $catsCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
             $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
-            // Enforce unique name at app layer (case-insensitive check)
             $exists = $catsCol->findOne(['name' => ['$regex' => '^' . preg_quote($name, '/') . '$', '$options' => 'i']], ['projection'=>['_id'=>1]]);
             if ($exists) { $err = 'Category name already exists'; }
             else {
@@ -64,10 +63,9 @@ try {
         if ($id <= 0 || $name === '') { 
             $err = 'Invalid rename request'; 
         } else {
-            // Check if the new name already exists (case-insensitive)
             $existing = $catsCol->findOne([
                 'name' => ['$regex' => '^' . preg_quote($name, '/') . '$', '$options' => 'i'],
-                'id' => ['$ne' => $id] // Exclude current category from the check
+                'id' => ['$ne' => $id]
             ], ['projection' => ['_id' => 1]]);
             
             if ($existing) {
@@ -85,11 +83,53 @@ try {
     }
 
     // Delete category
-    if (isset($_GET['action'], $_GET['id']) && $_GET['action'] === 'delete') {
-        $id = (int)$_GET['id'];
-        if ($id > 0) {
-            $catsCol->deleteOne(['id'=>$id]);
-            $ok = 'Category deleted';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_cat'])) {
+        $catId = (int)($_POST['id'] ?? 0);
+        $adminPw = trim((string)($_POST['admin_password'] ?? ''));
+        if ($catId <= 0 || $adminPw === '') {
+            $err = 'Admin password is required to delete category';
+        } else {
+            $usersCol = $db->selectCollection('users');
+            $meUser = $usersCol->findOne(['username'=>(string)($_SESSION['username'] ?? '')], ['projection'=>['password_hash'=>1,'password'=>1]]);
+            $okPw = false;
+            $storedHash = $meUser && isset($meUser['password_hash']) ? (string)$meUser['password_hash'] : '';
+            $storedPlain = $meUser && isset($meUser['password']) ? (string)$meUser['password'] : '';
+            if ($storedHash !== '') { $okPw = function_exists('password_verify') ? password_verify($adminPw, $storedHash) : ($adminPw === $storedHash); }
+            if (!$okPw && $storedPlain !== '') { $okPw = (function_exists('password_verify') ? password_verify($adminPw, $storedPlain) : ($adminPw === $storedPlain)) || ($adminPw === $storedPlain); }
+            if (!$okPw) {
+                $err = 'Incorrect admin password';
+            } else {
+                $catDoc = $catsCol->findOne(['id'=>$catId], ['projection'=>['id'=>1,'name'=>1]]);
+                if ($catDoc) {
+                    $catName = trim((string)($catDoc['name'] ?? ''));
+                    if ($catName !== '') {
+                        $delLogCol = $db->selectCollection('inventory_delete_log');
+                        $lastDel = $delLogCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+                        $nextDelId = ($lastDel && isset($lastDel['id']) ? (int)$lastDel['id'] : 0) + 1;
+                        $cursor = $itemsCol->find(['category'=>$catName]);
+                        foreach ($cursor as $row) {
+                            $itemId = (int)($row['id'] ?? 0);
+                            if ($itemId <= 0) { continue; }
+                            $delLogCol->insertOne([
+                                'id' => $nextDelId++,
+                                'item_id' => $itemId,
+                                'deleted_by' => $_SESSION['username'],
+                                'deleted_at' => date('Y-m-d H:i:s'),
+                                'reason' => 'Deleted with category',
+                                'item_name' => (string)($row['item_name'] ?? ''),
+                                'model' => (string)($row['model'] ?? ''),
+                                'category' => (string)($row['category'] ?? ''),
+                                'quantity' => (int)($row['quantity'] ?? 1),
+                                'status' => (string)($row['status'] ?? ''),
+                                'serial_no' => (string)($row['serial_no'] ?? ''),
+                            ]);
+                            $itemsCol->deleteOne(['id'=>$itemId]);
+                        }
+                    }
+                    $catsCol->deleteOne(['id'=>$catId]);
+                    $ok = 'Category and inventory deleted';
+                }
+            }
         }
     }
 
@@ -172,7 +212,7 @@ if ($C_MONGO_FAILED) {
                   <td>
                     <div class="btn-group btn-group-sm">
                       <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#renameModal<?php echo (int)$c['id']; ?>"><i class="bi bi-pencil-square"></i> Edit</button>
-                      <a class="btn btn-outline-danger" href="categories.php?action=delete&id=<?php echo urlencode($c['id']); ?>" onclick="return confirm('Delete this category? This will also delete its models.');"><i class="bi bi-trash"></i> Delete</a>
+                      <button type="button" class="btn btn-outline-danger btn-cat-delete" data-id="<?php echo (int)$c['id']; ?>" data-name="<?php echo htmlspecialchars($c['name']); ?>"><i class="bi bi-trash"></i> Delete</button>
                     </div>
                     <!-- Rename Modal -->
                     <div class="modal fade" id="renameModal<?php echo (int)$c['id']; ?>" tabindex="-1" aria-hidden="true">
@@ -204,6 +244,98 @@ if ($C_MONGO_FAILED) {
       </div>
     </div>
   </div>
+  <div id="catLoadingOverlay" style="position:fixed;inset:0;background:rgba(248,249,250,.85);display:none;align-items:center;justify-content:center;z-index:1080;">
+    <div class="spinner-border text-primary" role="status" aria-label="Loading"></div>
+  </div>
+
+  <div class="modal fade" id="deleteCatModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form method="POST" class="modal-content" id="deleteCatForm">
+        <input type="hidden" name="delete_cat" value="1" />
+        <input type="hidden" name="id" id="deleteCatId" value="" />
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-trash me-2"></i>Delete Category</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-1">You are about to delete category <strong id="deleteCatName"></strong>.</p>
+          <p class="mb-3 text-danger small">This will also permanently delete all inventory items under this category.</p>
+          <div class="mb-3">
+            <label class="form-label" for="deleteCatAdminPw">Enter admin password to confirm</label>
+            <input type="password" class="form-control" id="deleteCatAdminPw" name="admin_password" autocomplete="current-password" required />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Delete Category</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  (function(){
+    var overlay = document.getElementById('catLoadingOverlay');
+    function showOverlay(){ if (!overlay) return; overlay.style.display = 'flex'; }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      var renameForms = document.querySelectorAll('[id^="renameModal"] form');
+      renameForms.forEach(function(form){
+        var input = form.querySelector('input[name="name"]');
+        var saveBtn = form.querySelector('button[type="submit"]');
+        if (!input || !saveBtn) return;
+        var original = (input.value || '').trim();
+        function updateState(){
+          var nowVal = (input.value || '').trim();
+          var changed = nowVal !== original;
+          saveBtn.disabled = !changed;
+        }
+        input.addEventListener('input', updateState);
+        form.addEventListener('submit', function(e){
+          if (saveBtn.disabled) {
+            e.preventDefault();
+            return;
+          }
+          showOverlay();
+        });
+        updateState();
+      });
+
+      var deleteButtons = document.querySelectorAll('.btn-cat-delete');
+      var deleteIdInput = document.getElementById('deleteCatId');
+      var deleteNameSpan = document.getElementById('deleteCatName');
+      var deletePwInput = document.getElementById('deleteCatAdminPw');
+      var deleteForm = document.getElementById('deleteCatForm');
+      var deleteModalEl = document.getElementById('deleteCatModal');
+      var deleteModal = (window.bootstrap && deleteModalEl) ? new bootstrap.Modal(deleteModalEl) : null;
+
+      deleteButtons.forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var id = btn.getAttribute('data-id') || '';
+          var name = btn.getAttribute('data-name') || '';
+          if (deleteIdInput) deleteIdInput.value = id;
+          if (deleteNameSpan) deleteNameSpan.textContent = name;
+          if (deletePwInput) deletePwInput.value = '';
+          if (deleteModal) {
+            deleteModal.show();
+          } else if (window.confirm('Delete category "'+name+'" and all its inventory items?')) {
+            if (deleteForm && deleteIdInput) {
+              deleteIdInput.value = id;
+              showOverlay();
+              deleteForm.submit();
+            }
+          }
+        });
+      });
+
+      if (deleteForm) {
+        deleteForm.addEventListener('submit', function(){
+          showOverlay();
+        });
+      }
+    });
+  })();
+  </script>
 </body>
 </html>
