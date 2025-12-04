@@ -2682,7 +2682,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($m !== '') { $models = [$m]; }
     }
     // Mongo-first implementation when ABC_MONGO_FILLED is true
-    if ($ABC_MONGO_FILLED) {
+    if (!empty($ABC_MONGO_FILLED)) {
       try {
         @require_once __DIR__ . '/../vendor/autoload.php';
         @require_once __DIR__ . '/db/mongo.php';
