@@ -991,6 +991,14 @@ button[data-bs-target="#addItemModal"],
 #userBellModal .ubm-head, #adminBellModal .ubm-head { padding:10px 12px; border-bottom:1px solid #e9ecef; display:flex; align-items:center; justify-content:space-between; font-weight:600; }
 #userBellModal .ubm-close, #adminBellModal .ubm-close { background:transparent; border:0; font-size:20px; line-height:1; }
 #userBellModal .ubm-body, #adminBellModal .ubm-body { padding:0; overflow:auto; }
+/* Ensure long notification lists scroll instead of overflowing */
+#userNotifList,
+#adminNotifList,
+#userNotifListM,
+#adminNotifListM {
+  max-height: 260px;
+  overflow-y: auto;
+}
 /* Apply animations to user/admin bell modals */
 #userBellModal .ubm-box, #adminBellModal .ubm-box { animation: ubmPop 200ms ease-out; }
 #userBellBackdrop, #adminBellBackdrop { animation: ubmFade 180ms ease-in; }

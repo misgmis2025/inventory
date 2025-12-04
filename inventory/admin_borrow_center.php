@@ -4529,7 +4529,6 @@ try {
                     <?php else: ?>
                       <?php foreach ($pending as $r): ?>
                       <tr class="pending-row" role="button" tabindex="0"
-                          data-bs-toggle="modal" data-bs-target="#requestDetailsModal"
                           data-user="<?php echo htmlspecialchars($r['user_full_name'] ?? $r['username']); ?>"
                           data-reqid="<?php echo (int)$r['id']; ?>"
                           data-student="<?php echo htmlspecialchars((string)($r['student_school_id'] ?? ($r['student_id'] ?? ($r['school_id'] ?? '')))); ?>"
@@ -4646,11 +4645,32 @@ try {
         <script>
           (function(){
             document.addEventListener('DOMContentLoaded', function(){
-              var pending = document.getElementById('pending-list');
-              if (!pending) return;
-              pending.addEventListener('click', function(e){
-                var inActions = e.target && e.target.closest && e.target.closest('.segmented-actions');
-                if (inActions) { e.stopPropagation(); }
+              var tbody = document.getElementById('pendingTbody');
+              var mdlEl = document.getElementById('requestDetailsModal');
+              if (!tbody || !mdlEl || !window.bootstrap || !bootstrap.Modal) return;
+              var detailsModal = bootstrap.Modal.getOrCreateInstance(mdlEl);
+
+              function shouldIgnoreTarget(target){
+                if (!target || !target.closest) return false;
+                // Do not open details when clicking inside the segmented action buttons (Approve/Reject)
+                return !!target.closest('.segmented-actions');
+              }
+
+              tbody.addEventListener('click', function(e){
+                var row = e.target && e.target.closest && e.target.closest('tr.pending-row');
+                if (!row) return;
+                if (shouldIgnoreTarget(e.target)) return;
+                detailsModal.show(row);
+              });
+
+              // Keyboard support: Enter/Space on a focused pending row opens details
+              tbody.addEventListener('keydown', function(e){
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                var row = e.target && e.target.closest && e.target.closest('tr.pending-row');
+                if (!row) return;
+                if (shouldIgnoreTarget(e.target)) return;
+                e.preventDefault();
+                detailsModal.show(row);
               });
             });
           })();
