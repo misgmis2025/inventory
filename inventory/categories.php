@@ -103,31 +103,49 @@ try {
                 if ($catDoc) {
                     $catName = trim((string)($catDoc['name'] ?? ''));
                     if ($catName !== '') {
-                        $delLogCol = $db->selectCollection('inventory_delete_log');
-                        $lastDel = $delLogCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
-                        $nextDelId = ($lastDel && isset($lastDel['id']) ? (int)$lastDel['id'] : 0) + 1;
-                        $cursor = $itemsCol->find(['category'=>$catName]);
-                        foreach ($cursor as $row) {
-                            $itemId = (int)($row['id'] ?? 0);
-                            if ($itemId <= 0) { continue; }
-                            $delLogCol->insertOne([
-                                'id' => $nextDelId++,
-                                'item_id' => $itemId,
-                                'deleted_by' => $_SESSION['username'],
-                                'deleted_at' => date('Y-m-d H:i:s'),
-                                'reason' => 'Deleted with category',
-                                'item_name' => (string)($row['item_name'] ?? ''),
-                                'model' => (string)($row['model'] ?? ''),
-                                'category' => (string)($row['category'] ?? ''),
-                                'quantity' => (int)($row['quantity'] ?? 1),
-                                'status' => (string)($row['status'] ?? ''),
-                                'serial_no' => (string)($row['serial_no'] ?? ''),
-                            ]);
-                            $itemsCol->deleteOne(['id'=>$itemId]);
+                        // Only allow deleting a category when ALL items under it are not currently In Use
+                        $itemsCursor = $itemsCol->find(['category'=>$catName]);
+                        $items = [];
+                        $hasInUse = false;
+                        foreach ($itemsCursor as $row) {
+                            $items[] = $row;
+                            $stNorm = strtolower(trim((string)($row['status'] ?? '')));
+                            if ($stNorm === 'in use') {
+                                $hasInUse = true;
+                            }
+                        }
+
+                        if ($hasInUse) {
+                            $err = 'Cannot delete this category while it has items that is in use.';
+                        } else {
+                            // Safe to delete: no items, or items but none are In Use
+                            if (!empty($items)) {
+                                $delLogCol = $db->selectCollection('inventory_delete_log');
+                                $lastDel = $delLogCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
+                                $nextDelId = ($lastDel && isset($lastDel['id']) ? (int)$lastDel['id'] : 0) + 1;
+                                foreach ($items as $row) {
+                                    $itemId = (int)($row['id'] ?? 0);
+                                    if ($itemId <= 0) { continue; }
+                                    $delLogCol->insertOne([
+                                        'id' => $nextDelId++,
+                                        'item_id' => $itemId,
+                                        'deleted_by' => $_SESSION['username'],
+                                        'deleted_at' => date('Y-m-d H:i:s'),
+                                        'reason' => 'Deleted with category',
+                                        'item_name' => (string)($row['item_name'] ?? ''),
+                                        'model' => (string)($row['model'] ?? ''),
+                                        'category' => (string)($row['category'] ?? ''),
+                                        'quantity' => (int)($row['quantity'] ?? 1),
+                                        'status' => (string)($row['status'] ?? ''),
+                                        'serial_no' => (string)($row['serial_no'] ?? ''),
+                                    ]);
+                                    $itemsCol->deleteOne(['id'=>$itemId]);
+                                }
+                            }
+                            $catsCol->deleteOne(['id'=>$catId]);
+                            $ok = 'Category and inventory deleted';
                         }
                     }
-                    $catsCol->deleteOne(['id'=>$catId]);
-                    $ok = 'Category and inventory deleted';
                 }
             }
         }

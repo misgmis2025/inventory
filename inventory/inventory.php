@@ -2498,6 +2498,11 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                 <label class="form-label fw-bold">Remarks</label>
                 <textarea name="remarks" class="form-control" rows="3" placeholder="Notes, supplier, warranty, etc."></textarea>
               </div>
+              <div class="col-12">
+                <div class="small text-muted border rounded-3 px-3 py-2 mt-1 bg-light">
+                  Adding an item in a category automatically generates its QR code.
+                </div>
+              </div>
             </div>
           </div>
           <div class="modal-footer">

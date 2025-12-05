@@ -313,6 +313,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               <label class="form-label fw-bold">Remarks</label>
                               <textarea name="remarks" class="form-control" rows="3" placeholder="Notes, supplier, warranty, etc."></textarea>
                             </div>
+                            <div class="col-12">
+                              <div class="small text-muted border rounded-3 px-3 py-2 mt-1 bg-light">
+                                Adding an item in a category automatically generates its QR code.
+                              </div>
+                            </div>
                             <div class="col-md-9">
                               <label class="form-label fw-bold">Add Category</label>
                               <div class="input-group">
