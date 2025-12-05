@@ -541,57 +541,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           setMsg(d.message || 'Category added', true);
                           input.value = '';
 
-                          // Reload the iframe showing Manage Categories
-                          try {
-                              var iframe = document.querySelector('iframe[src^="categories.php"]');
-                              if (iframe && iframe.contentWindow) { 
-                                  iframe.contentWindow.location.reload(); 
-                              }
-                          } catch(_) {}
-
-                          // Refresh the category dropdowns
-                          return fetch('generate_qr.php?action=categories_json')
-                              .then(function(r) { 
-                                  if (!r.ok) throw new Error('Failed to refresh categories'); 
-                                  return r.json(); 
-                              });
-                      })
-                      .then(function(d) {
-                          if (!d) return;
-                          var cats = Array.isArray(d.categories) ? d.categories : [];
-
-                          function applyOptions(selectEl) {
-                              if (!selectEl) return;
-                              var placeholder = 'Select Category';
-                              var curr0 = selectEl.options && selectEl.options[0] ? selectEl.options[0].textContent : placeholder;
-                              var currentValue = selectEl.value;
-
-                              selectEl.innerHTML = '';
-                              var opt0 = document.createElement('option');
-                              opt0.value = '';
-                              opt0.textContent = curr0 || placeholder;
-                              selectEl.appendChild(opt0);
-
-                              cats.forEach(function(c) { 
-                                  var opt = document.createElement('option'); 
-                                  opt.value = c; 
-                                  opt.textContent = c;
-                                  if (c === currentValue) {
-                                      opt.selected = true;
-                                  }
-                                  selectEl.appendChild(opt); 
-                              });
-                          }
-
-                          applyOptions(document.getElementById('add_category_inline'));
-                          applyOptions(document.getElementById('add_category'));
+                          // Ensure UI is fully in sync: reload the entire page
+                          window.location.reload();
                       })
                       .catch(function(err) { 
                           setMsg(err.message || 'Failed to add category (may already exist)', false); 
-                      })
-                      .finally(function() { 
-                          btn.disabled = false; 
+                          btn.disabled = false;
                       });
+                    // Note: btn will be re-enabled automatically after reload on success
                 });
                 input.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); btn.click(); } });
             });
