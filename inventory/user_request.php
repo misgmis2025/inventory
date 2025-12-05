@@ -1044,7 +1044,7 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           $modelMaxMapLive[$mod] = $cap;
         }
       }
-      // For reservation: include single-quantity models even if currently In Use (not Available)
+      // For reservation: include single-quantity models (exactly one unit) even if currently In Use (not Available)
       if ($for === 'reservation') {
         try {
           foreach ($borrowLimitMap as $cat => $mods) {
@@ -1056,7 +1056,7 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                 ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
               ]);
               $sum = 0; foreach ($aggTu as $rr){ $sum = (int)($rr->sum ?? 0); break; }
-              if ($sum <= 1) {
+              if ($sum === 1) {
                 if (!isset($availableMapLive[$cat])) { $availableMapLive[$cat] = []; $catOptionsLive[] = $cat; }
                 $availableMapLive[$cat][mb_strtolower($mod)] = $mod;
                 if (!isset($modelMaxMapLive[$mod])) { $modelMaxMapLive[$mod] = 1; }
@@ -1091,14 +1091,14 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $modelMaxMapLive[$m] = $cap;
       }
     }
-      // For reservation: include single-quantity models even if currently In Use (not Available)
+      // For reservation: include single-quantity models (exactly one unit) even if currently In Use (not Available)
       if ($for === 'reservation') {
         foreach ($borrowLimitMap as $c => $mods) {
           foreach ($mods as $m => $limit) {
             if (isset($availableMapLive[$c]) && isset($availableMapLive[$c][mb_strtolower($m)])) continue;
             // Total units for this category+model
             $sum = 0; if ($st = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?))")) { $st->bind_param('ss', $m, $c); $st->execute(); $st->bind_result($sum); $st->fetch(); $st->close(); }
-            if ((int)$sum <= 1) {
+            if ((int)$sum === 1) {
               if (!isset($availableMapLive[$c])) { $availableMapLive[$c]=[]; $catOptionsLive[]=$c; }
               $availableMapLive[$c][mb_strtolower($m)] = $m;
               if (!isset($modelMaxMapLive[$m]) || (int)$modelMaxMapLive[$m] < 1) { $modelMaxMapLive[$m] = 1; }
@@ -1713,8 +1713,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Please enter a valid return date and time.';
           } elseif ($return_time <= $current_time) {
             $error = 'Return time must be in the future.';
-          } elseif (($return_time - $current_time) > (24 * 60 * 60)) {
-            $error = 'Immediate borrow cannot exceed 24 hours.';
           } else {
             // Check for upcoming reservations (apply only when effectively single quantity)
             if ($USED_MONGO && $mongo_db) {
@@ -2641,8 +2639,6 @@ if (!empty($my_requests)) {
                   if (reqType === 'immediate') {
                     const returnTime = new Date(form.elements['expected_return_at'].value);
                     const now = new Date();
-                    const maxReturnTime = new Date(now);
-                    maxReturnTime.setDate(maxReturnTime.getDate() + 1); // 24 hours max
                     
                     if (!returnTime || isNaN(returnTime.getTime())) {
                       if (!silent) showError('Please enter a valid return time');
@@ -2651,11 +2647,6 @@ if (!empty($my_requests)) {
                     
                     if (returnTime <= now) {
                       if (!silent) showError('Return time must be in the future');
-                      return false;
-                    }
-                    
-                    if (returnTime > maxReturnTime) {
-                      if (!silent) showError('Immediate borrow cannot exceed 24 hours');
                       return false;
                     }
                   } else { // Reservation
