@@ -19,6 +19,7 @@ if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
 
 $isCategoriesJson = isset($_GET['action']) && $_GET['action'] === 'categories_json';
 $isCheckSerial = isset($_GET['action']) && $_GET['action'] === 'check_serial';
+$isAddCategoryApi = isset($_GET['action']) && $_GET['action'] === 'add_category';
 $categoryOptions = [];
 // Mongo-first categories loading
 $catsMongoFailed = false;
@@ -26,11 +27,49 @@ try {
     require_once __DIR__ . '/../vendor/autoload.php';
     require_once __DIR__ . '/db/mongo.php';
     $db = get_mongo_db();
-    $catCur = $db->selectCollection('categories')->find([], ['sort' => ['name' => 1], 'projection' => ['name' => 1]]);
+    $catsCol = $db->selectCollection('categories');
+
+    // JSON API: add a category (used by inline Add Category button)
+    if ($isAddCategoryApi && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $name = trim($_POST['name'] ?? '');
+        $resp = ['ok' => false, 'error' => ''];
+        if ($name === '') {
+            $resp['error'] = 'Category name is required';
+        } else {
+            $last = $catsCol->findOne([], ['sort' => ['id' => -1], 'projection' => ['id' => 1]]);
+            $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
+            $exists = $catsCol->findOne([
+                'name' => [
+                    '$regex' => '^' . preg_quote($name, '/') . '$',
+                    '$options' => 'i'
+                ]
+            ], ['projection' => ['_id' => 1]]);
+            if ($exists) {
+                $resp['error'] = 'Category name already exists';
+            } else {
+                $catsCol->insertOne([
+                    'id' => $nextId,
+                    'name' => $name,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+                $resp = ['ok' => true, 'message' => 'Category added'];
+            }
+        }
+        header('Content-Type: application/json');
+        echo json_encode($resp);
+        exit();
+    }
+
+    $catCur = $catsCol->find([], ['sort' => ['name' => 1], 'projection' => ['name' => 1]]);
     foreach ($catCur as $c) { if (!empty($c['name'])) { $categoryOptions[] = (string)$c['name']; } }
     if ($isCategoriesJson) { header('Content-Type: application/json'); echo json_encode(['categories'=>array_values($categoryOptions)]); exit(); }
 } catch (Throwable $e) {
     $catsMongoFailed = true;
+    if ($isCategoriesJson || $isAddCategoryApi) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Database unavailable']);
+        exit();
+    }
 }
 // If Mongo failed, do not fallback to MySQL in production
 if ($catsMongoFailed) { if ($isCategoriesJson) { header('Content-Type: application/json'); echo json_encode(['categories'=>[]]); exit(); } }
@@ -492,7 +531,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     setMsg('Adding...', true);
                     var fd = new FormData();
                     fd.append('name', name);
-                    fetch('categories.php?action=add_json', { method: 'POST', body: fd })
+                    fetch('generate_qr.php?action=add_category', { method: 'POST', body: fd })
                       .then(function(r) { return r.json(); })
                       .then(function(d) {
                           if (!d || !d.ok) {
