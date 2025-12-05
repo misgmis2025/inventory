@@ -3752,7 +3752,7 @@ try {
         <a href="admin_borrow_center.php" class="list-group-item list-group-item-action bg-transparent fw-bold"><i class="bi bi-clipboard-check me-2"></i>Borrow Requests</a>
         <a href="user_management.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-people me-2"></i>User Management</a>
         <a href="change_password.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-key me-2"></i>Change Password</a>
-        <a href="logout.php" class="list-group-item list-group-item-action bg-transparent" onclick="return confirm('Are you sure you want to logout?');"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
+        <a href="logout.php" class="list-group-item list-group-item-action bg-transparent"><i class="bi bi-box-arrow-right me-2"></i>Logout</a>
       </div>
     </div>
     <div class="p-4" id="page-content-wrapper">

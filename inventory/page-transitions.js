@@ -7,6 +7,8 @@
   var loaderEl = null;
   var loaderVisible = false;
   var loaderMode = 'shell';
+  var logoutOverlay = null;
+  var pendingLogoutHref = null;
 
   function ensureBody(){
     if (body) return body;
@@ -98,6 +100,100 @@
     el.classList.remove('page-loader-visible');
   }
 
+  function ensureLogoutModal(){
+    if (logoutOverlay && logoutOverlay.ownerDocument === document && document.contains(logoutOverlay)) {
+      return logoutOverlay;
+    }
+    var b = ensureBody();
+    if (!b || !b.appendChild) return null;
+
+    var overlay = document.createElement('div');
+    overlay.id = 'logout-confirm-overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(15,23,42,0.55)';
+    overlay.style.display = 'none';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.zIndex = '2055';
+
+    var box = document.createElement('div');
+    box.style.background = '#ffffff';
+    box.style.borderRadius = '12px';
+    box.style.padding = '18px 20px 14px 20px';
+    box.style.minWidth = '260px';
+    box.style.maxWidth = '320px';
+    box.style.boxShadow = '0 18px 40px rgba(15,23,42,0.35)';
+    box.style.fontFamily = 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+
+    var title = document.createElement('div');
+    title.textContent = 'Logout';
+    title.style.fontWeight = '600';
+    title.style.marginBottom = '4px';
+
+    var msg = document.createElement('div');
+    msg.textContent = 'Are you sure you want to logout?';
+    msg.style.fontSize = '0.9rem';
+    msg.style.color = '#4b5563';
+
+    var btnRow = document.createElement('div');
+    btnRow.style.display = 'flex';
+    btnRow.style.justifyContent = 'flex-end';
+    btnRow.style.gap = '8px';
+    btnRow.style.marginTop = '14px';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'btn btn-light btn-sm';
+
+    var okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.textContent = 'Logout';
+    okBtn.className = 'btn btn-danger btn-sm';
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    box.appendChild(title);
+    box.appendChild(msg);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    b.appendChild(overlay);
+
+    cancelBtn.addEventListener('click', function(){
+      pendingLogoutHref = null;
+      overlay.style.display = 'none';
+    });
+
+    overlay.addEventListener('click', function(ev){
+      if (ev.target === overlay) {
+        pendingLogoutHref = null;
+        overlay.style.display = 'none';
+      }
+    });
+
+    okBtn.addEventListener('click', function(){
+      var href = pendingLogoutHref || 'logout.php';
+      overlay.style.display = 'none';
+      pendingLogoutHref = null;
+      // Full-page fade + loader for logout
+      fadeAndGo(href, true, true);
+    });
+
+    logoutOverlay = overlay;
+    return logoutOverlay;
+  }
+
+  function requestLogout(href){
+    pendingLogoutHref = href || 'logout.php';
+    var ov = ensureLogoutModal();
+    if (!ov) {
+      window.location.href = pendingLogoutHref;
+      return;
+    }
+    ov.style.display = 'flex';
+  }
+
   function isSameOrigin(link){
     try {
       var href = link.getAttribute('href') || '';
@@ -142,20 +238,23 @@
     var href = link.getAttribute('href');
     if (shouldIgnoreLink(link, href)) return;
 
-    var confirmMsg = link.getAttribute('data-confirm');
-    if (confirmMsg && !window.confirm(confirmMsg)) {
-      return;
-    }
-
     var useBodyForFade = false;
+    var isLogout = false;
     try {
       var urlObj = new URL(href, window.location.href);
       var path = urlObj.pathname || '';
       var lastSegment = path.split('/').pop().toLowerCase();
       if (lastSegment === 'logout.php') {
         useBodyForFade = true;
+        isLogout = true;
       }
     } catch(_){ }
+
+    if (isLogout) {
+      e.preventDefault();
+      requestLogout(href);
+      return;
+    }
 
     var hasShell = false;
     try {

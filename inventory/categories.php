@@ -23,6 +23,7 @@ if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? '') !== 'admin') 
 }
 
 $embed = isset($_GET['embed']) && $_GET['embed'] == '1';
+$isAddJson = isset($_GET['action']) && $_GET['action'] === 'add_json';
 $err = '';
 $ok = '';
 $cats = [];
@@ -35,6 +36,37 @@ try {
     $db = get_mongo_db();
     $catsCol = $db->selectCollection('categories');
     $itemsCol = $db->selectCollection('inventory_items');
+
+    // Lightweight JSON API for adding a category via AJAX
+    if ($isAddJson && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $name = trim($_POST['name'] ?? '');
+        $resp = ['ok' => false, 'error' => ''];
+        if ($name === '') {
+            $resp['error'] = 'Category name is required';
+        } else {
+            $last = $catsCol->findOne([], ['sort' => ['id' => -1], 'projection' => ['id' => 1]]);
+            $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
+            $exists = $catsCol->findOne([
+                'name' => [
+                    '$regex' => '^' . preg_quote($name, '/') . '$',
+                    '$options' => 'i'
+                ]
+            ], ['projection' => ['_id' => 1]]);
+            if ($exists) {
+                $resp['error'] = 'Category name already exists';
+            } else {
+                $catsCol->insertOne([
+                    'id' => $nextId,
+                    'name' => $name,
+                    'created_at' => now_utc(),
+                ]);
+                $resp = ['ok' => true, 'message' => 'Category added'];
+            }
+        }
+        header('Content-Type: application/json');
+        echo json_encode($resp);
+        exit();
+    }
 
     // Add category
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add'])) {
@@ -163,6 +195,11 @@ try {
     $shouldScroll = count($cats) > 5;
 } catch (Throwable $e) {
     $C_MONGO_FAILED = true;
+    if ($isAddJson) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Database unavailable']);
+        exit();
+    }
 }
 
 if ($C_MONGO_FAILED) {

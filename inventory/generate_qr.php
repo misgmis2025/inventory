@@ -234,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <a href="change_password.php" class="list-group-item list-group-item-action bg-transparent">
                     <i class="bi bi-key me-2"></i>Change Password
                 </a>
-                <a href="logout.php" class="list-group-item list-group-item-action bg-transparent" onclick="return confirm('Are you sure you want to logout?');">
+                <a href="logout.php" class="list-group-item list-group-item-action bg-transparent">
                     <i class="bi bi-box-arrow-right me-2"></i>Logout
                 </a>
             </div>
@@ -318,19 +318,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 Adding an item in a category automatically generates its QR code.
                               </div>
                             </div>
-                            <div class="col-md-9">
-                              <label class="form-label fw-bold">Add Category</label>
-                              <div class="input-group">
-                                <input type="text" class="form-control" id="inline_new_category" placeholder="New category name" />
-                                <button type="button" class="btn btn-outline-primary" id="inline_add_category_btn"><i class="bi bi-plus-lg me-1"></i>Add</button>
-                              </div>
-                              <div class="small mt-1" id="inline_add_category_msg"></div>
-                            </div>
                           </div>
                           <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
-                            <button class="btn btn-primary" type="submit"><i class="bi bi-save me-2"></i>Save Item</button>
                             <a href="generate_qr.php" class="btn btn-outline-secondary">Cancel</a>
+                            <button class="btn btn-primary" type="submit"><i class="bi bi-save me-2"></i>Save Item</button>
                             <div class="small ms-2" id="inline_add_item_msg"></div>
+                          </div>
+                          <div class="mt-3">
+                            <label class="form-label fw-bold">Add Category</label>
+                            <div class="input-group">
+                              <input type="text" class="form-control" id="inline_new_category" placeholder="New category name" />
+                              <button type="button" class="btn btn-outline-primary" id="inline_add_category_btn"><i class="bi bi-plus-lg me-1"></i>Add</button>
+                            </div>
+                            <div class="small mt-1" id="inline_add_category_msg"></div>
                           </div>
                         </form>
                 </div>
@@ -491,34 +491,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     btn.disabled = true;
                     setMsg('Adding...', true);
                     var fd = new FormData();
-                    fd.append('add', '1');
                     fd.append('name', name);
-                    fetch('categories.php', { method: 'POST', body: fd })
-                      .then(function(r) {
-                          if (!r.ok) return r.text().then(err => { throw new Error(err || 'Failed to add category'); });
-                          return r.text();
-                      })
-                      .then(function(html) {
-                          // Check if the response contains an error message
-                          const tempDiv = document.createElement('div');
-                          tempDiv.innerHTML = html;
-                          const errorDiv = tempDiv.querySelector('.alert-danger');
-                          
-                          if (errorDiv) {
-                              throw new Error(errorDiv.textContent.trim() || 'Failed to add category');
+                    fetch('categories.php?action=add_json', { method: 'POST', body: fd })
+                      .then(function(r) { return r.json(); })
+                      .then(function(d) {
+                          if (!d || !d.ok) {
+                              throw new Error((d && d.error) || 'Failed to add category');
                           }
-                          
-                          setMsg('Category added', true);
+
+                          setMsg(d.message || 'Category added', true);
                           input.value = '';
-                          
-                          // Reload the iframe
+
+                          // Reload the iframe showing Manage Categories
                           try {
                               var iframe = document.querySelector('iframe[src^="categories.php"]');
                               if (iframe && iframe.contentWindow) { 
                                   iframe.contentWindow.location.reload(); 
                               }
                           } catch(_) {}
-                          
+
                           // Refresh the category dropdowns
                           return fetch('generate_qr.php?action=categories_json')
                               .then(function(r) { 
@@ -529,19 +520,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       .then(function(d) {
                           if (!d) return;
                           var cats = Array.isArray(d.categories) ? d.categories : [];
-                          
+
                           function applyOptions(selectEl) {
                               if (!selectEl) return;
                               var placeholder = 'Select Category';
                               var curr0 = selectEl.options && selectEl.options[0] ? selectEl.options[0].textContent : placeholder;
                               var currentValue = selectEl.value;
-                              
+
                               selectEl.innerHTML = '';
                               var opt0 = document.createElement('option');
                               opt0.value = '';
                               opt0.textContent = curr0 || placeholder;
                               selectEl.appendChild(opt0);
-                              
+
                               cats.forEach(function(c) { 
                                   var opt = document.createElement('option'); 
                                   opt.value = c; 
@@ -552,7 +543,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                   selectEl.appendChild(opt); 
                               });
                           }
-                          
+
                           applyOptions(document.getElementById('add_category_inline'));
                           applyOptions(document.getElementById('add_category'));
                       })

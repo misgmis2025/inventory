@@ -335,7 +335,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                 <a href="change_password.php" class="list-group-item list-group-item-action bg-transparent">
                     <i class="bi bi-key me-2"></i>Change Password
                 </a>
-                <a href="logout.php" class="list-group-item list-group-item-action bg-transparent" onclick="return confirm('Are you sure you want to logout?');">
+                <a href="logout.php" class="list-group-item list-group-item-action bg-transparent">
                     <i class="bi bi-box-arrow-right me-2"></i>Logout
                 </a>
             </div>
