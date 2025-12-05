@@ -1450,6 +1450,37 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $uc = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
       $match = (strcasecmp(trim($um), trim($dm))===0) && (strcasecmp(trim($uc), trim($dc))===0);
       if (!$match) { echo json_encode(['ok'=>false,'reason'=>'Item mismatch']); exit; }
+      // For reservation requests, also ensure this specific unit is not already reserved in the same window
+      $reqType = strtolower((string)($req['type'] ?? 'immediate'));
+      if ($reqType === 'reservation') {
+        $rf = (string)($req['reserved_from'] ?? '');
+        $rt = (string)($req['reserved_to'] ?? '');
+        $tsStart = $rf !== '' ? strtotime($rf) : null;
+        $tsEnd   = $rt !== '' ? strtotime($rt) : null;
+        if (!$tsStart || !$tsEnd || $tsEnd <= $tsStart) {
+          echo json_encode(['ok'=>false,'reason'=>'Invalid reservation time']); exit;
+        }
+        $assignedMid = (int)($unit['id'] ?? 0);
+        if ($assignedMid > 0) {
+          $buf = 5 * 60;
+          try {
+            $curR = $er->find(
+              ['type'=>'reservation','status'=>'Approved','reserved_model_id'=>$assignedMid],
+              ['projection'=>['reserved_from'=>1,'reserved_to'=>1,'id'=>1]]
+            );
+            foreach ($curR as $row) {
+              $ofs = isset($row['reserved_from']) ? strtotime((string)$row['reserved_from']) : null;
+              $ote = isset($row['reserved_to']) ? strtotime((string)$row['reserved_to']) : null;
+              if (!$ofs || !$ote) { continue; }
+              // conflict unless there is at least 5-min gap between intervals
+              $noOverlapWithBuffer = ($ote <= ($tsStart - $buf)) || ($tsEnd <= ($ofs - $buf));
+              if (!$noOverlapWithBuffer) {
+                echo json_encode(['ok'=>false,'reason'=>'Conflicts with another approved reservation']); exit;
+              }
+            }
+          } catch (Throwable $_e) { /* ignore, treat as no conflict */ }
+        }
+      }
       echo json_encode(['ok'=>true,'reason'=>'OK','model'=>$um,'category'=>$uc,'id'=>(int)($unit['id'] ?? 0)]); exit;
     }
 
