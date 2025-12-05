@@ -3809,7 +3809,10 @@ try {
       return $pick;
     };
     if ($userUname === '') { $userUname = $tryBorrow($logWhen); }
-    // If still none, show admin (manual edit); only then fallback to item last borrower
+    // For manual edits from inventory.php, treat the admin marker as the responsible user
+    $src = isset($l['source']) ? (string)$l['source'] : '';
+    if ($src === 'manual_edit' && $markedUname !== '') { $userUname = $markedUname; }
+    // If still none, show admin; only then fallback to item last borrower
     if ($userUname === '' && $markedUname !== '') { $userUname = $markedUname; }
     if ($userUname === '' && $ii) { $userUname = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? '')); }
     $userFull = $userUname;

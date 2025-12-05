@@ -396,10 +396,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 // Server-side allowed status transitions
                 $allowed = [];
-                if ($prevStatus === 'Available' || $prevStatus === 'Returned' || $prevStatus === 'Reserved') {
+                if ($prevStatus === 'Available') {
                     $allowed = ['Lost','Under Maintenance','Out of Order'];
+                } elseif ($prevStatus === 'Returned' || $prevStatus === 'Reserved') {
+                    $allowed = ['Out of Order'];
                 } elseif ($prevStatus === 'Lost' || $prevStatus === 'Under Maintenance') {
-                    $allowed = ['Lost','Under Maintenance'];
+                    $allowed = [];
                 } elseif ($prevStatus === 'Out of Order') {
                     $allowed = ['Available','Lost','Under Maintenance'];
                 }
@@ -2615,13 +2617,13 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
               // Reset: enable all first
               Array.prototype.forEach.call(sel.options, function(op){ op.disabled = false; });
               var cs = currentStatus;
-              // Treat Reserved like Available for transitions
-              if (cs === 'Reserved' || cs === 'Returned') { cs = 'Available'; }
               var allow = null;
               if (cs === 'Available') {
                 allow = ['Lost','Under Maintenance','Out of Order'];
+              } else if (cs === 'Returned' || cs === 'Reserved') {
+                allow = ['Out of Order'];
               } else if (cs === 'Lost' || cs === 'Under Maintenance') {
-                allow = ['Lost','Under Maintenance'];
+                allow = [];
               } else if (cs === 'Out of Order') {
                 allow = ['Available','Lost','Under Maintenance'];
               }
@@ -2632,6 +2634,12 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
                   var ok = allow.indexOf(v) !== -1 || same;
                   op.disabled = !ok;
                 });
+              }
+              // If currently Lost or Under Maintenance, gray out the whole status control
+              if (cs === 'Lost' || cs === 'Under Maintenance') {
+                sel.disabled = true;
+              } else {
+                sel.disabled = false;
               }
             }
           } catch(e){}
