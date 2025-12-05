@@ -52,8 +52,6 @@ body {
 }
 
 #page-loader {
-    position: fixed;
-    inset: 0;
     background: rgba(248,249,250,0.9);
     display: flex;
     align-items: center;
@@ -62,6 +60,16 @@ body {
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+}
+
+#page-loader.page-loader-shell {
+    position: absolute;
+    inset: 0;
+}
+
+#page-loader.page-loader-full {
+    position: fixed;
+    inset: 0;
 }
 
 #page-loader.page-loader-visible {
@@ -255,6 +263,7 @@ h1, h2, h3, h4, h5, h6, p, label, span, div {
     padding: 2rem;
     background-color: #f8f9fa;
     min-height: 100vh;
+    position: relative;
     color: #212529 !important;
     visibility: visible !important;
     opacity: 1 !important;

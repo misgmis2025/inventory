@@ -6,6 +6,7 @@
   var fadeRoot = null;
   var loaderEl = null;
   var loaderVisible = false;
+  var loaderMode = 'shell';
 
   function ensureBody(){
     if (body) return body;
@@ -27,37 +28,61 @@
     return fadeRoot;
   }
 
-  function ensureLoader(){
-    if (loaderEl && loaderEl.ownerDocument === document && document.contains(loaderEl)) {
-      return loaderEl;
+  function ensureLoader(mode){
+    if (mode === 'full' || mode === 'shell') {
+      loaderMode = mode;
     }
     var b = ensureBody();
     if (!b) return null;
-    var el = null;
+
+    var shellHost = null;
     try {
-      el = document.getElementById('page-loader');
+      shellHost = document.querySelector('[data-page-shell]') || document.getElementById('page-content-wrapper');
     } catch(_){ }
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'page-loader';
-      var inner = document.createElement('div');
-      inner.className = 'page-loader-inner';
-      var spinner = document.createElement('div');
-      spinner.className = 'page-loader-spinner';
-      var text = document.createElement('div');
-      text.className = 'page-loader-text';
-      text.textContent = 'Loading...';
-      inner.appendChild(spinner);
-      inner.appendChild(text);
-      el.appendChild(inner);
-      b.appendChild(el);
+
+    var useFull = (loaderMode === 'full') || !shellHost;
+    var host = useFull ? b : shellHost;
+
+    if (loaderEl && loaderEl.ownerDocument === document && document.contains(loaderEl)) {
+      if (loaderEl.parentNode !== host) {
+        try { host.appendChild(loaderEl); } catch(_){ }
+      }
+    } else {
+      var existing = null;
+      try {
+        existing = document.getElementById('page-loader');
+      } catch(_){ }
+      var el = existing || document.createElement('div');
+      if (!existing) {
+        el.id = 'page-loader';
+        var inner = document.createElement('div');
+        inner.className = 'page-loader-inner';
+        var spinner = document.createElement('div');
+        spinner.className = 'page-loader-spinner';
+        var text = document.createElement('div');
+        text.className = 'page-loader-text';
+        text.textContent = 'Loading...';
+        inner.appendChild(spinner);
+        inner.appendChild(text);
+        el.appendChild(inner);
+      }
+      host.appendChild(el);
+      loaderEl = el;
     }
-    loaderEl = el;
+
+    if (!loaderEl) return null;
+    loaderEl.classList.remove('page-loader-full', 'page-loader-shell');
+    if (useFull) {
+      loaderEl.classList.add('page-loader-full');
+    } else {
+      loaderEl.classList.add('page-loader-shell');
+    }
     return loaderEl;
   }
 
-  function showLoader(){
-    var el = ensureLoader();
+  function showLoader(fullPage){
+    var mode = fullPage ? 'full' : 'shell';
+    var el = ensureLoader(mode);
     if (!el) return;
     loaderVisible = true;
     if (!el.classList.contains('page-loader-visible')) {
@@ -96,8 +121,8 @@
     return false;
   }
 
-  function fadeAndGo(url, useBody){
-    showLoader();
+  function fadeAndGo(url, useBody, fullPage){
+    showLoader(!!fullPage);
     var b = useBody ? ensureBody() : getFadeRoot();
     if (!b){ window.location.href = url; return; }
     if (!b.classList.contains('page-fade-out')) {
@@ -132,8 +157,14 @@
       }
     } catch(_){ }
 
+    var hasShell = false;
+    try {
+      hasShell = !!document.querySelector('[data-page-shell]') || !!document.getElementById('page-content-wrapper');
+    } catch(_2){ }
+    var fullLoader = useBodyForFade || !hasShell;
+
     e.preventDefault();
-    fadeAndGo(href, useBodyForFade);
+    fadeAndGo(href, useBodyForFade, fullLoader);
   });
 
   document.addEventListener('submit', function(e){
@@ -143,8 +174,14 @@
     if (form.target && form.target !== '' && form.target !== '_self') return;
     if (form.dataset && form.dataset.noTransition === '1') return;
 
+    var hasShell = false;
+    try {
+      hasShell = !!document.querySelector('[data-page-shell]') || !!document.getElementById('page-content-wrapper');
+    } catch(_2){ }
+    var fullLoader = !hasShell;
+
     e.preventDefault();
-    showLoader();
+    showLoader(fullLoader);
     var b = getFadeRoot();
     if (b) {
       b.classList.add('page-fade-out');

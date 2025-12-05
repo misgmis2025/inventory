@@ -80,7 +80,65 @@ if (!function_exists('get_mongo_db')) {
         }
         
         $cached = $client->selectDatabase($dbName);
+        try {
+            inventory_ensure_indexes($cached);
+        } catch (\Throwable $e) {
+            error_log('Mongo index ensure warning (runtime): ' . $e->getMessage());
+        }
         return $cached;
     }
 }
 
+if (!function_exists('inventory_ensure_indexes')) {
+    function inventory_ensure_indexes(MongoDB\Database $db): void
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $done = true;
+
+        try {
+            $items = $db->selectCollection('inventory_items');
+            $items->createIndex(['id' => 1], ['name' => 'inv_items_id', 'unique' => true]);
+            $items->createIndex(['serial_no' => 1], ['name' => 'inv_items_serial']);
+            $items->createIndex(['status' => 1, 'category' => 1], ['name' => 'inv_items_status_cat']);
+            $items->createIndex(['status' => 1, 'quantity' => 1], ['name' => 'inv_items_status_qty']);
+            $items->createIndex(['category' => 1], ['name' => 'inv_items_category']);
+            $items->createIndex(['date_acquired' => 1], ['name' => 'inv_items_date']);
+            $items->createIndex(['created_at' => 1], ['name' => 'inv_items_created']);
+            $items->createIndex(['item_name' => 1], ['name' => 'inv_items_name']);
+            $items->createIndex(['model' => 1], ['name' => 'inv_items_model']);
+            $items->createIndex(['location' => 1], ['name' => 'inv_items_location']);
+
+            $er = $db->selectCollection('equipment_requests');
+            $er->createIndex(['username' => 1, 'created_at' => -1], ['name' => 'er_user_created']);
+            $er->createIndex(['username' => 1, 'type' => 1, 'status' => 1, 'reserved_from' => 1], ['name' => 'er_user_reservations']);
+            $er->createIndex(['reserved_model_id' => 1, 'type' => 1, 'status' => 1], ['name' => 'er_reserved_model']);
+
+            $ub = $db->selectCollection('user_borrows');
+            $ub->createIndex(['status' => 1], ['name' => 'ub_status']);
+            $ub->createIndex(['username' => 1, 'status' => 1], ['name' => 'ub_user_status']);
+            $ub->createIndex(['model_id' => 1, 'status' => 1], ['name' => 'ub_model_status']);
+
+            $bc = $db->selectCollection('borrowable_catalog');
+            $bc->createIndex(['active' => 1], ['name' => 'bc_active']);
+
+            $rq = $db->selectCollection('returned_queue');
+            $rq->createIndex(['processed_at' => 1], ['name' => 'rq_processed']);
+            $rq->createIndex(['model_id' => 1], ['name' => 'rq_model']);
+
+            $rh = $db->selectCollection('returned_hold');
+            $rh->createIndex(['category' => 1, 'model_name' => 1], ['name' => 'rh_cat_model']);
+
+            $users = $db->selectCollection('users');
+            $users->createIndex(['username' => 1], ['name' => 'users_username', 'unique' => true]);
+            $users->createIndex(['usertype' => 1], ['name' => 'users_usertype']);
+
+            $scans = $db->selectCollection('inventory_scans');
+            $scans->createIndex(['id' => 1], ['name' => 'scans_id', 'unique' => true]);
+        } catch (\Throwable $e) {
+            error_log('Mongo index ensure warning: ' . $e->getMessage());
+        }
+    }
+}
