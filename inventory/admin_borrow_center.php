@@ -1228,7 +1228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['do'] ?? '') === 'delete_u
       $erCol = $db->selectCollection('equipment_requests');
       // Find IDs currently In Use (actively borrowed)
       $inUse = [];
-      foreach ($iiCol->find(['id' => ['$in' => $ids], 'status' => 'In Use'], ['projection' => ['id' => 1]]) as $row) {
+      foreach ($iiCol->find(['id' => ['$in' => $ids], 'status' => ['$in' => ['In Use','Lost','Damaged','Under Maintenance']]], ['projection' => ['id' => 1]]) as $row) {
         $inUse[] = (int)($row['id'] ?? 0);
       }
       $inUse = array_values(array_unique(array_filter($inUse)));
@@ -7047,7 +7047,7 @@ try {
             const mid = parseInt(it.model_id||0,10)||0;
             const sn = String(it.serial_no||'');
             const st = String(it.status||'');
-            const blocked = /^(in use|reserved)$/i.test(st);
+            const blocked = /^(in use|reserved|lost|damaged|under maintenance)$/i.test(st);
             const disAttr = blocked ? ' disabled' : '';
             const badgeCls = (st==='In Use') ? 'bg-primary' : (st==='Reserved' ? 'bg-info' : (st==='Available' ? 'bg-success' : 'bg-secondary'));
             const esc = s=>String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
