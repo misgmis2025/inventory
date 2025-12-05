@@ -3532,6 +3532,8 @@ try {
     $mid = (int)($l['model_id'] ?? 0);
     $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
     if (!$ii) continue;
+    $stNow = (string)($ii['status'] ?? '');
+    if ($stNow !== 'Lost') continue;
     // Resolve affected student's username (prefer latest borrower)
     $studUser = '';
     try { $br = $ubCol->findOne(['model_id'=>$mid], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'projection'=>['username'=>1]]); if ($br && isset($br['username'])) { $studUser = (string)$br['username']; } } catch (Throwable $_) {}

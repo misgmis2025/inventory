@@ -399,7 +399,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($prevStatus === 'Available' || $prevStatus === 'Returned' || $prevStatus === 'Reserved') {
                     $allowed = ['Lost','Under Maintenance','Out of Order'];
                 } elseif ($prevStatus === 'Lost' || $prevStatus === 'Under Maintenance') {
-                    $allowed = ['Available'];
+                    $allowed = ['Lost','Under Maintenance'];
                 } elseif ($prevStatus === 'Out of Order') {
                     $allowed = ['Available','Lost','Under Maintenance'];
                 }
