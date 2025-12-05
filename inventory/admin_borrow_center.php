@@ -3017,9 +3017,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Location: admin_borrow_center.php?scroll=pending#pending-list'); exit();
   } elseif (in_array($do, ['mark_found','mark_fixed'], true)) {
     // Mark item as Found/Fixed -> set Available immediately and log; no queue
-    $mid = (int)($_POST['model_id'] ?? 0);
+    $midRaw = (int)($_POST['model_id'] ?? 0);
     $note = trim($_POST['notes'] ?? '');
-    if ($mid > 0) {
+    if ($midRaw > 0) {
       try {
         @require_once __DIR__ . '/../vendor/autoload.php';
         @require_once __DIR__ . '/db/mongo.php';
@@ -3028,12 +3028,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ldCol = $db->selectCollection('lost_damaged_log');
         $by = $_SESSION['username'] ?? 'system';
         $now = date('Y-m-d H:i:s');
-        // Set unit to Available
-        $iiCol->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
-        // Resolve prior Lost/Under Maintenance logs so they disappear from lists
-        try { $ldCol->updateMany(['model_id'=>$mid, 'action'=>['$in'=>['Lost','Under Maintenance']], 'resolved_at'=>['$exists'=>false]], ['$set'=>['resolved_at'=>$now]]); } catch (Throwable $e2) {}
-        // Log Found/Fixed action
-        $ldCol->insertOne(['model_id'=>$mid,'username'=>$by,'action'=>($do==='mark_found'?'Found':'Fixed'),'notes'=>$note,'created_at'=>$now]);
+        // Resolve actual inventory model id: first assume POSTed id is inventory_items.id
+        $mid = $midRaw;
+        $doc = $iiCol->findOne(['id'=>$mid]);
+        if (!$doc) {
+          // Fallback: treat posted id as lost_damaged_log.id and resolve its model_id
+          try {
+            $logDoc = $ldCol->findOne(['id'=>$midRaw]);
+            if ($logDoc && isset($logDoc['model_id'])) {
+              $mid = (int)($logDoc['model_id'] ?? 0);
+              if ($mid > 0) { $doc = $iiCol->findOne(['id'=>$mid]); }
+            }
+          } catch (Throwable $_lf) { /* ignore */ }
+        }
+        if ($mid > 0 && $doc) {
+          // Set unit to Available
+          $iiCol->updateOne(['id'=>$mid], ['$set'=>['status'=>'Available']]);
+          // Resolve prior Lost/Under Maintenance logs so they disappear from lists
+          try { $ldCol->updateMany(['model_id'=>$mid, 'action'=>['$in'=>['Lost','Under Maintenance']], 'resolved_at'=>['$exists'=>false]], ['$set'=>['resolved_at'=>$now]]); } catch (Throwable $e2) {}
+          // Log Found/Fixed action
+          $ldCol->insertOne(['model_id'=>$mid,'username'=>$by,'action'=>($do==='mark_found'?'Found':'Fixed'),'notes'=>$note,'created_at'=>$now]);
+        }
       } catch (Throwable $e) {}
     }
     header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
