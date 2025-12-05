@@ -2621,7 +2621,7 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $mt_sea
               if (cs === 'Available') {
                 allow = ['Lost','Under Maintenance','Out of Order'];
               } else if (cs === 'Lost' || cs === 'Under Maintenance') {
-                allow = ['Available'];
+                allow = ['Lost','Under Maintenance'];
               } else if (cs === 'Out of Order') {
                 allow = ['Available','Lost','Under Maintenance'];
               }
