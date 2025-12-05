@@ -3527,26 +3527,46 @@ try {
   $ubCol = $db->selectCollection('user_borrows');
   $uCol  = $db->selectCollection('users');
   $lostItems = [];
-  $cur = $ldCol->find(['action'=>'Lost', 'resolved_at'=>['$exists'=>false]], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
-  foreach ($cur as $l) {
-    $mid = (int)($l['model_id'] ?? 0);
-    $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
-    if (!$ii) continue;
-    $stNow = (string)($ii['status'] ?? '');
-    if ($stNow !== 'Lost') continue;
+  // Start from inventory: any unit whose current status is Lost
+  $curInv = $iiCol->find(['status' => 'Lost'], ['sort' => ['id' => 1], 'limit' => 300]);
+  foreach ($curInv as $ii) {
+    $mid = (int)($ii['id'] ?? 0);
+    if ($mid <= 0) continue;
+    // Latest Lost log for notes/marked_by/marked_at (may be null if never logged)
+    $l = null;
+    try {
+      $l = $ldCol->findOne(['model_id'=>$mid,'action'=>'Lost'], ['sort'=>['created_at'=>-1,'id'=>-1]]);
+    } catch (Throwable $_l) { $l = null; }
     // Resolve affected student's username (prefer latest borrower)
     $studUser = '';
-    try { $br = $ubCol->findOne(['model_id'=>$mid], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'projection'=>['username'=>1]]); if ($br && isset($br['username'])) { $studUser = (string)$br['username']; } } catch (Throwable $_) {}
-    if ($studUser === '') { $studUser = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? '')); }
+    try {
+      $br = $ubCol->findOne(
+        ['model_id'=>$mid],
+        ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'projection'=>['username'=>1]]
+      );
+      if ($br && isset($br['username'])) { $studUser = (string)$br['username']; }
+    } catch (Throwable $_) {}
+    if ($studUser === '') {
+      $studUser = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? ''));
+    }
     $studSid = '';
     $userName = $studUser;
     if ($studUser !== '') {
       try {
-        $uu = $uCol->findOne(['username'=>$studUser], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]);
+        $uu = $uCol->findOne(
+          ['username'=>$studUser],
+          ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]
+        );
         if ($uu) {
-          if (isset($uu['full_name']) && trim((string)$uu['full_name'])!=='') { $userName = (string)$uu['full_name']; }
-          elseif (isset($uu['first_name']) || isset($uu['last_name'])) { $userName = trim((string)($uu['first_name']??'').' '.(string)($uu['last_name']??'')); }
-          elseif (isset($uu['name']) && trim((string)$uu['name'])!=='') { $userName = (string)$uu['name']; }
+          if (isset($uu['full_name']) && trim((string)$uu['full_name'])!=='') {
+            $userName = (string)$uu['full_name'];
+          }
+          elseif (isset($uu['first_name']) || isset($uu['last_name'])) {
+            $userName = trim((string)($uu['first_name']??'').' '.(string)($uu['last_name']??''));
+          }
+          elseif (isset($uu['name']) && trim((string)$uu['name'])!=='') {
+            $userName = (string)$uu['name'];
+          }
           if (isset($uu['school_id'])) { $studSid = (string)$uu['school_id']; }
         }
       } catch (Throwable $_) {}
@@ -3559,10 +3579,10 @@ try {
       'user_name' => (string)$userName,
       'location' => (string)($ii['location'] ?? ''),
       'condition' => (string)($ii['condition'] ?? ''),
-      'marked_by' => (string)($l['username'] ?? ''),
+      'marked_by' => $l ? (string)($l['username'] ?? '') : '',
       'student_school_id' => $studSid,
-      'marked_at' => (string)($l['created_at'] ?? ''),
-      'notes' => (string)($l['notes'] ?? ''),
+      'marked_at' => $l ? (string)($l['created_at'] ?? '') : '',
+      'notes' => $l ? (string)($l['notes'] ?? '') : '',
       'remarks' => (string)($ii['remarks'] ?? ''),
     ];
   }
@@ -3578,24 +3598,46 @@ try {
   $uCol  = $db->selectCollection('users');
   $ubCol = $db->selectCollection('user_borrows');
   $damagedItems = [];
-  $cur = $ldCol->find(['action'=>'Under Maintenance', 'resolved_at'=>['$exists'=>false]], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
-  foreach ($cur as $l) {
-    $mid = (int)($l['model_id'] ?? 0);
-    $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
-    if (!$ii) continue;
+  // Start from inventory: any unit whose current status is Under Maintenance
+  $curInv = $iiCol->find(['status' => 'Under Maintenance'], ['sort' => ['id' => 1], 'limit' => 300]);
+  foreach ($curInv as $ii) {
+    $mid = (int)($ii['id'] ?? 0);
+    if ($mid <= 0) continue;
+    // Latest Under Maintenance log for notes/marked_by/marked_at (may be null)
+    $l = null;
+    try {
+      $l = $ldCol->findOne(['model_id'=>$mid,'action'=>'Under Maintenance'], ['sort'=>['created_at'=>-1,'id'=>-1]]);
+    } catch (Throwable $_l) { $l = null; }
     // Resolve affected student's username (prefer latest borrower)
     $studUser = '';
-    try { $br = $ubCol->findOne(['model_id'=>$mid], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'projection'=>['username'=>1]]); if ($br && isset($br['username'])) { $studUser = (string)$br['username']; } } catch (Throwable $_) {}
-    if ($studUser === '') { $studUser = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? '')); }
+    try {
+      $br = $ubCol->findOne(
+        ['model_id'=>$mid],
+        ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'projection'=>['username'=>1]]
+      );
+      if ($br && isset($br['username'])) { $studUser = (string)$br['username']; }
+    } catch (Throwable $_) {}
+    if ($studUser === '') {
+      $studUser = (string)($ii['last_borrower_username'] ?? ($ii['last_borrower'] ?? ''));
+    }
     $studSid = '';
     $userName = $studUser;
     if ($studUser !== '') {
       try {
-        $uu = $uCol->findOne(['username'=>$studUser], ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]);
+        $uu = $uCol->findOne(
+          ['username'=>$studUser],
+          ['projection'=>['school_id'=>1,'full_name'=>1,'first_name'=>1,'last_name'=>1,'name'=>1]]
+        );
         if ($uu) {
-          if (isset($uu['full_name']) && trim((string)$uu['full_name'])!=='') { $userName = (string)$uu['full_name']; }
-          elseif (isset($uu['first_name']) || isset($uu['last_name'])) { $userName = trim((string)($uu['first_name']??'').' '.(string)($uu['last_name']??'')); }
-          elseif (isset($uu['name']) && trim((string)$uu['name'])!=='') { $userName = (string)$uu['name']; }
+          if (isset($uu['full_name']) && trim((string)$uu['full_name'])!=='') {
+            $userName = (string)$uu['full_name'];
+          }
+          elseif (isset($uu['first_name']) || isset($uu['last_name'])) {
+            $userName = trim((string)($uu['first_name']??'').' '.(string)($uu['last_name']??''));
+          }
+          elseif (isset($uu['name']) && trim((string)$uu['name'])!=='') {
+            $userName = (string)$uu['name'];
+          }
           if (isset($uu['school_id'])) { $studSid = (string)$uu['school_id']; }
         }
       } catch (Throwable $_) {}
@@ -3608,10 +3650,10 @@ try {
       'user_name' => (string)$userName,
       'location' => (string)($ii['location'] ?? ''),
       'condition' => (string)($ii['condition'] ?? ''),
-      'marked_by' => (string)($l['username'] ?? ''),
+      'marked_by' => $l ? (string)($l['username'] ?? '') : '',
       'student_school_id' => $studSid,
-      'marked_at' => (string)($l['created_at'] ?? ''),
-      'notes' => (string)($l['notes'] ?? ''),
+      'marked_at' => $l ? (string)($l['created_at'] ?? '') : '',
+      'notes' => $l ? (string)($l['notes'] ?? '') : '',
     ];
   }
 } catch (Throwable $e) { $damagedItems = []; }
