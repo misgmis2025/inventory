@@ -389,6 +389,25 @@ if ($C_MONGO_FAILED) {
           showOverlay();
         });
       }
+
+      // Auto-hide top-level alerts after a short delay
+      var alerts = document.querySelectorAll('.alert');
+      if (alerts && alerts.length) {
+        setTimeout(function(){
+          alerts.forEach(function(el){
+            try {
+              if (window.bootstrap && window.bootstrap.Alert && typeof window.bootstrap.Alert.getOrCreateInstance === 'function') {
+                var inst = window.bootstrap.Alert.getOrCreateInstance(el);
+                inst.close();
+              } else {
+                el.classList.add('d-none');
+              }
+            } catch (e) {
+              try { el.classList.add('d-none'); } catch (_) {}
+            }
+          });
+        }, 4000);
+      }
     });
   })();
   </script>
