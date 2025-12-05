@@ -3527,7 +3527,7 @@ try {
   $ubCol = $db->selectCollection('user_borrows');
   $uCol  = $db->selectCollection('users');
   $lostItems = [];
-  $cur = $ldCol->find(['action'=>'Lost', 'resolved_at'=>['$exists'=>false], 'source' => ['$ne' => 'manual_edit']], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
+  $cur = $ldCol->find(['action'=>'Lost', 'resolved_at'=>['$exists'=>false]], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
   foreach ($cur as $l) {
     $mid = (int)($l['model_id'] ?? 0);
     $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
@@ -3576,7 +3576,7 @@ try {
   $uCol  = $db->selectCollection('users');
   $ubCol = $db->selectCollection('user_borrows');
   $damagedItems = [];
-  $cur = $ldCol->find(['action'=>'Under Maintenance', 'resolved_at'=>['$exists'=>false], 'source' => ['$ne' => 'manual_edit']], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
+  $cur = $ldCol->find(['action'=>'Under Maintenance', 'resolved_at'=>['$exists'=>false]], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>300]);
   foreach ($cur as $l) {
     $mid = (int)($l['model_id'] ?? 0);
     $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
