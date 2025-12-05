@@ -2540,9 +2540,10 @@ if (!empty($my_requests)) {
                       
                       <div class="row g-3">
                         <div class="col-12">
-                          <label class="form-label fw-bold d-flex align-items-center gap-2" for="reserved_from">Start Time <span class="text-danger">*</span><small id="reservedStartHint" class="text-info"></small></label>
+                          <label class="form-label fw-bold" for="reserved_from">Start Time <span class="text-danger">*</span></label>
                           <input type="datetime-local" id="reserved_from" name="reserved_from" class="form-control" 
                                  min="<?php echo date('Y-m-d\TH:i'); ?>" />
+                          <small id="reservedStartHint" class="text-info d-block mt-1"></small>
                         </div>
                         <div class="col-12">
                           <label class="form-label fw-bold" for="reserved_to">End Time <span class="text-danger">*</span></label>
