@@ -5018,7 +5018,7 @@ try {
                                 <td><?php echo htmlspecialchars((string)($li['user_name'] ?? '')); ?></td>
                                 <td><?php echo htmlspecialchars((string)($li['student_school_id'] ?? '')); ?></td>
                                 <td class="text-end">
-                                  <form method="POST" action="admin_borrow_center.php" class="d-inline">
+                                  <form method="POST" action="admin_borrow_center.php" class="d-inline" onsubmit="return confirmMarkFound(this);">
                                     <input type="hidden" name="model_id" value="<?php echo (int)$li['model_id']; ?>" />
                                     <button type="submit" name="do" value="mark_found" class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1" title="Mark Found" aria-label="Mark Found">
                                       <i class="bi bi-check2-circle"></i>
@@ -5072,7 +5072,7 @@ try {
                                 <td><?php echo htmlspecialchars((string)($di['user_name'] ?? '')); ?></td>
                                 <td><?php echo htmlspecialchars((string)($di['student_school_id'] ?? '')); ?></td>
                                 <td class="text-end">
-                                  <form method="POST" action="admin_borrow_center.php" class="d-inline">
+                                  <form method="POST" action="admin_borrow_center.php" class="d-inline" onsubmit="return confirmMarkFixed(this);">
                                     <input type="hidden" name="model_id" value="<?php echo (int)$di['model_id']; ?>" />
                                     <button type="submit" name="do" value="mark_fixed" class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1" title="Mark Fixed" aria-label="Mark Fixed">
                                       <i class="bi bi-wrench-adjustable-circle"></i>
@@ -5840,6 +5840,12 @@ try {
         return false;
       }
       return true;
+    }
+    function confirmMarkFound(form){
+      return window.confirm('Mark this item as FOUND and return it to Available?');
+    }
+    function confirmMarkFixed(form){
+      return window.confirm('Mark this item as FIXED (Available) and remove it from Under Maintenance?');
     }
   </script>
   <!-- Approve by Scan/ID Modal -->
