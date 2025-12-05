@@ -3385,6 +3385,7 @@ try {
   $db = isset($db) && $db instanceof MongoDB\Database ? $db : get_mongo_db();
   $iiCol = $db->selectCollection('inventory_items');
   $holdCol = $db->selectCollection('returned_hold');
+  $buCol = $db->selectCollection('borrowable_units');
   // Inventory catalog (category -> models)
   $invCatModels = [];
   $categoryCounts = [];
@@ -3413,7 +3414,10 @@ try {
   foreach ($invCatModels as $c => &$mods) { natcasesort($mods); $mods = array_values(array_unique($mods)); }
   unset($mods);
   // Quantity stats per (category, model). Exclude Permanently Lost/Disposed from totals.
+  // Also compute whitelisted status buckets so we can derive Available/Total inside
+  // the borrowable list from the whitelist instead of raw inventory totals.
   $qtyStats = [];
+  $wlBuckets = [];
   foreach ($iiCol->aggregate([
     ['$project' => [
       'category' => ['$ifNull' => ['$category', 'Uncategorized']],
@@ -3449,6 +3453,46 @@ try {
     if ($c === '' || $m === '') continue;
     if (!isset($qtyStats[$c])) { $qtyStats[$c] = []; }
     $qtyStats[$c][$m] = [ 'available' => (int)($row->available ?? 0), 'total' => (int)($row->total ?? 0) ];
+  }
+  // Build whitelist status buckets per (category, model) so that the borrowable list
+  // can reflect 40/46-style semantics based on whitelisted units only.
+  foreach ($buCol->aggregate([
+    ['$lookup' => [
+      'from' => 'inventory_items',
+      'localField' => 'model_id',
+      'foreignField' => 'id',
+      'as' => 'item'
+    ]],
+    ['$unwind' => '$item'],
+    ['$project' => [
+      'category' => '$category',
+      'model_name' => '$model_name',
+      'status' => ['$ifNull' => ['$item.status', '']],
+    ]],
+    ['$group' => [
+      '_id' => [
+        'category' => ['$ifNull' => ['$category', 'Uncategorized']],
+        'model_name' => ['$ifNull' => ['$model_name', '']],
+      ],
+      'total' => ['$sum' => 1],
+      'avail' => ['$sum' => [
+        '$cond' => [[ '$eq' => ['$status', 'Available'] ], 1, 0]
+      ]],
+      'lostDamaged' => ['$sum' => [
+        '$cond' => [[ '$in' => ['$status', ['Lost','Damaged','Under Maintenance']] ], 1, 0]
+      ]]
+    ]]
+  ]) as $row) {
+    $id = (array)($row->_id ?? []);
+    $c = (string)($id['category'] ?? 'Uncategorized');
+    $m = (string)($id['model_name'] ?? '');
+    if ($c === '' || $m === '') continue;
+    if (!isset($wlBuckets[$c])) { $wlBuckets[$c] = []; }
+    $wlBuckets[$c][$m] = [
+      'total' => (int)($row->total ?? 0),
+      'avail' => (int)($row->avail ?? 0),
+      'lostDamaged' => (int)($row->lostDamaged ?? 0),
+    ];
   }
   // Prune models with zero total from Add From Category lists
   if (!empty($invCatModels)) {
