@@ -172,7 +172,16 @@ function fcm_send_to_user_tokens($mongo_db, string $username, string $title, str
         if ($resp !== false && $code >= 200 && $code < 300) {
             $okAny = true;
         } else {
-            error_log('FCM: send failed username=' . $username . ' code=' . $code . ' err=' . $err . ' resp=' . substr((string)$resp, 0, 200));
+            $status = '';
+            $msg = '';
+            if (is_string($resp) && $resp !== '') {
+                $j = json_decode($resp, true);
+                if (is_array($j) && isset($j['error']) && is_array($j['error'])) {
+                    $status = isset($j['error']['status']) ? (string)$j['error']['status'] : '';
+                    $msg = isset($j['error']['message']) ? (string)$j['error']['message'] : '';
+                }
+            }
+            error_log('FCM: send failed username=' . $username . ' code=' . $code . ' status=' . $status . ' message=' . $msg);
         }
     }
     return $okAny;
