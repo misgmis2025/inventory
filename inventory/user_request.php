@@ -24,6 +24,7 @@ $USED_MONGO = false; $mongo_db = null; $conn = null;
 try {
   require_once __DIR__ . '/../vendor/autoload.php';
   require_once __DIR__ . '/db/mongo.php';
+  require_once __DIR__ . '/db/fcm.php';
   $mongo_db = get_mongo_db();
   $USED_MONGO = true;
 } catch (Throwable $e) { $USED_MONGO = false; }
@@ -446,6 +447,28 @@ if ($__act === 'process_return' && $_SERVER['REQUEST_METHOD'] === 'POST') {
           'username' => (string)($_SESSION['username'] ?? ''),
           'created_at' => $now,
         ]);
+        // Notify admins that a user returned an item via QR
+        try {
+          if (function_exists('fcm_send_to_admins')) {
+            $uname = (string)($_SESSION['username'] ?? '');
+            $title = 'User QR return';
+            $body = $uname . ' returned ' . ($modelName !== '' ? $modelName : 'an item');
+            if ($serial !== '') { $body .= ' [' . $serial . ']'; }
+            $extra = [
+              'request_id' => (int)$reqForEvent,
+              'username' => $uname,
+              'item_name' => $modelName,
+              'qr_serial_no' => $serial,
+            ];
+            fcm_send_to_admins(
+              $mongo_db,
+              $title,
+              $body,
+              fcm_full_url('/inventory/admin_borrow_center.php'),
+              $extra
+            );
+          }
+        } catch (Throwable $_fcm_ret) {}
       } catch (Throwable $_feed) { /* no-op */ }
       echo json_encode(['success' => true]);
     } else {
@@ -1409,6 +1432,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $__act === 'create_from_qr') {
       if ($qrSerial !== '') { $doc['qr_serial_no'] = $qrSerial; }
       if ($expectedNorm !== '') { $doc['expected_return_at'] = $expectedNorm; }
       $erCol->insertOne($doc);
+      // Notify admins about new QR request
+      try {
+        if (function_exists('fcm_send_to_admins')) {
+          $title = 'New borrow request';
+          $body = $username . ' requested ' . $modelName . ' (x1)';
+          $extra = [
+            'request_id' => $nextId,
+            'username' => $username,
+            'item_name' => $modelName,
+            'type' => 'immediate',
+          ];
+          fcm_send_to_admins(
+            $mongo_db,
+            $title,
+            $body,
+            fcm_full_url('/inventory/admin_borrow_center.php'),
+            $extra
+          );
+        }
+      } catch (Throwable $_fcm_qr) {}
       echo json_encode(['success'=>true,'request_id'=>$nextId]);
     } else if ($conn) {
       // MySQL fallback with borrowable check
@@ -1823,6 +1866,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               if ($isReservation) { $doc['reserved_from'] = $reserved_from; $doc['reserved_to'] = $reserved_to; }
               else { $doc['expected_return_at'] = $expected_return_at; }
               $er->insertOne($doc);
+              // Notify admins about new manual/QR request
+              try {
+                if (function_exists('fcm_send_to_admins')) {
+                  $uname = (string)$_SESSION['username'];
+                  $title = 'New borrow request';
+                  $body = $uname . ' requested ' . $item_name . ' (x' . $quantity . ')';
+                  $extra = [
+                    'request_id' => $nextId,
+                    'username' => $uname,
+                    'item_name' => $item_name,
+                    'type' => $req_type,
+                  ];
+                  fcm_send_to_admins(
+                    $mongo_db,
+                    $title,
+                    $body,
+                    fcm_full_url('/inventory/admin_borrow_center.php'),
+                    $extra
+                  );
+                }
+              } catch (Throwable $_fcm_submit) {}
               header('Location: user_request.php?submitted=1'); exit();
             } catch (Throwable $e) { $error = 'Failed to submit request.'; }
           } elseif ($conn) {

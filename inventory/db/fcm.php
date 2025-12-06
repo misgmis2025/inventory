@@ -197,3 +197,26 @@ function fcm_send_to_user_tokens($mongo_db, string $username, string $title, str
     }
     return $okAny;
 }
+
+function fcm_send_to_admins($mongo_db, string $title, string $body, string $targetUrl = '', array $extraData = []): bool {
+    if (!$mongo_db) {
+        return false;
+    }
+    try {
+        $usersCol = $mongo_db->selectCollection('users');
+        $cur = $usersCol->find(['usertype' => 'admin'], ['projection' => ['username' => 1]]);
+        $ok = false;
+        foreach ($cur as $doc) {
+            $uname = (string)($doc['username'] ?? '');
+            if ($uname === '') {
+                continue;
+            }
+            if (fcm_send_to_user_tokens($mongo_db, $uname, $title, $body, $targetUrl, $extraData)) {
+                $ok = true;
+            }
+        }
+        return $ok;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
