@@ -824,33 +824,174 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $ii = $db->selectCollection('inventory_items');
     $ub = $db->selectCollection('user_borrows');
     $uCol = $db->selectCollection('users');
-    $query = [];
-    if ($event !== '' && strcasecmp($event,'All')!==0) { $query['action'] = $event; }
-    $cur = $ld->find($query, ['sort'=>['id'=>-1], 'limit'=>1000]);
-    // Materialize logs to compute latest action per model
-    $logs = [];
-    foreach ($cur as $tmpR) { $logs[] = $tmpR; }
-    $latestByModel = [];
-    foreach ($logs as $lr) {
-      $lm = (int)($lr['model_id'] ?? 0);
-      if ($lm > 0 && !isset($latestByModel[$lm])) {
-        $latestByModel[$lm] = (string)($lr['action'] ?? '');
+    // Pull recent logs (newest first) for episode-based history, similar to on-screen Lost/Damaged History
+    $logs = iterator_to_array($ld->find([], ['sort'=>['created_at'=>-1,'id'=>-1], 'limit'=>1000]));
+    // De-dup exact duplicates (same model, action, timestamp) and omit resolution-only rows from the base event list
+    $seenKeys = [];
+    $filtered = [];
+    foreach ($logs as $l) {
+      $mid0 = (int)($l['model_id'] ?? 0);
+      $act0 = (string)($l['action'] ?? '');
+      $ts0  = (string)($l['created_at'] ?? '');
+      if ($mid0 <= 0 || $ts0 === '' || $act0 === '') continue;
+      if (in_array($act0, ['Found','Fixed'], true)) continue;
+      $k = $mid0.'|'.$act0.'|'.$ts0;
+      if (isset($seenKeys[$k])) continue;
+      $seenKeys[$k] = true;
+      $filtered[] = $l;
+    }
+    // Collapse entries with the same model and exact timestamp by preferring a higher-priority event
+    $pickByTs = [];
+    $prio = function($act){
+      if ($act === 'Disposed') return 4;
+      if ($act === 'Permanently Lost') return 3;
+      if ($act === 'Lost') return 2;
+      if ($act === 'Under Maintenance') return 1;
+      return 0;
+    };
+    foreach ($filtered as $l) {
+      $mid0 = (int)($l['model_id'] ?? 0); $ts0 = (string)($l['created_at'] ?? ''); $act0 = (string)($l['action'] ?? '');
+      $k = $mid0.'|'.$ts0;
+      if (!isset($pickByTs[$k]) || $prio($act0) > $prio((string)($pickByTs[$k]['action'] ?? ''))) {
+        $pickByTs[$k] = $l;
       }
     }
+    $filtered = array_values($pickByTs);
+    // Build per-model chronological logs to compute per-episode final status
+    $byModelChron = [];
+    foreach ($logs as $l) {
+      $midE = (int)($l['model_id'] ?? 0);
+      if ($midE <= 0) continue;
+      $byModelChron[$midE][] = $l;
+    }
+    foreach ($byModelChron as $midE => &$arrE) {
+      usort($arrE, function($a, $b){
+        $ta = strtotime((string)($a['created_at'] ?? '')) ?: 0;
+        $tb = strtotime((string)($b['created_at'] ?? '')) ?: 0;
+        if ($ta === $tb) {
+          $ia = (int)($a['id'] ?? 0);
+          $ib = (int)($b['id'] ?? 0);
+          if ($ia === $ib) return 0;
+          return ($ia < $ib) ? -1 : 1;
+        }
+        return ($ta < $tb) ? -1 : 1;
+      });
+    }
+    unset($arrE);
+    $episodeStatus = [];
+    $episodeResolutionMap = [];
+    foreach ($byModelChron as $midE => $logsE) {
+      $nE = is_array($logsE) ? count($logsE) : 0;
+      $openTs = null;
+      $openBaseStatus = '';
+      for ($iE = 0; $iE < $nE; $iE++) {
+        $le = $logsE[$iE];
+        $actE = strtolower((string)($le['action'] ?? ''));
+        $tsE  = (string)($le['created_at'] ?? '');
+        if ($tsE === '' || $actE === '') continue;
+        // Episode starts when item enters Lost or Damaged (Under Maintenance)
+        if (in_array($actE, ['lost','under maintenance','damaged'], true)) {
+          $openTs = $tsE;
+          $openBaseStatus = ($actE === 'lost') ? 'Lost' : 'Under Maintenance';
+          $episodeStatus[$midE.'|'.$tsE] = $openBaseStatus;
+          continue;
+        }
+        if ($openTs === null) {
+          // Resolution with no open episode; ignore
+          continue;
+        }
+        if (in_array($actE, ['found','fixed','permanently lost','disposed','disposal'], true)) {
+          $statusE = '';
+          if ($actE === 'found') { $statusE = 'Found'; }
+          elseif ($actE === 'fixed') { $statusE = 'Fixed'; }
+          elseif ($actE === 'permanently lost') { $statusE = 'Permanently Lost'; }
+          elseif ($actE === 'disposed' || $actE === 'disposal') { $statusE = 'Disposed'; }
+          else { $statusE = $openBaseStatus; }
+          $episodeStatus[$midE.'|'.$openTs] = $statusE;
+          // Track which resolution log (by its own timestamp) closed this episode
+          $episodeResolutionMap[$midE.'|'.$tsE] = $openTs;
+          $openTs = null;
+          $openBaseStatus = '';
+        }
+      }
+    }
+    // Compute last action dates per model (use all logs, including Found/Fixed)
+    $lastMap = [];
+    foreach ($logs as $l) {
+      $mid = (int)($l['model_id'] ?? 0);
+      $act = (string)($l['action'] ?? '');
+      $ts  = (string)($l['created_at'] ?? '');
+      if ($mid <= 0 || $ts === '' || $act === '') continue;
+      if (!isset($lastMap[$mid])) { $lastMap[$mid] = ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>'','last_disposed_at'=>'']; }
+      $actLower = strtolower($act);
+      if ($actLower === 'lost' && $ts > (string)$lastMap[$mid]['last_lost_at']) { $lastMap[$mid]['last_lost_at'] = $ts; }
+      if (($act === 'Under Maintenance' || $actLower === 'damaged') && $ts > (string)$lastMap[$mid]['last_maint_at']) { $lastMap[$mid]['last_maint_at'] = $ts; }
+      if ($actLower === 'found' && $ts > (string)$lastMap[$mid]['last_found_at']) { $lastMap[$mid]['last_found_at'] = $ts; }
+      if ($actLower === 'fixed' && $ts > (string)$lastMap[$mid]['last_fixed_at']) { $lastMap[$mid]['last_fixed_at'] = $ts; }
+      // Track Permanently Lost and Disposed separately as well
+      if ($actLower === 'permanently lost' && $ts > (string)$lastMap[$mid]['last_perm_lost_at']) { $lastMap[$mid]['last_perm_lost_at'] = $ts; }
+      if (($actLower === 'disposed' || $actLower === 'disposal') && $ts > (string)$lastMap[$mid]['last_disposed_at']) { $lastMap[$mid]['last_disposed_at'] = $ts; }
+    }
+    // Build printable rows using the same per-episode semantics as the on-screen history
     $rows = [];
-    // Build a history row for each non-resolution log (allow same item multiple times across different timestamps)
-    foreach ($logs as $r) {
+    foreach ($filtered as $r) {
       $mid = (int)($r['model_id'] ?? 0);
       if ($mid <= 0) { continue; }
-      $evtCheck = (string)($r['action'] ?? '');
-      // Skip resolution rows (Found/Fixed) in the printed event history
-      if (in_array($evtCheck, ['Found','Fixed'], true)) { continue; }
-      $itm = $mid>0 ? $ii->findOne(['id'=>$mid]) : null;
-      $currStatus = $itm ? (string)($itm['status'] ?? '') : '';
-      if ($statusFilter !== '' && strcasecmp($statusFilter,'All')!==0) {
-        if (strcasecmp($currStatus, $statusFilter) !== 0) continue;
+      $actLowerRow = strtolower((string)($r['action'] ?? ''));
+      $tsRow = (string)($r['created_at'] ?? '');
+      // If this is a Permanently Lost / Disposed resolution that finalized an existing episode,
+      // skip it as its own row; the original Lost/Damaged entry will carry the final Status.
+      if ($mid > 0 && $tsRow !== '' && in_array($actLowerRow, ['permanently lost','disposed','disposal'], true)
+          && isset($episodeResolutionMap[$mid.'|'.$tsRow])) {
+        continue;
       }
-      // Try to identify the user who lost/damaged the item vs the admin who marked it
+      $itm = $ii->findOne(['id'=>$mid]);
+      $lm = $lastMap[$mid] ?? ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>'','last_disposed_at'=>''];
+      // Determine per-episode final status (currentAction), same as modal history
+      $currentAction = '';
+      $epKey = $mid.'|'.$tsRow;
+      if (isset($episodeStatus[$epKey])) {
+        $currentAction = (string)$episodeStatus[$epKey];
+      }
+      if ($currentAction === '') {
+        $lostAt  = !empty($lm['last_lost_at']) ? strtotime((string)$lm['last_lost_at']) : null;
+        $foundAt = !empty($lm['last_found_at']) ? strtotime((string)$lm['last_found_at']) : null;
+        $maintAt = !empty($lm['last_maint_at']) ? strtotime((string)$lm['last_maint_at']) : null;
+        $fixedAt = !empty($lm['last_fixed_at']) ? strtotime((string)$lm['last_fixed_at']) : null;
+        $permLostAt = !empty($lm['last_perm_lost_at']) ? strtotime((string)$lm['last_perm_lost_at']) : null;
+        $disposedAt = !empty($lm['last_disposed_at']) ? strtotime((string)$lm['last_disposed_at']) : null;
+        $latestAny = max($lostAt ?: 0, $foundAt ?: 0, $maintAt ?: 0, $fixedAt ?: 0, $permLostAt ?: 0, $disposedAt ?: 0);
+        if ($latestAny > 0) {
+          if ($disposedAt && $disposedAt === $latestAny) {
+            $currentAction = 'Disposed';
+          }
+          elseif ($permLostAt && $permLostAt === $latestAny) {
+            $currentAction = 'Permanently Lost';
+          }
+          elseif ($lostAt && $lostAt === $latestAny) {
+            $currentAction = 'Lost';
+          }
+          elseif ($maintAt && $maintAt === $latestAny) {
+            if ($fixedAt && $fixedAt > $maintAt) { $currentAction = 'Fixed'; }
+            else { $currentAction = 'Under Maintenance'; }
+          }
+          elseif ($foundAt && $foundAt === $latestAny) {
+            $currentAction = 'Found';
+          }
+          elseif ($fixedAt && $fixedAt === $latestAny) {
+            $currentAction = 'Fixed';
+          }
+        }
+        if ($currentAction === '') {
+          $ist = $itm ? (string)($itm['status'] ?? '') : '';
+          if (in_array($ist, ['Lost','Under Maintenance','Found','Fixed'], true)) { $currentAction = $ist; }
+        }
+      }
+      // Apply Status filter (per-episode final status)
+      if ($statusFilter !== '' && strcasecmp($statusFilter,'All') !== 0) {
+        if ($currentAction === '' || strcasecmp($currentAction, $statusFilter) !== 0) continue;
+      }
+      // Resolve user who lost/damaged vs admin who marked it, similar to previous print logic
       $userCandidates = [
         (string)($r['affected_username'] ?? ''),
         (string)($r['lost_by'] ?? ''),
@@ -872,11 +1013,9 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       $pickFirst = function(array $arr){ foreach ($arr as $v) { if (isset($v) && trim((string)$v) !== '') return (string)$v; } return ''; };
       $markedUname = $pickFirst($markedCandidates);
       $userUname = $pickFirst($userCandidates);
-      $logWhen = (string)($r['created_at'] ?? '');
-      // If user is missing or equals the admin marker, resolve from borrows around log time
+      $logWhen = $tsRow;
       if (($userUname === '' || ($markedUname !== '' && $userUname === $markedUname)) && $mid > 0) {
         try {
-          // Prefer a borrow that overlaps log time: borrowed_at <= logWhen and (returned_at is null/empty or returned_at >= logWhen)
           $q1 = [
             'model_id' => $mid,
             'borrowed_at' => ['$lte' => $logWhen],
@@ -886,13 +1025,11 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           $c1 = $ub->find($q1, $opt);
           $foundBorrow = false;
           foreach ($c1 as $br) { $cand = (string)($br['username'] ?? ''); if ($cand !== '') { $userUname = $cand; $foundBorrow = true; break; } }
-          // If still none, pick the latest borrow before or at log time
           if (!$foundBorrow) {
             $q2 = [ 'model_id' => $mid, 'borrowed_at' => ['$lte' => $logWhen] ];
             $c2 = $ub->find($q2, $opt);
             foreach ($c2 as $br) { $cand = (string)($br['username'] ?? ''); if ($cand !== '') { $userUname = $cand; $foundBorrow = true; break; } }
           }
-              // If no borrow context, first try item's last borrower, then admin marker (manual edit)
           if (!$foundBorrow && $userUname === '' && $itm) {
             $userUname = (string)($itm['last_borrower_username'] ?? ($itm['last_borrower'] ?? ''));
           }
@@ -911,56 +1048,28 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       };
       $userFull = $resolve($userUname);
       $markedFull = $resolve($markedUname);
-      // Event to display: skip resolution rows (Found/Fixed)
-      $evt = (string)($r['action'] ?? '');
-      // Current status text derived from latest action on this model
-      $latestAct = $latestByModel[$mid] ?? '';
-      $currStatusText = $currStatus;
-      if (in_array($latestAct, ['Found','Fixed','Disposed','Permanently Lost','Under Maintenance','Lost'], true)) {
-        $currStatusText = $latestAct;
-      }
       // Normalize Event display: show base category (Lost or Damaged) regardless of terminal outcome
+      $evt = (string)($r['action'] ?? '');
       $evtLower = strtolower($evt);
       $eventBase = in_array($evtLower, ['lost','permanently lost','found']) ? 'Lost'
                   : (in_array($evtLower, ['under maintenance','damaged','fixed','disposed','disposal']) ? 'Damaged' : $evt);
+      // Apply Event filter on the normalized base event
+      if ($event !== '' && strcasecmp($event,'All') !== 0) {
+        if (strcasecmp($eventBase, $event) !== 0) continue;
+      }
       $rows[] = [
-        'serial' => $itm ? (string)($itm['serial_no'] ?? '') : '',
-        'model' => $itm ? ((string)($itm['model'] ?? '') ?: (string)($itm['item_name'] ?? '')) : '',
-        'category' => $itm ? ((string)($itm['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized',
-        'location' => $itm ? (string)($itm['location'] ?? '') : '',
-        'remarks' => $itm ? (string)($itm['remarks'] ?? '') : '',
+        'serial' => $itm ? (string)($itm['serial_no'] ?? '') : (string)($r['serial_no'] ?? ''),
+        'model' => $itm ? ((string)($itm['model'] ?? '') ?: (string)($itm['item_name'] ?? '')) : (string)($r['model_key'] ?? ''),
+        'category' => $itm ? ((string)($itm['category'] ?? '') ?: 'Uncategorized') : (string)($r['category'] ?? 'Uncategorized'),
+        'location' => $itm ? (string)($itm['location'] ?? '') : (string)($r['location'] ?? ''),
+        'remarks' => (string)($r['notes'] ?? ($itm['remarks'] ?? '')),
         'event' => $eventBase,
-        'orig_event' => $evt,
         'lost_damaged_by' => $userFull,
         'marked_by' => $markedFull,
-        'at' => (string)($r['created_at'] ?? ''),
-        'status' => $currStatusText,
+        'at' => $tsRow,
+        'status' => $currentAction,
       ];
     }
-    // Deduplicate by Serial ID only: keep the highest severity outcome for each serial
-    $severity = function($ev){
-      $e = strtolower(trim((string)$ev));
-      // Terminal > non-terminal
-      $map = [ 'permanently lost' => 4, 'disposed' => 4, 'disposal' => 4, 'lost' => 2, 'under maintenance' => 1, 'damaged' => 1 ];
-      return isset($map[$e]) ? $map[$e] : 0;
-    };
-    $bySerial = [];
-    foreach ($rows as $rw) {
-      $ser = strtolower(trim((string)($rw['serial'] ?? '')));
-      if ($ser === '') { continue; }
-      $p = $severity($rw['orig_event'] ?? $rw['event'] ?? '');
-      if (!isset($bySerial[$ser])) { $bySerial[$ser] = $rw; $bySerial[$ser]['__sev'] = $p; continue; }
-      // Prefer higher severity; if equal severity, prefer the latest timestamp
-      $cur = $bySerial[$ser];
-      $cp = (int)($cur['__sev'] ?? 0);
-      if ($p > $cp) { $rw['__sev'] = $p; $bySerial[$ser] = $rw; }
-      elseif ($p === $cp) {
-        $newTs = strtotime((string)($rw['at'] ?? '')) ?: 0;
-        $oldTs = strtotime((string)($cur['at'] ?? '')) ?: 0;
-        if ($newTs > $oldTs) { $rw['__sev'] = $p; $bySerial[$ser] = $rw; }
-      }
-    }
-    $rows = array_values(array_map(function($r){ unset($r['__sev']); return $r; }, $bySerial));
     // Keep rows order roughly newest first
     usort($rows, function($a,$b){
       $ta = strtotime((string)($a['at'] ?? '')) ?: 0; $tb = strtotime((string)($b['at'] ?? '')) ?: 0;
@@ -1083,7 +1192,7 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         <div class="print-wrap mb-2">
           <table class="table table-bordered table-sm align-middle print-table">
             <thead class="table-light"><tr>
-              <th>Serial ID</th><th>Model</th><th>Category</th><th>Location</th><th>Remarks</th><th>Event</th><th>Lost/Damaged by</th><th>Marked By</th><th>Date Lost/Damaged</th><th>Current Status</th>
+              <th>Serial ID</th><th>Model</th><th>Category</th><th>Location</th><th>Remarks</th><th>Event</th><th>Lost/Damaged by</th><th>Marked By</th><th>Date Lost/Damaged</th><th>Status</th>
             </tr></thead>
             <tbody>
               <?php if (empty($slice)): ?>
@@ -3714,18 +3823,69 @@ try {
     }
   }
   $filtered = array_values($pickByTs);
-  $hasLostByModel = [];
-  foreach ($filtered as $l0) {
-    $mid0 = (int)($l0['model_id'] ?? 0);
-    $act0 = (string)($l0['action'] ?? '');
-    if ($mid0 > 0 && $act0 === 'Lost') { $hasLostByModel[$mid0] = true; }
+  // Build per-model chronological logs to compute per-episode final status
+  $byModelChron = [];
+  foreach ($raw as $l) {
+    $midE = (int)($l['model_id'] ?? 0);
+    if ($midE <= 0) continue;
+    $byModelChron[$midE][] = $l;
   }
-  $filtered = array_values(array_filter($filtered, function($l0) use ($hasLostByModel){
-    $mid0 = (int)($l0['model_id'] ?? 0);
-    $act0 = (string)($l0['action'] ?? '');
-    if ($act0 === 'Permanently Lost' && !empty($hasLostByModel[$mid0])) return false;
-    return true;
-  }));
+  foreach ($byModelChron as $midE => &$arrE) {
+    usort($arrE, function($a, $b){
+      $ta = strtotime((string)($a['created_at'] ?? '')) ?: 0;
+      $tb = strtotime((string)($b['created_at'] ?? '')) ?: 0;
+      if ($ta === $tb) {
+        $ia = (int)($a['id'] ?? 0);
+        $ib = (int)($b['id'] ?? 0);
+        if ($ia === $ib) return 0;
+        return ($ia < $ib) ? -1 : 1;
+      }
+      return ($ta < $tb) ? -1 : 1;
+    });
+  }
+  unset($arrE);
+  $episodeStatus = [];
+  $episodeResolutionMap = [];
+  $episodeResolutionAt = [];
+  foreach ($byModelChron as $midE => $logsE) {
+    $nE = is_array($logsE) ? count($logsE) : 0;
+    $openTs = null;
+    $openBaseStatus = '';
+    for ($iE = 0; $iE < $nE; $iE++) {
+      $le = $logsE[$iE];
+      $actE = strtolower((string)($le['action'] ?? ''));
+      $tsE  = (string)($le['created_at'] ?? '');
+      if ($tsE === '' || $actE === '') continue;
+      // Episode starts when item enters Lost or Damaged (Under Maintenance)
+      if (in_array($actE, ['lost','under maintenance','damaged'], true)) {
+        $openTs = $tsE;
+        $openBaseStatus = ($actE === 'lost') ? 'Lost' : 'Under Maintenance';
+        $episodeStatus[$midE.'|'.$tsE] = $openBaseStatus;
+        continue;
+      }
+      if ($openTs === null) {
+        // Resolution with no open episode; ignore
+        continue;
+      }
+      if (in_array($actE, ['found','fixed','permanently lost','disposed','disposal'], true)) {
+        $statusE = '';
+        if ($actE === 'found') { $statusE = 'Found'; }
+        elseif ($actE === 'fixed') { $statusE = 'Fixed'; }
+        elseif ($actE === 'permanently lost') { $statusE = 'Permanently Lost'; }
+        elseif ($actE === 'disposed' || $actE === 'disposal') { $statusE = 'Disposed'; }
+        else { $statusE = $openBaseStatus; }
+        $episodeStatus[$midE.'|'.$openTs] = $statusE;
+        // Track which resolution log (by its own timestamp) closed this episode
+        $episodeResolutionMap[$midE.'|'.$tsE] = $openTs;
+        // Also track the resolution timestamp per episode (start_ts -> resolution_ts)
+        if ($openTs !== '') {
+          $episodeResolutionAt[$midE.'|'.$openTs] = $tsE;
+        }
+        $openTs = null;
+        $openBaseStatus = '';
+      }
+    }
+  }
   // Compute last action dates per model (use all logs, including Found/Fixed)
   $lastMap = [];
   foreach ($raw as $l) {
@@ -3734,49 +3894,74 @@ try {
     $ts  = (string)($l['created_at'] ?? '');
     if ($mid <= 0 || $ts === '' || $act === '') continue;
     if (!isset($lastMap[$mid])) { $lastMap[$mid] = ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>'','last_disposed_at'=>'']; }
-    if ($act === 'Lost' && $ts > (string)$lastMap[$mid]['last_lost_at']) { $lastMap[$mid]['last_lost_at'] = $ts; }
-    if ($act === 'Under Maintenance' && $ts > (string)$lastMap[$mid]['last_maint_at']) { $lastMap[$mid]['last_maint_at'] = $ts; }
-    if ($act === 'Found' && $ts > (string)$lastMap[$mid]['last_found_at']) { $lastMap[$mid]['last_found_at'] = $ts; }
-    if ($act === 'Fixed' && $ts > (string)$lastMap[$mid]['last_fixed_at']) { $lastMap[$mid]['last_fixed_at'] = $ts; }
+    $actLower = strtolower($act);
+    if ($actLower === 'lost' && $ts > (string)$lastMap[$mid]['last_lost_at']) { $lastMap[$mid]['last_lost_at'] = $ts; }
+    if (($act === 'Under Maintenance' || $actLower === 'damaged') && $ts > (string)$lastMap[$mid]['last_maint_at']) { $lastMap[$mid]['last_maint_at'] = $ts; }
+    if ($actLower === 'found' && $ts > (string)$lastMap[$mid]['last_found_at']) { $lastMap[$mid]['last_found_at'] = $ts; }
+    if ($actLower === 'fixed' && $ts > (string)$lastMap[$mid]['last_fixed_at']) { $lastMap[$mid]['last_fixed_at'] = $ts; }
     // Track Permanently Lost and Disposed separately as well
-    if ($act === 'Permanently Lost' && $ts > (string)$lastMap[$mid]['last_perm_lost_at']) { $lastMap[$mid]['last_perm_lost_at'] = $ts; }
-    if ($act === 'Disposed' && $ts > (string)$lastMap[$mid]['last_disposed_at']) { $lastMap[$mid]['last_disposed_at'] = $ts; }
+    if ($actLower === 'permanently lost' && $ts > (string)$lastMap[$mid]['last_perm_lost_at']) { $lastMap[$mid]['last_perm_lost_at'] = $ts; }
+    if (($actLower === 'disposed' || $actLower === 'disposal') && $ts > (string)$lastMap[$mid]['last_disposed_at']) { $lastMap[$mid]['last_disposed_at'] = $ts; }
   }
   // Build history rows enriched with last_* dates (using de-duplicated $filtered list)
   foreach ($filtered as $l) {
     $mid = (int)($l['model_id'] ?? 0);
+    $actRowLower = strtolower((string)($l['action'] ?? ''));
+    $tsRow = (string)($l['created_at'] ?? '');
+    // If this is a Permanently Lost / Disposed resolution that finalized an existing episode,
+    // skip it as its own row; the original Lost/Damaged entry will carry the final Status.
+    if ($mid > 0 && $tsRow !== '' && in_array($actRowLower, ['permanently lost','disposed','disposal'], true)
+        && isset($episodeResolutionMap[$mid.'|'.$tsRow])) {
+      continue;
+    }
     $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
     $lm = $lastMap[$mid] ?? ['last_lost_at'=>'','last_maint_at'=>'','last_found_at'=>'','last_fixed_at'=>'','last_perm_lost_at'=>'','last_disposed_at'=>''];
     // Determine current_action for filtering and display
-    $lostAt  = !empty($lm['last_lost_at']) ? strtotime((string)$lm['last_lost_at']) : null;
-    $foundAt = !empty($lm['last_found_at']) ? strtotime((string)$lm['last_found_at']) : null;
-    $maintAt = !empty($lm['last_maint_at']) ? strtotime((string)$lm['last_maint_at']) : null;
-    $fixedAt = !empty($lm['last_fixed_at']) ? strtotime((string)$lm['last_fixed_at']) : null;
-    $permLostAt = !empty($lm['last_perm_lost_at']) ? strtotime((string)$lm['last_perm_lost_at']) : null;
-    $disposedAt = !empty($lm['last_disposed_at']) ? strtotime((string)$lm['last_disposed_at']) : null;
     $currentAction = '';
-    if ($disposedAt) {
-      // Disposed is terminal
-      $currentAction = 'Disposed';
+    $epKey = $mid.'|'.(string)($l['created_at'] ?? '');
+    if (isset($episodeStatus[$epKey])) {
+      // Prefer per-episode status when available so each Lost/Damaged entry keeps its own final outcome
+      $currentAction = (string)$episodeStatus[$epKey];
     }
-    elseif ($permLostAt) {
-      // If there was a Found after Permanently Lost (unlikely), prefer Found; otherwise Permanently Lost
-      if ($foundAt && $foundAt > $permLostAt) { $currentAction = 'Found'; }
-      else { $currentAction = 'Permanently Lost'; }
-    }
-    elseif ($lostAt) {
-      // If there was a Found after Lost, consider Found; otherwise still Lost
-      if ($foundAt && $foundAt > $lostAt) { $currentAction = 'Found'; }
-      else { $currentAction = 'Lost'; }
-    } elseif ($maintAt) {
-      // If there was a Fixed after Damaged, consider Fixed; otherwise still Damaged
-      if ($fixedAt && $fixedAt > $maintAt) { $currentAction = 'Fixed'; }
-      else { $currentAction = 'Under Maintenance'; }
-    } else {
-      // Fallback to current inventory status if no history pair detected
-      // Do NOT infer 'Permanently Lost' from inventory status; only show it when explicitly logged
-      $ist = $ii ? (string)($ii['status'] ?? '') : '';
-      if (in_array($ist, ['Lost','Under Maintenance','Found','Fixed'], true)) { $currentAction = $ist; }
+    if ($currentAction === '') {
+      $lostAt  = !empty($lm['last_lost_at']) ? strtotime((string)$lm['last_lost_at']) : null;
+      $foundAt = !empty($lm['last_found_at']) ? strtotime((string)$lm['last_found_at']) : null;
+      $maintAt = !empty($lm['last_maint_at']) ? strtotime((string)$lm['last_maint_at']) : null;
+      $fixedAt = !empty($lm['last_fixed_at']) ? strtotime((string)$lm['last_fixed_at']) : null;
+      $permLostAt = !empty($lm['last_perm_lost_at']) ? strtotime((string)$lm['last_perm_lost_at']) : null;
+      $disposedAt = !empty($lm['last_disposed_at']) ? strtotime((string)$lm['last_disposed_at']) : null;
+      $latestAny = max($lostAt ?: 0, $foundAt ?: 0, $maintAt ?: 0, $fixedAt ?: 0, $permLostAt ?: 0, $disposedAt ?: 0);
+      if ($latestAny > 0) {
+        if ($disposedAt && $disposedAt === $latestAny) {
+          // Disposed is terminal
+          $currentAction = 'Disposed';
+        }
+        elseif ($permLostAt && $permLostAt === $latestAny) {
+          // If there was a Found after Permanently Lost (unlikely), prefer Found; otherwise Permanently Lost
+          $currentAction = 'Permanently Lost';
+        }
+        elseif ($lostAt && $lostAt === $latestAny) {
+          // If there was a Found after Lost, consider Found; otherwise still Lost
+          $currentAction = 'Lost';
+        }
+        elseif ($maintAt && $maintAt === $latestAny) {
+          // If there was a Fixed after Damaged, consider Fixed; otherwise still Damaged
+          if ($fixedAt && $fixedAt > $maintAt) { $currentAction = 'Fixed'; }
+          else { $currentAction = 'Under Maintenance'; }
+        }
+        elseif ($foundAt && $foundAt === $latestAny) {
+          $currentAction = 'Found';
+        }
+        elseif ($fixedAt && $fixedAt === $latestAny) {
+          $currentAction = 'Fixed';
+        }
+      }
+      if ($currentAction === '') {
+        // Fallback to current inventory status if no history pair detected
+        // Do NOT infer 'Permanently Lost' from inventory status; only show it when explicitly logged
+        $ist = $ii ? (string)($ii['status'] ?? '') : '';
+        if (in_array($ist, ['Lost','Under Maintenance','Found','Fixed'], true)) { $currentAction = $ist; }
+      }
     }
     // Resolve the user's full name: prefer last borrower at/before log time
     $logWhen = (string)($l['created_at'] ?? '');
@@ -3843,6 +4028,7 @@ try {
       'last_found_at' => (string)$lm['last_found_at'],
       'last_fixed_at' => (string)$lm['last_fixed_at'],
       'last_disposed_at' => (string)$lm['last_disposed_at'],
+      'episode_resolved_at' => isset($episodeResolutionAt[$epKey]) ? (string)$episodeResolutionAt[$epKey] : '',
       'current_action' => $currentAction,
     ];
   }
@@ -5018,18 +5204,22 @@ try {
                                 <td><?php echo htmlspecialchars((string)($li['user_name'] ?? '')); ?></td>
                                 <td><?php echo htmlspecialchars((string)($li['student_school_id'] ?? '')); ?></td>
                                 <td class="text-end">
-                                  <form method="POST" action="admin_borrow_center.php" class="d-inline" onsubmit="return confirmMarkFound(this);">
-                                    <input type="hidden" name="model_id" value="<?php echo (int)$li['model_id']; ?>" />
-                                    <button type="submit" name="do" value="mark_found" class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1" title="Mark Found" aria-label="Mark Found">
-                                      <i class="bi bi-check2-circle"></i>
-                                    </button>
-                                  </form>
-                                  <form method="POST" action="admin_borrow_center.php" class="d-inline ms-1" onsubmit="return confirmPermanentLost(this);">
-                                    <input type="hidden" name="model_id" value="<?php echo (int)$li['model_id']; ?>" />
-                                    <button type="submit" name="do" value="mark_permanent_lost" class="btn btn-sm btn-danger border border-dark py-1 px-1 lh-1" title="Permanently Lost" aria-label="Permanently Lost">
-                                      <i class="bi bi-x-octagon"></i>
-                                    </button>
-                                  </form>
+                                  <button type="button"
+                                          class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1 btn-lostdam-mark"
+                                          data-bs-toggle="modal"
+                                          data-bs-target="#confirmFoundFixedModal"
+                                          data-action="found"
+                                          data-model_id="<?php echo (int)$li['model_id']; ?>"
+                                          title="Mark Found" aria-label="Mark Found">
+                                    <i class="bi bi-check2-circle"></i>
+                                  </button>
+                                  <button type="button"
+                                          class="btn btn-sm btn-danger border border-dark py-1 px-1 lh-1 ms-1 ld-confirm-btn"
+                                          data-action_type="permanent_lost"
+                                          data-model_id="<?php echo (int)$li['model_id']; ?>"
+                                          title="Permanently Lost" aria-label="Permanently Lost">
+                                    <i class="bi bi-x-octagon"></i>
+                                  </button>
                                 </td>
                               </tr>
                             <?php endforeach; endif; ?>
@@ -5072,19 +5262,22 @@ try {
                                 <td><?php echo htmlspecialchars((string)($di['user_name'] ?? '')); ?></td>
                                 <td><?php echo htmlspecialchars((string)($di['student_school_id'] ?? '')); ?></td>
                                 <td class="text-end">
-                                  <form method="POST" action="admin_borrow_center.php" class="d-inline" onsubmit="return confirmMarkFixed(this);">
-                                    <input type="hidden" name="model_id" value="<?php echo (int)$di['model_id']; ?>" />
-                                    <button type="submit" name="do" value="mark_fixed" class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1" title="Mark Fixed" aria-label="Mark Fixed">
-                                      <i class="bi bi-wrench-adjustable-circle"></i>
-                                    </button>
-                                  </form>
-                                  <form method="POST" action="admin_borrow_center.php" class="d-inline ms-1" onsubmit="var t=prompt('Type DISPOSE to confirm disposing this item.'); if(!t||t.trim()!=='DISPOSE'){ return false; } this.querySelector('input[name=confirm_text]').value=t; return true;">
-                                    <input type="hidden" name="model_id" value="<?php echo (int)$di['model_id']; ?>" />
-                                    <input type="hidden" name="confirm_text" value="" />
-                                    <button type="submit" name="do" value="dispose_item" class="btn btn-sm btn-danger border border-dark py-1 px-1 lh-1" title="Dispose" aria-label="Dispose">
-                                      <i class="bi bi-trash3"></i>
-                                    </button>
-                                  </form>
+                                  <button type="button"
+                                          class="btn btn-sm btn-success border border-dark py-1 px-1 lh-1 btn-lostdam-mark"
+                                          data-bs-toggle="modal"
+                                          data-bs-target="#confirmFoundFixedModal"
+                                          data-action="fixed"
+                                          data-model_id="<?php echo (int)$di['model_id']; ?>"
+                                          title="Mark Fixed" aria-label="Mark Fixed">
+                                    <i class="bi bi-wrench-adjustable-circle"></i>
+                                  </button>
+                                  <button type="button"
+                                          class="btn btn-sm btn-danger border border-dark py-1 px-1 lh-1 ms-1 ld-confirm-btn"
+                                          data-action_type="dispose"
+                                          data-model_id="<?php echo (int)$di['model_id']; ?>"
+                                          title="Dispose" aria-label="Dispose">
+                                    <i class="bi bi-trash3"></i>
+                                  </button>
                                 </td>
                               </tr>
                             <?php endforeach; endif; ?>
@@ -5157,6 +5350,59 @@ try {
                 try { parent.focus(); } catch(_){ }
               }
               child.addEventListener('hidden.bs.modal', onHidden);
+            });
+          });
+        })();
+      </script>
+
+      <!-- Confirm Mark Found/Fixed Modal -->
+      <div class="modal fade" id="confirmFoundFixedModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <form method="POST" action="admin_borrow_center.php" class="modal-content">
+            <input type="hidden" name="model_id" id="cff_model_id" value="" />
+            <input type="hidden" name="do" id="cff_do" value="" />
+            <div class="modal-header">
+              <h5 class="modal-title">Confirm <span id="cff_action_label">Found</span></h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <p id="cff_message">Mark this item as FOUND and return it to Available?</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-primary">Confirm</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <script>
+        (function(){
+          document.addEventListener('DOMContentLoaded', function(){
+            var parent = document.getElementById('lostDamagedListModal');
+            var modalEl = document.getElementById('confirmFoundFixedModal');
+            if (!parent || !modalEl || typeof bootstrap === 'undefined') return;
+            var modelInput = document.getElementById('cff_model_id');
+            var doInput = document.getElementById('cff_do');
+            var labelSpan = document.getElementById('cff_action_label');
+            var msgEl = document.getElementById('cff_message');
+            parent.addEventListener('click', function(e){
+              var btn = e.target.closest('.btn-lostdam-mark');
+              if (!btn) return;
+              e.preventDefault();
+              var mid = btn.getAttribute('data-model_id') || '';
+              var action = (btn.getAttribute('data-action') || '').toLowerCase();
+              if (!mid || (action !== 'found' && action !== 'fixed')) return;
+              if (modelInput) modelInput.value = mid;
+              if (doInput) doInput.value = (action === 'found' ? 'mark_found' : 'mark_fixed');
+              if (labelSpan) labelSpan.textContent = (action === 'found' ? 'Found' : 'Fixed');
+              if (msgEl) {
+                msgEl.textContent = (action === 'found'
+                  ? 'Mark this item as FOUND and return it to Available?'
+                  : 'Mark this item as FIXED and return it to Available?');
+              }
+              var inst = bootstrap.Modal.getOrCreateInstance(modalEl);
+              inst.show();
             });
           });
         })();
@@ -5383,7 +5629,6 @@ try {
                             if ($showPre <= 0 && $inUsePre <= 0) { continue; }
                           } else {
                             // Inactive/Deleted: show only if there are items currently in use.
-                            if ($inUsePre <= 0) { continue; }
                           }
                         ?>
                         <tr>
@@ -5451,7 +5696,13 @@ try {
                                 }
                               }
                               // Remaining within borrowable capacity cannot exceed available
-                              $show = max(0, min($curLimit - $consumed, $avail));
+                              $wlAvail = $avail;
+                              if (isset($wlBuckets) && isset($wlBuckets[$cs]) && isset($wlBuckets[$cs][$ms])) {
+                                $wlAvail = (int)($wlBuckets[$cs][$ms]['avail'] ?? 0);
+                              }
+                              if ($wlAvail < 0) { $wlAvail = 0; }
+                              if ($wlAvail > $avail) { $wlAvail = $avail; }
+                              $show = max(0, min($curLimit - $consumed, $wlAvail));
                               echo htmlspecialchars($show.' / '.$total);
                             ?>
                           </td>
@@ -5830,23 +6081,97 @@ try {
     })();
   </script>
 
+  <!-- Confirm Permanently Lost / Dispose Modal -->
+  <div class="modal fade" id="ldConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form method="POST" action="admin_borrow_center.php" class="modal-content" id="ldConfirmForm">
+        <input type="hidden" name="model_id" id="ldConfirmModelId" value="" />
+        <input type="hidden" name="do" id="ldConfirmDo" value="" />
+        <input type="hidden" name="confirm_text" id="ldConfirmText" value="" />
+        <div class="modal-header">
+          <h5 class="modal-title" id="ldConfirmTitle">Confirm Action</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p id="ldConfirmMessage" class="mb-3"></p>
+          <div class="mb-2">
+            <label for="ldConfirmInput" class="form-label small" id="ldConfirmLabel"></label>
+            <input type="text" class="form-control" id="ldConfirmInput" autocomplete="off" />
+          </div>
+          <div class="form-text" id="ldConfirmHint"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="ldConfirmOkBtn">OK</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <script>
-    function confirmPermanentLost(form){
-      var msg = 'Type LOST to confirm this item will be marked as Permanently Lost. This action will be recorded and set the item\'s status to Permanently Lost.';
-      var input = window.prompt(msg, '');
-      if (input === null) return false; // cancelled
-      if (String(input).trim().toUpperCase() !== 'LOST') {
-        alert('Confirmation failed. You must type LOST to proceed.');
-        return false;
-      }
-      return true;
-    }
-    function confirmMarkFound(form){
-      return window.confirm('Mark this item as FOUND and return it to Available?');
-    }
-    function confirmMarkFixed(form){
-      return window.confirm('Mark this item as FIXED (Available) and remove it from Under Maintenance?');
-    }
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        var parent = document.getElementById('lostDamagedListModal');
+        var modalEl = document.getElementById('ldConfirmModal');
+        var formEl = document.getElementById('ldConfirmForm');
+        if (!parent || !modalEl || !formEl || typeof bootstrap === 'undefined') return;
+        var titleEl = document.getElementById('ldConfirmTitle');
+        var msgEl = document.getElementById('ldConfirmMessage');
+        var labelEl = document.getElementById('ldConfirmLabel');
+        var hintEl = document.getElementById('ldConfirmHint');
+        var inputEl = document.getElementById('ldConfirmInput');
+        var modelInput = document.getElementById('ldConfirmModelId');
+        var doInput = document.getElementById('ldConfirmDo');
+        var confirmHidden = document.getElementById('ldConfirmText');
+        var expected = '';
+
+        parent.addEventListener('click', function(e){
+          var btn = e.target.closest('.ld-confirm-btn');
+          if (!btn) return;
+          e.preventDefault();
+          var type = (btn.getAttribute('data-action_type') || '').toLowerCase();
+          var mid = btn.getAttribute('data-model_id') || '';
+          expected = '';
+          if (type === 'permanent_lost') {
+            expected = 'LOST';
+            if (titleEl) titleEl.textContent = 'Confirm Permanently Lost';
+            if (msgEl) msgEl.textContent = 'Type LOST to confirm this item will be marked as Permanently Lost. This action will be recorded and set the item\'s status to Permanently Lost.';
+            if (labelEl) labelEl.textContent = 'Type LOST to confirm:';
+          } else if (type === 'dispose') {
+            expected = 'DISPOSE';
+            if (titleEl) titleEl.textContent = 'Confirm Dispose';
+            if (msgEl) msgEl.textContent = 'Type DISPOSE to confirm disposing this item. This action will retire the serial and mark it as Disposed.';
+            if (labelEl) labelEl.textContent = 'Type DISPOSE to confirm:';
+          }
+          if (hintEl) hintEl.textContent = '';
+          if (inputEl) {
+            inputEl.value = '';
+            inputEl.placeholder = expected;
+          }
+          if (modelInput) modelInput.value = mid;
+          if (doInput) {
+            doInput.value = (type === 'permanent_lost' ? 'mark_permanent_lost' : (type === 'dispose' ? 'dispose_item' : ''));
+          }
+          if (confirmHidden) confirmHidden.value = '';
+          var inst = bootstrap.Modal.getOrCreateInstance(modalEl);
+          inst.show();
+          if (inputEl) {
+            setTimeout(function(){ try{ inputEl.focus(); }catch(_){ } }, 150);
+          }
+        });
+
+        formEl.addEventListener('submit', function(ev){
+          if (!expected) return;
+          var val = inputEl ? String(inputEl.value || '') : '';
+          if (val.trim().toUpperCase() !== expected) {
+            ev.preventDefault();
+            alert('Confirmation failed. You must type ' + expected + ' to proceed.');
+            if (inputEl) { inputEl.focus(); }
+            return;
+          }
+          if (confirmHidden) confirmHidden.value = expected;
+        });
+      });
+    })();
   </script>
   <!-- Approve by Scan/ID Modal -->
   <div class="modal fade" id="approveScanModal" tabindex="-1" aria-hidden="true">
@@ -6797,7 +7122,7 @@ try {
                   <th id="ldDateCol1">Date Damaged/Lost</th>
                   <th id="ldDateCol2">Date Fixed/Found</th>
                   <th>Remarks</th>
-                  <th>Current Status</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -6815,11 +7140,16 @@ try {
                     <td>
                       <?php
                         $ev = trim((string)$h['action']);
-                        // Normalize display for badge style
-                        if ($ev === 'Permanently Lost') { $evDisplay = 'Permanently Lost'; $evCls = 'danger'; }
-                        elseif ($ev === 'Disposed') { $evDisplay = 'Disposed'; $evCls = 'danger'; }
-                        elseif ($ev === 'Lost') { $evDisplay = 'Lost'; $evCls = 'danger'; }
-                        else { /* Under Maintenance (Damaged) */ $evDisplay = 'Damaged'; $evCls = 'warning text-dark'; }
+                        $evLower = strtolower($ev);
+                        // Normalize display for badge style: base Lost vs Damaged
+                        if (in_array($evLower, ['lost','permanently lost'])) {
+                          $evDisplay = 'Lost';
+                          $evCls = 'danger';
+                        } else {
+                          // Under Maintenance / Damaged / Fixed / Disposed / Disposal
+                          $evDisplay = 'Damaged';
+                          $evCls = 'warning text-dark';
+                        }
                       ?>
                       <span class="badge bg-<?php echo $evCls; ?>"><?php echo htmlspecialchars($evDisplay); ?></span>
                     </td>
@@ -6843,8 +7173,11 @@ try {
                     <td>
                       <?php
                         $foundFixedDate = '';
-                        if (!empty($h['last_found_at'])) { $foundFixedDate = (string)$h['last_found_at']; }
-                        elseif (!empty($h['last_fixed_at'])) { $foundFixedDate = (string)$h['last_fixed_at']; }
+                        // Per-episode resolution time: only show when this episode actually ended in Found or Fixed
+                        $epResolved = (string)($h['episode_resolved_at'] ?? '');
+                        if ($ca === 'Found' || $ca === 'Fixed') {
+                          if ($epResolved !== '') { $foundFixedDate = $epResolved; }
+                        }
                         echo $foundFixedDate ? htmlspecialchars(date('h:i A m-d-y', strtotime($foundFixedDate))) : '-';
                       ?>
                     </td>
@@ -6967,6 +7300,7 @@ try {
     const bmCatModels = <?php echo json_encode($invCatModels, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
     const qtyStats = <?php echo json_encode($qtyStats, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
     const borrowLimitMap = <?php echo json_encode($borrowLimitMap, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
+    const wlBuckets = <?php echo json_encode($wlBuckets, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP); ?>;
     const bmBulkCatSelect = document.getElementById('bm_bulk_category');
     const bmModelsBody = document.getElementById('bm_models_body');
     const bmMasterCheck = document.getElementById('bm_master_check');
@@ -6986,12 +7320,18 @@ try {
         const key = String(m);
         const stats = (qtyStats[c] && qtyStats[c][key]) ? qtyStats[c][key] : {available:0,total:0};
         const total = (stats.total ?? 0);
-        // Use current borrow_limit to compute how many more units can be added to the borrowable list.
-        // This avoids blocking when all units are Available (which previously made remaining 0).
+        // Use current borrow_limit and whitelisted buckets to compute how many more units
+        // can be added to the borrowable list, while staying within total lendable units.
         const curLimit = (borrowLimitMap[c] && typeof borrowLimitMap[c][key] !== 'undefined')
           ? parseInt(borrowLimitMap[c][key], 10)
           : 0;
-        const remaining = Math.max(0, total - (isNaN(curLimit) ? 0 : curLimit));
+        const wl = (wlBuckets[c] && wlBuckets[c][key]) ? wlBuckets[c][key] : { total:0, avail:0, lostDamaged:0 };
+        const wlTotal = wl.total ?? 0;
+        const wlLostDamaged = wl.lostDamaged ?? 0;
+        const wlLendable = Math.max(0, wlTotal - wlLostDamaged);
+        // Effective whitelisted capacity cannot exceed total lendable units
+        const curCapacity = Math.min(wlLendable, total);
+        const remaining = Math.max(0, total - curCapacity);
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><input type="checkbox" class="bm-row-check" name="models[]" value="${key.replace(/"/g,'&quot;')}" /></td>
