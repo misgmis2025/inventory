@@ -14,10 +14,10 @@ if (!$__sess_path || !is_dir($__sess_path) || !is_writable($__sess_path)) {
 session_start();
 date_default_timezone_set('Asia/Manila');
 if (!isset($_SESSION['username'])) { header('Location: index.php'); exit(); }
-// Only regular users can access this page; redirect admins to admin borrow center
-if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin') { header('Location: admin_borrow_center.php'); exit(); }
-// Action routing must be defined before any endpoint usage
 $__act = $_GET['action'] ?? '';
+// Only regular users can access this page; redirect admins to admin borrow center
+if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $__act !== 'register_fcm_token') { header('Location: admin_borrow_center.php'); exit(); }
+// Action routing must be defined before any endpoint usage
 
 // Initialize Mongo connection early for endpoint handlers
 $USED_MONGO = false; $mongo_db = null; $conn = null;
@@ -35,7 +35,9 @@ if ($__act === 'register_fcm_token' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($USED_MONGO && $mongo_db) {
       $uname = (string)($_SESSION['username'] ?? '');
       $token = trim((string)($_POST['token'] ?? ''));
-      if ($uname === '' || $token === '') { echo json_encode(['ok'=>false]); exit; }
+      if ($uname === '' || $token === '') {
+        error_log('FCM: register_fcm_token missing uname or token uname=' . $uname);
+        echo json_encode(['ok'=>false]); exit; }
       $col = $mongo_db->selectCollection('user_device_tokens');
       $now = date('Y-m-d H:i:s');
       $col->updateOne(
@@ -43,6 +45,7 @@ if ($__act === 'register_fcm_token' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         ['$set' => ['username' => $uname, 'token' => $token, 'updated_at' => $now], '$setOnInsert' => ['created_at' => $now]],
         ['upsert' => true]
       );
+      error_log('FCM: register_fcm_token stored uname=' . $uname . ' token_prefix=' . substr($token, 0, 10));
       echo json_encode(['ok' => true]);
     } else {
       echo json_encode(['ok' => false]);
