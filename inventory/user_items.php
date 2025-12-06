@@ -60,6 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
                     } catch (Throwable $_c) { /* keep $ba as now */ }
+                    $snapItemName = (string)($exists['item_name'] ?? '');
+                    $snapModel = (string)($exists['model'] ?? '');
+                    $snapCategory = trim((string)($exists['category'] ?? '')) !== '' ? (string)$exists['category'] : 'Uncategorized';
+                    $snapSerial = (string)($exists['serial_no'] ?? '');
                     $ubCol->insertOne([
                         'id' => $nextId,
                         'username' => (string)$_SESSION['username'],
@@ -67,6 +71,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'borrowed_at' => $ba,
                         'returned_at' => null,
                         'status' => 'Borrowed',
+                        // Snapshot fields for stable history (no backing request)
+                        'request_id' => null,
+                        'item_name' => $snapItemName,
+                        'model' => $snapModel,
+                        'category' => $snapCategory,
+                        'serial_no' => $snapSerial,
                     ]);
                     $message = 'Item marked as borrowed.';
                 }
@@ -149,10 +159,15 @@ try {
         $itm = $mid > 0 ? $iiCol->findOne(['id' => $mid]) : null;
         $modelName = $itm ? (string)($itm['model'] ?? ($itm['item_name'] ?? '')) : '';
         $cat = $itm ? (string)($itm['category'] ?? 'Uncategorized') : 'Uncategorized';
-        $req = $erCol->findOne([
-            'username' => (string)$_SESSION['username'],
-            'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))]
-        ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
+        // Prefer request_id stored on the borrow document; fall back to best-effort lookup
+        $reqId = isset($ub['request_id']) ? (int)$ub['request_id'] : 0;
+        if ($reqId <= 0) {
+            $req = $erCol->findOne([
+                'username' => (string)$_SESSION['username'],
+                'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))]
+            ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
+            $reqId = (int)($req['id'] ?? 0);
+        }
         // last status markers
         $last_lost = $ldCol->findOne(['model_id' => $mid, 'action' => 'Lost'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
         $last_found = $ldCol->findOne(['model_id' => $mid, 'action' => 'Found'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
@@ -174,15 +189,26 @@ try {
                 $ra = $dt2->format('Y-m-d H:i:s');
             } else { $ra = (string)($ub['returned_at'] ?? ''); }
         } catch (Throwable $_t2) { $ra = (string)($ub['returned_at'] ?? ''); }
+        // Snapshot fields off user_borrows first, then fall back to live inventory item
+        $snapItemName = isset($ub['item_name']) ? (string)$ub['item_name'] : '';
+        $snapModel = isset($ub['model']) ? (string)$ub['model'] : '';
+        $snapCategory = isset($ub['category']) ? (string)$ub['category'] : '';
+        if ($itm) {
+            if ($snapItemName === '') { $snapItemName = (string)($itm['item_name'] ?? ''); }
+            if ($snapModel === '') { $snapModel = (string)($itm['model'] ?? ''); }
+            if ($snapCategory === '') { $snapCategory = (string)($itm['category'] ?? 'Uncategorized'); }
+        }
+        if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
+
         $my_history[] = [
-            'request_id' => (int)($req['id'] ?? 0),
+            'request_id' => $reqId,
             'borrowed_at' => $ba,
             'returned_at' => $ra,
             'status' => (string)($ub['status'] ?? ''),
             'model_id' => $mid,
-            'item_name' => $itm ? (string)($itm['item_name'] ?? '') : '',
-            'model' => $modelName,
-            'category' => ($cat !== '' ? $cat : 'Uncategorized'),
+            'item_name' => $snapItemName,
+            'model' => $snapModel,
+            'category' => $snapCategory,
             'item_status' => (string)($itm['status'] ?? ''),
             'last_lost_at' => (string)($last_lost['created_at'] ?? ''),
             'last_found_at' => (string)($last_found['created_at'] ?? ''),
@@ -331,7 +357,7 @@ try {
                                             <th>Borrowed At</th>
                                             <th>Returned At</th>
                                             <th>Model ID</th>
-                                            <th>Model Name</th>
+                                            <th>Item</th>
                                             <th>Category</th>
                                             <th>Item Status</th>
                                             <th>Status</th>

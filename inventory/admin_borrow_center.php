@@ -1763,6 +1763,10 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         } else { $borrowedAtFromReq = (string)($req['created_at'] ?? $now); }
       } catch (Throwable $_ba) { $borrowedAtFromReq = (string)($req['created_at'] ?? $now); }
       $borrowId = $nextId('user_borrows');
+      $snapItemName = (string)($claimed['item_name'] ?? '');
+      $snapModel = (string)($claimed['model'] ?? '');
+      $snapCategory = trim((string)($claimed['category'] ?? '')) !== '' ? (string)$claimed['category'] : 'Uncategorized';
+      $snapSerial = (string)($claimed['serial_no'] ?? '');
       $ub->insertOne([
         'id'=>$borrowId,
         'username'=>$user,
@@ -1770,6 +1774,12 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         'status'=>'Borrowed',
         'borrowed_at'=>$borrowedAtFromReq,
         'expected_return_at'=>$expectedReturn,
+        // Snapshot fields for stable history
+        'request_id'=>$id,
+        'item_name'=>$snapItemName,
+        'model'=>$snapModel,
+        'category'=>$snapCategory,
+        'serial_no'=>$snapSerial,
       ]);
       $exists = $ra->countDocuments(['request_id'=>$id,'borrow_id'=>$borrowId]);
       if ($exists === 0) { $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]); }
@@ -1932,7 +1942,32 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$borrowedAtFromReq]]);
       foreach ($picked as $mid) {
         $borrowId = $nextId('user_borrows');
-        $ub->insertOne(['id'=>$borrowId,'username'=>$user,'model_id'=>$mid,'status'=>'Borrowed','borrowed_at'=>$borrowedAtFromReq]);
+        $snapItemName = '';
+        $snapModel = '';
+        $snapCategory = 'Uncategorized';
+        $snapSerial = '';
+        try {
+          $doc = $ii->findOne(['id'=>$mid], ['projection'=>['item_name'=>1,'model'=>1,'category'=>1,'serial_no'=>1]]);
+          if ($doc) {
+            $snapItemName = (string)($doc['item_name'] ?? '');
+            $snapModel = (string)($doc['model'] ?? '');
+            $snapCategory = trim((string)($doc['category'] ?? '')) !== '' ? (string)$doc['category'] : 'Uncategorized';
+            $snapSerial = (string)($doc['serial_no'] ?? '');
+          }
+        } catch (Throwable $_snap) {}
+        $ub->insertOne([
+          'id'=>$borrowId,
+          'username'=>$user,
+          'model_id'=>$mid,
+          'status'=>'Borrowed',
+          'borrowed_at'=>$borrowedAtFromReq,
+          // Snapshot fields for stable history
+          'request_id'=>$id,
+          'item_name'=>$snapItemName,
+          'model'=>$snapModel,
+          'category'=>$snapCategory,
+          'serial_no'=>$snapSerial,
+        ]);
         $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]);
       }
       ab_fcm_notify_request_status($db, $req, 'Borrowed');

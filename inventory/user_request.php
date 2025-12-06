@@ -2141,7 +2141,11 @@ if (!$USED_MONGO && $conn) {
       $itm=$mid>0?$ii->findOne(['id'=>$mid]):null; 
       $log=$ld->findOne(['model_id'=>$mid,'created_at'=>['$gte'=>(string)($hv['borrowed_at']??'')]], ['sort'=>['id'=>-1]]); 
       $alloc=$ra->findOne(['borrow_id'=>(int)($hv['id']??0)], ['projection'=>['request_id'=>1]]);
-      $reqId=(int)($alloc['request_id']??0);
+      // Prefer request_id stored on the borrow itself, then allocation, then heuristic lookup
+      $reqId = isset($hv['request_id']) ? (int)$hv['request_id'] : 0;
+      if ($reqId <= 0) {
+        $reqId=(int)($alloc['request_id']??0);
+      }
       if ($reqId<=0){
         $when = (string)($hv['borrowed_at'] ?? '');
         $req = null;
@@ -2174,6 +2178,17 @@ if (!$USED_MONGO && $conn) {
         }
         if ($req && isset($req['id'])) { $reqId = (int)$req['id']; }
       }
+      // Snapshot item fields off user_borrows first, then fall back to current inventory item
+      $snapItemName = isset($hv['item_name']) ? (string)$hv['item_name'] : '';
+      $snapModel = isset($hv['model']) ? (string)$hv['model'] : '';
+      $snapCategory = isset($hv['category']) ? (string)$hv['category'] : '';
+      if ($itm) {
+        if ($snapItemName === '') { $snapItemName = (string)($itm['item_name'] ?? ''); }
+        if ($snapModel === '') { $snapModel = (string)($itm['model'] ?? ''); }
+        if ($snapCategory === '') { $snapCategory = (string)($itm['category'] ?? 'Uncategorized'); }
+      }
+      if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
+
       $my_history[]=[
         'borrow_id'=>(int)($hv['id']??0),
         'request_id'=>$reqId,
@@ -2182,9 +2197,9 @@ if (!$USED_MONGO && $conn) {
         'status'=>(string)($hv['status']??''),
         'latest_action'=>(string)($log['action']??''),
         'model_id'=>$mid,
-        'item_name'=>$itm?(string)($itm['item_name']??''):'',
-        'model'=>$itm?(string)($itm['model']??''):'',
-        'category'=>$itm?(string)($itm['category']??'Uncategorized'):'Uncategorized'
+        'item_name'=>$snapItemName,
+        'model'=>$snapModel,
+        'category'=>$snapCategory
       ]; 
     } 
   } catch (Throwable $e) { $my_history=[]; }
@@ -3849,7 +3864,7 @@ if (!empty($my_requests)) {
                       <thead class="table-light">
                         <tr>
                           <th>Request ID</th>
-                          <th>Model Name</th>
+                          <th>Item</th>
                           <th>Borrowed At</th>
                           <th>Returned At</th>
                           <th>Category</th>
