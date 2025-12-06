@@ -31,11 +31,62 @@ $adminFullNameDefault = (string)($_SESSION['username'] ?? '');
 try {
   @require_once __DIR__ . '/../vendor/autoload.php';
   @require_once __DIR__ . '/db/mongo.php';
+  @require_once __DIR__ . '/db/fcm.php';
   $dbName = get_mongo_db();
   $uDocAF = $dbName->selectCollection('users')->findOne(['username' => ($_SESSION['username'] ?? '')], ['projection' => ['full_name' => 1]]);
   $fnAF = $uDocAF && isset($uDocAF['full_name']) ? trim((string)$uDocAF['full_name']) : '';
   if ($fnAF !== '') { $adminFullNameDefault = $fnAF; }
 } catch (Throwable $_eAF) { /* ignore */ }
+
+if (!function_exists('ab_fcm_notify_request_status')) {
+  function ab_fcm_notify_request_status($db, $reqDoc, string $newStatus, string $reason = ''): void {
+    if (!$db || !is_object($db)) { return; }
+    if (!function_exists('fcm_send_to_user_tokens')) { return; }
+    if (!is_array($reqDoc) && !($reqDoc instanceof ArrayAccess)) {
+      try { $reqDoc = (array)$reqDoc; } catch (Throwable $_) { return; }
+    }
+    try {
+      $uname = trim((string)($reqDoc['username'] ?? ''));
+      if ($uname === '') { return; }
+      $rid = (int)($reqDoc['id'] ?? 0);
+      $item = trim((string)($reqDoc['item_name'] ?? ''));
+      $qty  = max(1, (int)($reqDoc['quantity'] ?? 1));
+      $statusLc = strtolower($newStatus);
+      $itemPart = $item !== '' ? $item : 'your request';
+      if ($qty > 1 && $item !== '') { $itemPart .= ' (x' . $qty . ')'; }
+      $verb = $newStatus;
+      if ($statusLc === 'approved') { $verb = 'approved'; }
+      elseif ($statusLc === 'borrowed') { $verb = 'approved and marked Borrowed'; }
+      elseif ($statusLc === 'rejected') { $verb = 'rejected'; }
+      elseif ($statusLc === 'returned') { $verb = 'marked Returned'; }
+      elseif ($statusLc === 'lost') { $verb = 'marked Lost'; }
+      elseif ($statusLc === 'under maintenance') { $verb = 'marked Under Maintenance'; }
+
+      $title = 'Request update';
+      $body = 'Your request';
+      if ($rid > 0) { $body .= ' #' . $rid; }
+      if ($itemPart !== '') { $body .= ' for ' . $itemPart; }
+      $body .= ' was ' . $verb . '.';
+      if ($statusLc === 'returned') {
+        $body = 'Your borrowed item from request #' . ($rid ?: '') . ' has been marked Returned.';
+      }
+      if ($statusLc === 'rejected' && $reason !== '') {
+        $body .= ' Reason: ' . $reason;
+      }
+
+      $target = fcm_full_url('/inventory/user_request.php');
+      $extra = [
+        'status' => $newStatus,
+        'request_id' => $rid,
+        'type' => (string)($reqDoc['type'] ?? ''),
+      ];
+      if ($reason !== '') { $extra['reason'] = $reason; }
+      try {
+        fcm_send_to_user_tokens($db, $uname, $title, $body, $target, $extra);
+      } catch (Throwable $_f) { /* ignore push errors */ }
+    } catch (Throwable $_outer) { /* ignore */ }
+  }
+}
 // Print Overdue Items (admin) using the same data as overdue_json
 if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   @require_once __DIR__ . '/../vendor/autoload.php';
@@ -1307,14 +1358,17 @@ if ($act === 'cancel_reservation') {
         $uDoc = $db->selectCollection('users')->findOne(['username'=>$cancelUser], ['projection'=>['full_name'=>1]]);
         if ($uDoc && isset($uDoc['full_name']) && trim((string)$uDoc['full_name'])!=='') { $cancelName = (string)$uDoc['full_name']; }
       } catch (Throwable $eun) {}
+      $reqDoc = $er->findOne(['id'=>$id]);
+      $now = date('Y-m-d H:i:s');
       $er->updateOne(
         ['id'=>$id, 'type'=>'reservation', 'status'=>'Approved'],
         ['$set'=>[
           'status'=>'Cancelled',
-          'cancelled_at'=>date('Y-m-d H:i:s'),
+          'cancelled_at'=>$now,
           'cancelled_by'=>$cancelName
         ]]
       );
+      if ($reqDoc) { ab_fcm_notify_request_status($db, $reqDoc, 'Cancelled'); }
     }
     header('Location: admin_borrow_center.php?reservation_cancelled=1#reservations-list'); exit();
   } catch (Throwable $e) {
@@ -1391,11 +1445,13 @@ if ($act === 'reject' && isset($_GET['id'])) {
       $uDoc = $db->selectCollection('users')->findOne(['username'=>$rejectUser], ['projection'=>['full_name'=>1]]);
       if ($uDoc && isset($uDoc['full_name']) && trim((string)$uDoc['full_name'])!=='') { $rejectName = (string)$uDoc['full_name']; }
     } catch (Throwable $eun) {}
+    $reqDoc = $er->findOne(['id' => $id]);
     // Only reject pending requests
     $er->updateOne(
       ['id' => $id, 'status' => 'Pending'],
       ['$set' => ['status' => 'Rejected', 'rejected_at' => $now, 'rejected_by' => $rejectName]]
     );
+    if ($reqDoc) { ab_fcm_notify_request_status($db, $reqDoc, 'Rejected'); }
     header('Location: admin_borrow_center.php?rejected=1'); exit();
   } catch (Throwable $e) {
     header('Location: admin_borrow_center.php?error=tx'); exit();
@@ -1465,6 +1521,7 @@ if (in_array($act, ['mark_returned','mark_lost','mark_maintenance'], true) && is
         $allocTotal = count($allocBorrowIds);
         if ($allocTotal >= $reqQty) {
           $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+          ab_fcm_notify_request_status($db, $req, 'Returned');
         }
       }
       header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
@@ -1474,6 +1531,7 @@ if (in_array($act, ['mark_returned','mark_lost','mark_maintenance'], true) && is
       $nextLD = $db->selectCollection('lost_damaged_log')->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
       $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
       $ldCol->insertOne(['id'=>$lid,'model_id'=>$mid,'username'=>$who,'action'=>'Lost','created_at'=>$now]);
+      ab_fcm_notify_request_status($db, $req, 'Lost');
 
       // Also update borrowable lists: remove this unit and decrement borrow_limit
       try {
@@ -1499,6 +1557,7 @@ if (in_array($act, ['mark_returned','mark_lost','mark_maintenance'], true) && is
       $nextLD = $db->selectCollection('lost_damaged_log')->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);
       $lid = ($nextLD && isset($nextLD['id']) ? (int)$nextLD['id'] : 0) + 1;
       $ldCol->insertOne(['id'=>$lid,'model_id'=>$mid,'username'=>$who,'action'=>'Under Maintenance','created_at'=>$now]);
+      ab_fcm_notify_request_status($db, $req, 'Under Maintenance');
       header('Location: admin_borrow_center.php?scroll=lost#lost-damaged'); exit();
     }
   } catch (Throwable $e) {
@@ -1655,6 +1714,7 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         if ($assignedMid > 0) { $set['reserved_model_id'] = $assignedMid; }
         if ($assignedSerial !== '') { $set['reserved_serial_no'] = $assignedSerial; }
         $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>$set]);
+        ab_fcm_notify_request_status($db, $req, 'Approved');
         header('Location: admin_borrow_center.php?approved=1'); exit();
       }
 
@@ -1716,10 +1776,12 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $allocCount = $ra->countDocuments(['request_id'=>$id]);
       if ($allocCount >= $qty) {
         $er->updateOne(['id'=>$id, 'status'=>['$in'=>['Pending','Approved']]], ['$set'=>['status'=>'Borrowed','approved_at'=>$req['approved_at'] ?? $now,'approved_by'=>$approverName,'borrowed_at'=>$borrowedAtFromReq,'type'=>'immediate','expected_return_at'=>$expectedReturn]]);
+        ab_fcm_notify_request_status($db, $req, 'Borrowed');
         header('Location: admin_borrow_center.php?approved=1&scroll=borrowed#borrowed-list'); exit();
       } else {
         $er->updateOne(['id'=>$id, 'status'=>'Pending'], ['$set'=>['approved_at'=>$now,'approved_by'=>$approverName,'type'=>'immediate','expected_return_at'=>$expectedReturn]]);
         $left = max(0, $qty - $allocCount);
+        ab_fcm_notify_request_status($db, $req, 'Approved');
         header('Location: admin_borrow_center.php?allocated=1&left=' . $left . '&req=' . $id); exit();
       }
     }
@@ -1847,6 +1909,7 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         $ub->insertOne(['id'=>$borrowId,'username'=>$user,'model_id'=>$mid,'status'=>'Borrowed','borrowed_at'=>$borrowedAtFromReq]);
         $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]);
       }
+      ab_fcm_notify_request_status($db, $req, 'Borrowed');
       header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
     }
 
@@ -1927,7 +1990,10 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       } catch (Throwable $_e) {}
       // If no remaining active borrows, mark request Returned
       $rem = $ub->countDocuments(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed']);
-      if ($rem <= 0) { $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]); }
+      if ($rem <= 0) {
+        $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
+        ab_fcm_notify_request_status($db, $reqDoc, 'Returned');
+      }
       header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
     }
     if ($act === 'validate_return_id' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -2014,6 +2080,7 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         'created_at'=>$now,
         'created_by'=>'admin'
       ]);
+      ab_fcm_notify_request_status($db, $reqDoc, 'Return Requested');
       header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
     }
     if ($act === 'approve_returnship' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -2142,6 +2209,7 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             $er->updateOne(['id'=>(int)($pd['id'] ?? 0), 'status'=>'Pending'], ['$set'=>[
               'status'=>'Rejected', 'rejected_at'=>$nowStr, 'rejected_reason'=>'Auto-rejected: reservation start passed without approval'
             ]]);
+            ab_fcm_notify_request_status($db, $pd, 'Rejected', 'Auto-rejected: reservation start passed without approval');
           }
         }
         $curPendImm = $er->find(['status'=>'Pending','type'=>'immediate']);
@@ -2152,6 +2220,7 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
             $er->updateOne(['id'=>(int)($pd['id'] ?? 0), 'status'=>'Pending'], ['$set'=>[
               'status'=>'Rejected', 'rejected_at'=>$nowStr, 'rejected_reason'=>'Auto-rejected: expected return reached without approval'
             ]]);
+            ab_fcm_notify_request_status($db, $pd, 'Rejected', 'Auto-rejected: expected return reached without approval');
           }
         }
       } catch (Throwable $_) {}
