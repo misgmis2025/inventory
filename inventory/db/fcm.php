@@ -132,6 +132,17 @@ function fcm_send_to_user_tokens($mongo_db, string $username, string $title, str
     if ($targetUrl !== '') {
         $data['target_url'] = $targetUrl;
     }
+    // FCM HTTP v1 requires data payload values to be strings.
+    $cleanData = [];
+    foreach ($data as $k => $v) {
+        if (is_array($v) || is_object($v)) {
+            $v = json_encode($v);
+        }
+        if ($v === null) {
+            continue;
+        }
+        $cleanData[(string)$k] = (string)$v;
+    }
 
     $token = fcm_get_access_token($sa);
     if (!$token) {
@@ -150,7 +161,7 @@ function fcm_send_to_user_tokens($mongo_db, string $username, string $title, str
                     'title' => $title,
                     'body' => $body,
                 ],
-                'data' => $data,
+                'data' => $cleanData,
             ],
         ];
         $ch = curl_init();
