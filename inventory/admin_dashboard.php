@@ -1305,7 +1305,7 @@ if (!$DASH_MONGO_FILLED) { $stocksLabels = []; $stocksValues = []; }
         <i class="bi bi-key"></i>
         <span>Password</span>
       </a>
-      <a href="logout.php" aria-label="Logout" onclick="return confirm('Logout now?');">
+      <a href="logout.php" aria-label="Logout">
         <i class="bi bi-box-arrow-right"></i>
         <span>Logout</span>
       </a>
