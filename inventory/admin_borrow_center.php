@@ -2573,13 +2573,24 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
               $borrowedAtFromReq = $dtBA->format('Y-m-d H:i:s');
             } else { $borrowedAtFromReq = (string)($er['created_at'] ?? $nowStr); }
           } catch (Throwable $_ba) { $borrowedAtFromReq = (string)($er['created_at'] ?? $nowStr); }
+
+          $snapItemName = (string)($unit['item_name'] ?? '');
+          $snapModel = (string)($unit['model'] ?? '');
+          $snapCategory = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
+          $snapSerial = (string)($unit['serial_no'] ?? '');
+
           $ubCol->insertOne([
             'id'=>$nextUb,
             'username'=>(string)($er['username'] ?? ''),
             'model_id'=>$mid,
-            'serial_no'=>(string)($unit['serial_no'] ?? ''),
+            'serial_no'=>$snapSerial,
             'status'=>'Borrowed',
-            'borrowed_at'=>$borrowedAtFromReq
+            'borrowed_at'=>$borrowedAtFromReq,
+            // Snapshot fields for stable history
+            'request_id'=>$reqId,
+            'item_name'=>$snapItemName,
+            'model'=>$snapModel,
+            'category'=>$snapCategory,
           ]);
           // Allocation link
           $lastAl = $allocCol->findOne([], ['sort'=>['id'=>-1], 'projection'=>['id'=>1]]);

@@ -159,15 +159,9 @@ try {
         $itm = $mid > 0 ? $iiCol->findOne(['id' => $mid]) : null;
         $modelName = $itm ? (string)($itm['model'] ?? ($itm['item_name'] ?? '')) : '';
         $cat = $itm ? (string)($itm['category'] ?? 'Uncategorized') : 'Uncategorized';
-        // Prefer request_id stored on the borrow document; fall back to best-effort lookup
+        // Prefer request_id stored on the borrow document; do not guess if missing
         $reqId = isset($ub['request_id']) ? (int)$ub['request_id'] : 0;
-        if ($reqId <= 0) {
-            $req = $erCol->findOne([
-                'username' => (string)$_SESSION['username'],
-                'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))]
-            ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
-            $reqId = (int)($req['id'] ?? 0);
-        }
+        $borrowId = (int)($ub['id'] ?? 0);
         // last status markers
         $last_lost = $ldCol->findOne(['model_id' => $mid, 'action' => 'Lost'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
         $last_found = $ldCol->findOne(['model_id' => $mid, 'action' => 'Found'], ['sort' => ['id' => -1], 'projection' => ['created_at' => 1]]);
@@ -202,6 +196,7 @@ try {
 
         $my_history[] = [
             'request_id' => $reqId,
+            'borrow_id' => $borrowId,
             'borrowed_at' => $ba,
             'returned_at' => $ra,
             'status' => (string)($ub['status'] ?? ''),
@@ -369,7 +364,11 @@ try {
                                         <?php else: ?>
                                             <?php foreach ($my_history as $hv): ?>
                                             <tr>
-                                                <td><?php echo htmlspecialchars((string)($hv['request_id'] ?? '')); ?></td>
+                                                <td><?php
+                                                    $rid = isset($hv['request_id']) ? (int)$hv['request_id'] : 0;
+                                                    $bid = isset($hv['borrow_id']) ? (int)$hv['borrow_id'] : 0;
+                                                    echo htmlspecialchars((string)($rid > 0 ? $rid : $bid));
+                                                ?></td>
                                                 <td><?php echo htmlspecialchars($hv['borrowed_at'] ? date('h:i A m-d-y', strtotime($hv['borrowed_at'])) : ''); ?></td>
                                                 <td><?php echo htmlspecialchars($hv['returned_at'] ? date('h:i A m-d-y', strtotime($hv['returned_at'])) : ''); ?></td>
                                                 <td><?php echo htmlspecialchars((string)($hv['model_id'] ?? '')); ?></td>

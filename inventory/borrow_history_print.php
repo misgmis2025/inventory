@@ -78,16 +78,30 @@ try {
         if ($full_name === '' && $usernameRow !== '') { $full_name = $usernameRow; }
 
         $model_id = intval($r['model_id'] ?? 0);
+        // Prefer snapshot fields from user_borrows; fall back to current inventory item only if needed
         $model_name = '';
         $category = '';
         $serial_no = '';
-        if ($model_id > 0) {
+        $snapModel = isset($r['model']) ? (string)$r['model'] : '';
+        $snapItemName = isset($r['item_name']) ? (string)$r['item_name'] : '';
+        $snapCategory = isset($r['category']) ? (string)$r['category'] : '';
+        $snapSerial = isset($r['serial_no']) ? (string)$r['serial_no'] : '';
+
+        if ($snapModel !== '' || $snapItemName !== '') {
+            $model_name = $snapModel !== '' ? $snapModel : $snapItemName;
+        }
+        if ($snapCategory !== '') { $category = $snapCategory; }
+        if ($snapSerial !== '') { $serial_no = $snapSerial; }
+
+        if ($model_id > 0 && ($model_name === '' || $category === '' || $serial_no === '')) {
             try { $itm = $iiCol->findOne(['id'=>$model_id], ['projection'=>['model'=>1,'item_name'=>1,'category'=>1,'serial_no'=>1]]); } catch (Throwable $e) { $itm = null; }
             if ($itm) {
-                $mn = trim((string)($itm['model'] ?? ''));
-                $model_name = $mn !== '' ? $mn : (string)($itm['item_name'] ?? '');
-                $category = trim((string)($itm['category'] ?? ''));
-                $serial_no = (string)($itm['serial_no'] ?? '');
+                if ($model_name === '') {
+                    $mn = trim((string)($itm['model'] ?? ''));
+                    $model_name = $mn !== '' ? $mn : (string)($itm['item_name'] ?? '');
+                }
+                if ($category === '') { $category = trim((string)($itm['category'] ?? '')); }
+                if ($serial_no === '') { $serial_no = (string)($itm['serial_no'] ?? ''); }
             }
         }
         if ($category === '') { $category = 'Uncategorized'; }

@@ -2141,42 +2141,10 @@ if (!$USED_MONGO && $conn) {
       $itm=$mid>0?$ii->findOne(['id'=>$mid]):null; 
       $log=$ld->findOne(['model_id'=>$mid,'created_at'=>['$gte'=>(string)($hv['borrowed_at']??'')]], ['sort'=>['id'=>-1]]); 
       $alloc=$ra->findOne(['borrow_id'=>(int)($hv['id']??0)], ['projection'=>['request_id'=>1]]);
-      // Prefer request_id stored on the borrow itself, then allocation, then heuristic lookup
+      // Prefer request_id stored on the borrow itself, then allocation; do not guess beyond that
       $reqId = isset($hv['request_id']) ? (int)$hv['request_id'] : 0;
-      if ($reqId <= 0) {
-        $reqId=(int)($alloc['request_id']??0);
-      }
-      if ($reqId<=0){
-        $when = (string)($hv['borrowed_at'] ?? '');
-        $req = null;
-        if ($itm){
-          $cands = array_values(array_unique(array_filter([(string)($itm['model'] ?? ''),(string)($itm['item_name'] ?? '')])));
-          if (!empty($cands)){
-            $req = $er->findOne([
-              'username'=>(string)$_SESSION['username'],
-              'item_name'=>['$in'=>$cands],
-              'created_at' => ['$lte' => $when]
-            ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-            if (!$req) {
-              $req = $er->findOne([
-                'username'=>(string)$_SESSION['username'],
-                'item_name'=>['$in'=>$cands]
-              ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-            }
-          }
-        }
-        if (!$req){
-          $req = $er->findOne([
-            'username'=>(string)$_SESSION['username'],
-            'created_at' => ['$lte' => $when]
-          ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-          if (!$req) {
-            $req = $er->findOne([
-              'username'=>(string)$_SESSION['username']
-            ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-          }
-        }
-        if ($req && isset($req['id'])) { $reqId = (int)$req['id']; }
+      if ($reqId <= 0 && $alloc && isset($alloc['request_id'])) {
+        $reqId = (int)$alloc['request_id'];
       }
       // Snapshot item fields off user_borrows first, then fall back to current inventory item
       $snapItemName = isset($hv['item_name']) ? (string)$hv['item_name'] : '';
