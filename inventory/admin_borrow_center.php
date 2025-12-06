@@ -1852,6 +1852,32 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         'edited_at'=>$now,
         'edit_note'=>'Edited to ' . $assignedSerial . ($locStr!=='' ? (' @ ' . $locStr) : '')
       ]]);
+      // FCM push: notify user that their reservation serial was edited
+      try {
+        if (function_exists('fcm_send_to_user_tokens') && isset($db) && $db) {
+          $uname = trim((string)($reqDoc['username'] ?? ''));
+          if ($uname !== '') {
+            $title = 'Reservation updated';
+            $body = 'Reservation #' . $id . ' updated to [' . $assignedSerial . ']';
+            if ($locStr !== '') { $body .= ' @ ' . $locStr; }
+            $extra = [
+              'request_id' => $id,
+              'type' => 'reservation',
+              'status' => 'Edited',
+              'serial_no' => $assignedSerial,
+              'location' => $locStr,
+            ];
+            fcm_send_to_user_tokens(
+              $db,
+              $uname,
+              $title,
+              $body,
+              fcm_full_url('/inventory/user_request.php'),
+              $extra
+            );
+          }
+        }
+      } catch (Throwable $_fcm_edit) { /* ignore */ }
       header('Location: admin_borrow_center.php?edit_serial=1#reservations-list'); exit();
     }
 
