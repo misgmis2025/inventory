@@ -2018,7 +2018,10 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $rem = $ub->countDocuments(['id'=>['$in'=>$borrowIds], 'status'=>'Borrowed']);
       if ($rem <= 0) {
         $er->updateOne(['id'=>$reqId], ['$set'=>['status'=>'Returned','returned_at'=>$now]]);
-        ab_fcm_notify_request_status($db, $reqDoc, 'Returned');
+        // Use the already-loaded $req document for FCM notification
+        if (isset($req) && $req) {
+          ab_fcm_notify_request_status($db, $req, 'Returned');
+        }
       }
       header('Location: admin_borrow_center.php?scroll=borrowed#borrowed-list'); exit();
     }
