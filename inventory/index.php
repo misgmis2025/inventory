@@ -231,6 +231,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         box-shadow: none;
       }
       @media (max-width: 576px) {
+        html, body {
+          height: 100vh;
+          overflow: hidden; /* prevent scrolling on mobile */
+        }
         .login-card { padding: 2rem 1.5rem; }
         .login-title { font-size: 1.6rem; }
         .capslock-indicator {
