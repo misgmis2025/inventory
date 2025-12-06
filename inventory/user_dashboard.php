@@ -383,6 +383,7 @@ if (!$USED_MONGO) {
             $ubCol = $db->selectCollection('user_borrows');
             $iiCol = $db->selectCollection('inventory_items');
             $erCol = $db->selectCollection('equipment_requests');
+            $raCol = $db->selectCollection('request_allocations');
             $cur = $ubCol->find([
                 'username' => (string)$_SESSION['username'],
                 'status' => 'Borrowed',
@@ -392,12 +393,51 @@ if (!$USED_MONGO) {
                 $itm = $mid > 0 ? $iiCol->findOne(['id'=>$mid]) : null;
                 $modelName = $itm ? (string)($itm['model'] ?? ($itm['item_name'] ?? '')) : '';
                 $cat = $itm ? (string)($itm['category'] ?? 'Uncategorized') : 'Uncategorized';
-                $cond = $itm ? (string)($itm['condition'] ?? '') : '';
-                // Best-effort request id: most recent request by this user matching item name
-                $req = $erCol->findOne([
-                    'username' => (string)$_SESSION['username'],
-                    'item_name' => ['$in' => array_values(array_unique(array_filter([$modelName, (string)($itm['item_name'] ?? '')])))],
-                ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id'=>1]]);
+                $serialNo = $itm ? (string)($itm['serial_no'] ?? '') : '';
+
+                // Link to original request via allocation (borrow_id -> request_id)
+                $alloc = $raCol->findOne(['borrow_id' => (int)($ub['id'] ?? 0)], ['projection'=>['request_id'=>1]]);
+                $reqId = (int)($alloc['request_id'] ?? 0);
+
+                // Determine due date: reservation reserved_to > request expected_return_at > borrow expected_return_at
+                $due = (string)($ub['expected_return_at'] ?? '');
+                try {
+                    if (isset($ub['expected_return_at']) && $ub['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                        $dte = $ub['expected_return_at']->toDateTime();
+                        $dte->setTimezone(new DateTimeZone('Asia/Manila'));
+                        $due = $dte->format('Y-m-d H:i:s');
+                    }
+                } catch (Throwable $_e0) { $due = (string)($ub['expected_return_at'] ?? ''); }
+                if ($reqId > 0) {
+                    try {
+                        $req = $erCol->findOne(['id'=>$reqId], ['projection'=>['type'=>1,'reserved_to'=>1,'expected_return_at'=>1]]);
+                        if ($req) {
+                            $reqType = (string)($req['type'] ?? '');
+                            if (strcasecmp($reqType,'reservation')===0) {
+                                $rt = (string)($req['reserved_to'] ?? '');
+                                try {
+                                    if (isset($req['reserved_to']) && $req['reserved_to'] instanceof MongoDB\BSON\UTCDateTime) {
+                                        $dt2 = $req['reserved_to']->toDateTime();
+                                        $dt2->setTimezone(new DateTimeZone('Asia/Manila'));
+                                        $rt = $dt2->format('Y-m-d H:i:s');
+                                    }
+                                } catch (Throwable $_e1) {}
+                                if ($rt !== '') { $due = $rt; }
+                            } else {
+                                $rt2 = (string)($req['expected_return_at'] ?? '');
+                                try {
+                                    if (isset($req['expected_return_at']) && $req['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                                        $dt3 = $req['expected_return_at']->toDateTime();
+                                        $dt3->setTimezone(new DateTimeZone('Asia/Manila'));
+                                        $rt2 = $dt3->format('Y-m-d H:i:s');
+                                    }
+                                } catch (Throwable $_e2) {}
+                                if ($rt2 !== '') { $due = $rt2; }
+                            }
+                        }
+                    } catch (Throwable $_eReq) { /* ignore and fall back to borrow expected_return_at */ }
+                }
+
                 // Normalize borrowed_at
                 $ba = '';
                 try {
@@ -407,13 +447,14 @@ if (!$USED_MONGO) {
                         $ba = $dt->format('Y-m-d H:i:s');
                     } else { $ba = (string)($ub['borrowed_at'] ?? ''); }
                 } catch (Throwable $_b) { $ba = (string)($ub['borrowed_at'] ?? ''); }
+
                 $borrowed_list[] = [
-                    'request_id' => (int)($req['id'] ?? 0),
+                    'request_id' => $reqId,
                     'borrowed_at' => $ba,
-                    'model_id' => $mid,
+                    'serial_no' => $serialNo,
                     'model_name' => $modelName,
                     'category' => ($cat !== '' ? $cat : 'Uncategorized'),
-                    'condition' => $cond,
+                    'expected_return_at' => $due,
                 ];
             }
         } catch (Throwable $e) {
@@ -495,10 +536,10 @@ if (!$USED_MONGO) {
                   <tr>
                     <th>Request ID</th>
                     <th>Borrowed At</th>
-                    <th>Model ID</th>
-                    <th>Model</th>
+                    <th>Serial ID</th>
+                    <th>Item</th>
                     <th>Category</th>
-                    <th>Condition</th>
+                    <th>Expected Return</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -508,11 +549,11 @@ if (!$USED_MONGO) {
                   <?php foreach ($borrowed_list as $it): ?>
                   <tr>
                     <td><?php echo htmlspecialchars((string)($it['request_id'] ?? '')); ?></td>
-                    <td><?php echo htmlspecialchars(date('h:i A m-d-y', strtotime($it['borrowed_at']))); ?></td>
-                    <td><?php echo htmlspecialchars((string)($it['model_id'] ?? '')); ?></td>
+                    <td><?php echo htmlspecialchars($it['borrowed_at'] ? date('h:i A m-d-y', strtotime($it['borrowed_at'])) : '-'); ?></td>
+                    <td><?php echo htmlspecialchars((string)($it['serial_no'] ?? '')); ?></td>
                     <td><?php echo htmlspecialchars($it['model_name'] ?? ''); ?></td>
                     <td><?php echo htmlspecialchars($it['category'] ?? 'Uncategorized'); ?></td>
-                    <td><?php echo htmlspecialchars($it['condition'] ?? ''); ?></td>
+                    <td><?php echo !empty($it['expected_return_at']) ? htmlspecialchars(date('h:i A m-d-y', strtotime($it['expected_return_at']))) : '-'; ?></td>
                   </tr>
                   <?php endforeach; ?>
                   <?php endif; ?>
@@ -649,7 +690,7 @@ if (!$USED_MONGO) {
             let latestTs = 0;
             let lastSig = '';
             let currentSig = '';
-            let lastHtml = '';
+            let lastHtml = null;
             function composeRows(baseList, dn, ovCount, ovSet){
                 let latest=0; let sigParts=[]; const combined=[]; const ovset=(ovSet instanceof Set)?ovSet:new Set();
                 const clearedKeys = new Set((dn && Array.isArray(dn.cleared_keys)) ? dn.cleared_keys : []);
@@ -688,7 +729,8 @@ if (!$USED_MONGO) {
                         if (bellDot) bellDot.classList.toggle('d-none', !showDot);
                     } catch(_){ }
                     const html = built.rows.join('');
-                    if (listEl && html !== lastHtml){ listEl.innerHTML = html; lastHtml = html; }
+                    // Always overwrite list content so any temporary 'Loading...' placeholder is cleared
+                    if (listEl){ listEl.innerHTML = html; lastHtml = html; }
                     if (emptyEl) emptyEl.style.display = (html && html.trim()!=='') ? 'none' : 'block';
                     copyToMobile();
                     // Toast logic for new requests remains unchanged

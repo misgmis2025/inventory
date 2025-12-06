@@ -5554,14 +5554,14 @@ if (!empty($my_requests)) {
           const showDot = any && (changed || (latestTs>0 && latestTs > lastOpen));
           if (bellDot) bellDot.classList.toggle('d-none', !showDot);
         } catch(_){ }
-        // Single DOM commit if content changed
+        // Always overwrite list content so any temporary 'Loading...' placeholder is cleared
         const html = built.rows.join('');
-        if (listEl && html !== lastHtml){ listEl.innerHTML = html; lastHtml = html; }
+        if (listEl){ listEl.innerHTML = html; lastHtml = html; }
         if (emptyEl) emptyEl.style.display = (html && html.trim()!=='') ? 'none' : 'block';
         try{ repositionBellDropdown(); }catch(_){ }
-      try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
+        try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
       }
-      let lastHtml = '';
+      let lastHtml = null;
       function poll(force){
         const isOpen = (dropdown && dropdown.classList && dropdown.classList.contains('show')) || (bellModal && bellModal.style && bellModal.style.display === 'flex');
         if (fetching && !force) return; fetching=true;
@@ -5592,9 +5592,9 @@ if (!empty($my_requests)) {
             const showDot = any && (changed || (latestTs>0 && latestTs > lastOpen));
             if (bellDot) bellDot.classList.toggle('d-none', !showDot);
           } catch(_){ }
-          // Single DOM commit if content changed
+          // Always overwrite list content so any temporary 'Loading...' placeholder is cleared
           const html = built.rows.join('');
-          if (listEl && html !== lastHtml){ listEl.innerHTML = html; lastHtml = html; }
+          if (listEl){ listEl.innerHTML = html; lastHtml = html; }
           if (emptyEl) emptyEl.style.display = (html && html.trim()!=='') ? 'none' : 'block';
           try{ repositionBellDropdown(); }catch(_){ }
           try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }

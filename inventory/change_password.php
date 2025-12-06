@@ -1041,7 +1041,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try{ if (ephemCount>0){ const header='<div class="list-group-item"><div class="d-flex justify-content-between align-items-center"><span class="small text-muted">Notifications</span><button type="button" class="btn btn-sm btn-outline-secondary btn-2xs" id="uClearAllBtn">Clear All</button></div></div>'; rows.splice(0,0,header); } }catch(_){ }
                 return { rows, latest, sig: sigParts.join(',') };
             }
-            let fetching=false; let lastHtml='';
+            let fetching=false; let lastHtml=null;
             function poll(force){
                 if (fetching && !force) return; fetching=true;
                 Promise.all([
@@ -1060,7 +1060,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (bellDot) bellDot.classList.toggle('d-none', !(any && (changed || (built.latest>0 && built.latest>lastOpen))));
                     }catch(_){ }
                     const html=built.rows.join('');
-                    if (listEl && html!==lastHtml){ listEl.innerHTML=html; lastHtml=html; }
+                    // Always overwrite list content so any temporary 'Loading...' placeholder is cleared
+                    if (listEl){ listEl.innerHTML=html; lastHtml=html; }
                     if (emptyEl) emptyEl.style.display=(html && html.trim()!=='')?'none':'block';
                     try { if (bellModal && bellModal.style && bellModal.style.display === 'flex') { copyNotifToMobile(); } } catch(_){ }
                 })

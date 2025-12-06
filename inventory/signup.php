@@ -117,8 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 1.5rem 0.75rem;
-        background-color: #f3f4f6;
+        padding: 2rem 1rem;
+        background-color: #f8f9fa; /* match login background */
       }
       .signup-card {
         width: 100%;
