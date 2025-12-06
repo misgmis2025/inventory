@@ -28,6 +28,30 @@ try {
   $USED_MONGO = true;
 } catch (Throwable $e) { $USED_MONGO = false; }
 
+if ($__act === 'register_fcm_token' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+  header('Content-Type: application/json');
+  try {
+    if ($USED_MONGO && $mongo_db) {
+      $uname = (string)($_SESSION['username'] ?? '');
+      $token = trim((string)($_POST['token'] ?? ''));
+      if ($uname === '' || $token === '') { echo json_encode(['ok'=>false]); exit; }
+      $col = $mongo_db->selectCollection('user_device_tokens');
+      $now = date('Y-m-d H:i:s');
+      $col->updateOne(
+        ['username' => $uname, 'token' => $token],
+        ['$set' => ['username' => $uname, 'token' => $token, 'updated_at' => $now], '$setOnInsert' => ['created_at' => $now]],
+        ['upsert' => true]
+      );
+      echo json_encode(['ok' => true]);
+    } else {
+      echo json_encode(['ok' => false]);
+    }
+  } catch (Throwable $e) {
+    echo json_encode(['ok' => false]);
+  }
+  exit;
+}
+
 // JSON: user clears one notification
 if ($__act === 'user_notif_clear' && $_SERVER['REQUEST_METHOD'] === 'POST') {
   header('Content-Type: application/json');
