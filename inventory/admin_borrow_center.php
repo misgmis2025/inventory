@@ -4144,7 +4144,7 @@ try {
   <!-- Mark Lost Modal -->
   <div class="modal fade" id="markLostModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-      <form method="POST" class="modal-content" onsubmit="return confirm('Mark this item as Lost?');">
+      <form method="POST" class="modal-content">
         <input type="hidden" name="do" value="mark_lost_with_details" />
         <input type="hidden" name="request_id" id="ml_req_id" />
         <div class="modal-header">
@@ -4170,7 +4170,7 @@ try {
   <!-- Mark Maintenance (Damaged) Modal -->
   <div class="modal fade" id="markMaintModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-      <form method="POST" class="modal-content" onsubmit="return confirm('Mark this item as Damaged / Under Maintenance?');">
+      <form method="POST" class="modal-content">
         <input type="hidden" name="do" value="mark_maint_with_details" />
         <input type="hidden" name="request_id" id="mm_req_id" />
         <div class="modal-header">
@@ -5940,50 +5940,115 @@ try {
         return (toMs(A1) <= endB) && (toMs(B1) <= endA);
       }
       function renderCards(list){
-        var out=[];
+        var wrap = document.getElementById('resTimelineList');
+        if (!wrap) return;
+        if (!Array.isArray(list) || !list.length) {
+          wrap.innerHTML = '<div class="col-12"><div class="text-center text-muted small py-3">No items for this filter.</div></div>';
+          return;
+        }
+
+        // Group items by model + category so the timeline shows per-item groups
+        var groups = {};
         list.forEach(function(it){
-          var serial = String(it.serial_no||'');
           var model = String(it.model||'');
           var cat = String(it.category||'');
-          var loc = String(it.location||'');
-          var use = it.in_use || null;
-          var res = Array.isArray(it.reservations)? it.reservations : [];
-          var hasClash = false;
-          if (use && (use.to||'')) {
-            res.forEach(function(r){ if (!hasClash && overlap(use.from, use.to, r.from, r.to)) hasClash=true; });
+          var key = model+'||'+cat;
+          if (!groups[key]) {
+            groups[key] = { model:model, category:cat, items:[] };
           }
-          var resHtml = '';
-          if (res.length) {
-            var lbl = (res.length===1) ? 'Reservation' : ('Reservations ('+res.length+')');
-            var target = 'reslist_'+serial.replace(/[^A-Za-z0-9_-]/g,'_');
-            var listHtml = res.map(function(r){ var clash = use && overlap(use.from, use.to, r.from, r.to); return (
-              '<div class="d-flex flex-column p-2 rounded '+(clash?'bg-danger bg-opacity-10 border border-danger':'bg-light')+' mb-2">'+
-                '<div><i class="bi bi-person-fill me-1"></i>'+esc(r.full_name||r.username||'')+'</div>'+
-                '<div class="small">'+twoLine(r.from)+' → '+twoLine(r.to)+'</div>'+
+          groups[key].items.push(it);
+        });
+
+        var out = [];
+        var keys = Object.keys(groups).sort(function(a,b){
+          var ma = groups[a].model.toLowerCase();
+          var mb = groups[b].model.toLowerCase();
+          if (ma < mb) return -1; if (ma > mb) return 1; return 0;
+        });
+
+        keys.forEach(function(key, idx){
+          var g = groups[key];
+          var grpId = 'resgrp_'+idx;
+          var anyClash = false;
+
+          var bodyHtml = g.items.map(function(it, sIdx){
+            var serial = String(it.serial_no||'');
+            var loc = String(it.location||'');
+            var use = it.in_use || null;
+            var res = Array.isArray(it.reservations)? it.reservations : [];
+            var serialHasClash = false;
+            if (use && (use.to||'')) {
+              res.forEach(function(r){ if (!serialHasClash && overlap(use.from, use.to, r.from, r.to)) serialHasClash=true; });
+            }
+            if (serialHasClash) anyClash = true;
+
+            var safeSerial = (serial || ('serial_'+sIdx)).replace(/[^A-Za-z0-9_-]/g,'_');
+            var resTarget = 'reslist_'+idx+'_'+safeSerial;
+
+            var resButton = '';
+            var resSection = '';
+            if (res.length) {
+              var lbl = (res.length===1) ? 'Reservation' : ('Reservations ('+res.length+')');
+              var listHtml = res.map(function(r){
+                var clash = use && overlap(use.from, use.to, r.from, r.to);
+                return (
+                  '<div class="d-flex flex-column p-2 rounded '+(clash?'bg-danger bg-opacity-10 border border-danger':'bg-light')+' mb-2">'+
+                    '<div><i class="bi bi-person-fill me-1"></i>'+esc(r.full_name||r.username||'')+'</div>'+
+                    '<div class="small">'+twoLine(r.from)+' → '+twoLine(r.to)+'</div>'+
+                  '</div>'
+                );
+              }).join('');
+              resButton = '<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#'+resTarget+'" aria-expanded="false" aria-controls="'+resTarget+'">'+
+                            '<i class="bi bi-calendar-event me-1"></i>'+esc(lbl)+
+                          '</button>';
+              resSection = '<div id="'+resTarget+'" class="collapse mt-2">'+listHtml+'</div>';
+            }
+
+            var useBadge = '';
+            var useDetail = '';
+            if (use) {
+              useBadge = '<span class="badge bg-primary ms-2">In Use</span>';
+              useDetail = '<div class="small text-muted mt-1">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div>';
+            }
+
+            return (
+              '<div class="border rounded p-2 mb-2 '+(serialHasClash?'border-danger':'border-light')+'">'+
+                '<div class="d-flex justify-content-between align-items-center">'+
+                  '<div>'+
+                    '<strong>'+esc(serial || '(no serial)')+'</strong>'+
+                    (loc ? ' <span class="text-muted small ms-1">'+esc(loc)+'</span>' : '')+
+                    (useBadge || '')+
+                  '</div>'+
+                  '<div>'+
+                    (resButton || '')+
+                  '</div>'+
+                '</div>'+
+                useDetail+
+                resSection+
               '</div>'
-            ); }).join('');
-            resHtml = '<div><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#'+target+'" aria-expanded="false" aria-controls="'+target+'">'+
-                        '<i class="bi bi-calendar-event me-1"></i>'+esc(lbl)+
-                      '</button></div>'+
-                      '<div id="'+target+'" class="collapse mt-2">'+listHtml+'</div>';
-          }
+            );
+          }).join('');
+
           out.push(
-            '<div class="col-12 col-lg-6 col-xxl-4">'+
-              '<div class="card shadow-sm '+(hasClash?'border-danger':'')+'">'+
-                '<div class="card-header bg-white d-flex justify-content-between align-items-center">'+
-                  '<div><strong>'+esc(serial||'(no serial)')+'</strong> <span class="text-muted">'+esc(model)+'</span></div>'+
-                  (cat?('<span class="badge bg-secondary" title="Category">'+esc(cat)+'</span>'):'')+''+
+            '<div class="col-12 col-lg-6 col-xxl-3">'+
+              '<div class="card shadow-sm '+(anyClash?'border-danger':'')+'">'+
+                '<div class="card-header bg-white d-flex justify-content-between align-items-center" role="button" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#'+grpId+'" aria-expanded="false" aria-controls="'+grpId+'">'+
+                  '<div>'+
+                    '<div><strong>'+esc(g.model || '(no model)')+'</strong></div>'+
+                    (g.category ? '<div class="small text-muted">'+esc(g.category)+'</div>' : '')+
+                  '</div>'+
                 '</div>'+
-                '<div class="card-body">'+
-                  (use ? ('<div class="mb-2"><span class="badge bg-primary me-2">In Use</span>'+esc(use.full_name||use.username||'')+'<div class="small text-muted">'+twoLine(use.from)+' → '+twoLine(use.to)+'</div></div>') : '')+
-                  resHtml+
+                '<div id="'+grpId+'" class="collapse">'+
+                  '<div class="card-body">'+
+                    (bodyHtml || '<div class="text-muted small">No serials match this filter.</div>')+
+                  '</div>'+
                 '</div>'+
-                (loc?('<div class="card-footer text-muted"><i class="bi bi-geo-alt me-1"></i>'+esc(loc)+'</div>'):'')+''+
               '</div>'+
             '</div>'
           );
         });
-        var wrap = document.getElementById('resTimelineList'); if (wrap) wrap.innerHTML = out.join('');
+
+        wrap.innerHTML = out.join('');
       }
       async function loadTimeline(){
         var catSel = document.getElementById('resFilterCategory');
