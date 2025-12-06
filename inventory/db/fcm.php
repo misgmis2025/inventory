@@ -22,14 +22,17 @@ function fcm_get_service_account(): ?array {
         $json = (string)FCM_SERVICE_ACCOUNT_JSON;
     }
     if ($json === false || trim($json) === '') {
+        error_log('FCM: service account JSON missing');
         return null;
     }
     $cfg = json_decode($json, true);
     if (!is_array($cfg)) {
+        error_log('FCM: service account JSON decode failed');
         return null;
     }
     foreach (['project_id','client_email','private_key'] as $k) {
         if (empty($cfg[$k]) || !is_string($cfg[$k])) {
+            error_log('FCM: service account missing key ' . $k);
             return null;
         }
     }
@@ -56,10 +59,12 @@ function fcm_get_access_token(array $sa): ?string {
     $toSign = $jwtHeader . '.' . $jwtClaims;
     $key = openssl_pkey_get_private($sa['private_key']);
     if ($key === false) {
+        error_log('FCM: openssl_pkey_get_private failed');
         return null;
     }
     $sig = '';
     if (!openssl_sign($toSign, $sig, $key, 'sha256')) {
+        error_log('FCM: openssl_sign failed');
         return null;
     }
     $jwt = $toSign . '.' . fcm_base64url_encode($sig);
@@ -79,12 +84,15 @@ function fcm_get_access_token(array $sa): ?string {
     $resp = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     if ($resp === false || $code < 200 || $code >= 300) {
+        $err = curl_error($ch);
+        error_log('FCM: token request failed code=' . $code . ' error=' . $err . ' resp=' . substr((string)$resp, 0, 200));
         curl_close($ch);
         return null;
     }
     curl_close($ch);
     $data = json_decode($resp, true);
     if (!is_array($data) || empty($data['access_token'])) {
+        error_log('FCM: token response decode failed resp=' . substr((string)$resp, 0, 200));
         return null;
     }
     $cached = (string)$data['access_token'];
@@ -94,10 +102,12 @@ function fcm_get_access_token(array $sa): ?string {
 
 function fcm_send_to_user_tokens($mongo_db, string $username, string $title, string $body, string $targetUrl = '', array $extraData = []): bool {
     if (!$mongo_db || $username === '' || $title === '' || $body === '') {
+        error_log('FCM: invalid params username=' . $username);
         return false;
     }
     $sa = fcm_get_service_account();
     if (!$sa) {
+        error_log('FCM: no service account config');
         return false;
     }
     try {
@@ -110,9 +120,11 @@ function fcm_send_to_user_tokens($mongo_db, string $username, string $title, str
         }
         $tokens = array_values(array_unique($tokens));
         if (empty($tokens)) {
+            error_log('FCM: no tokens for username=' . $username);
             return false;
         }
     } catch (Throwable $e) {
+        error_log('FCM: exception while loading tokens for username=' . $username . ' msg=' . $e->getMessage());
         return false;
     }
 
@@ -123,6 +135,7 @@ function fcm_send_to_user_tokens($mongo_db, string $username, string $title, str
 
     $token = fcm_get_access_token($sa);
     if (!$token) {
+        error_log('FCM: failed to obtain access token');
         return false;
     }
     $projectId = (string)$sa['project_id'];
@@ -154,9 +167,12 @@ function fcm_send_to_user_tokens($mongo_db, string $username, string $title, str
         ]);
         $resp = curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
         curl_close($ch);
         if ($resp !== false && $code >= 200 && $code < 300) {
             $okAny = true;
+        } else {
+            error_log('FCM: send failed username=' . $username . ' code=' . $code . ' err=' . $err . ' resp=' . substr((string)$resp, 0, 200));
         }
     }
     return $okAny;
