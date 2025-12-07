@@ -20,15 +20,46 @@ if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
 $UM_MONGO_FILLED = false;
 $users = [];
 $userStats = [];
+$agreementHtml = '';
 try {
     require_once __DIR__ . '/../vendor/autoload.php';
     require_once __DIR__ . '/db/mongo.php';
     $db = get_mongo_db();
     $usersCol = $db->selectCollection('users');
 
+    // Load current Borrowing Agreement HTML (if any)
+    try {
+        $settingsCol = $db->selectCollection('settings');
+        $cfg = $settingsCol->findOne(['key' => 'borrow_agreement_html']);
+        if ($cfg && isset($cfg['value'])) {
+            $agreementHtml = (string)$cfg['value'];
+        }
+    } catch (Throwable $_settings) {
+        $agreementHtml = '';
+    }
+
     // Handle POST actions in Mongo
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'] ?? '';
+
+        // Global config: update Borrowing Agreement & Accountability Policy
+        if ($action === 'update_borrow_agreement') {
+            $content = (string)($_POST['borrow_agreement'] ?? '');
+            try {
+                $settingsCol = $db->selectCollection('settings');
+                $settingsCol->updateOne(
+                    ['key' => 'borrow_agreement_html'],
+                    ['$set' => [
+                        'key' => 'borrow_agreement_html',
+                        'value' => $content,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]],
+                    ['upsert' => true]
+                );
+            } catch (Throwable $_upd) { /* ignore and still redirect */ }
+            header('Location: user_management.php?agreement_updated=1'); exit();
+        }
+
         $username = trim($_POST['username'] ?? '');
         if ($username !== '' && $username !== $_SESSION['username']) {
             if ($action === 'set_user_type') {
@@ -422,6 +453,24 @@ try {
                 <span>ECA MIS-GMIS</span>
             </div>
 
+            <div class="card mt-4">
+                <div class="card-header">
+                    <strong>Borrowing Agreement &amp; Accountability Policy</strong>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="user_management.php">
+                        <input type="hidden" name="action" value="update_borrow_agreement" />
+                        <div class="mb-2 small text-muted">
+                            This content is shown on the Signup page and in the user Submit Request / Scan Item QR modals.
+                        </div>
+                        <textarea name="borrow_agreement" class="form-control" rows="8"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
+                        <div class="text-end mt-3">
+                            <button type="submit" class="btn btn-primary btn-sm">Save Policy</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
     
             <div class="list-group list-group-flush my-3">
                 <a href="admin_dashboard.php" class="list-group-item list-group-item-action bg-transparent">
@@ -510,6 +559,9 @@ try {
             <?php endif; ?>
             <?php if (isset($_GET['reset'])): ?>
                 <div class="alert alert-success">Password has been reset.</div>
+            <?php endif; ?>
+            <?php if (isset($_GET['agreement_updated'])): ?>
+                <div class="alert alert-success">Borrowing Agreement &amp; Accountability Policy has been updated.</div>
             <?php endif; ?>
 
             <div class="card">

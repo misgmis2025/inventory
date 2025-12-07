@@ -1,6 +1,7 @@
 <?php
 // Early Mongo signup handler
 $mongoFailed = false;
+$agreementHtml = '';
 // Lightweight availability API for client-side checks
 if (($_GET['action'] ?? '') === 'check_availability') {
     header('Content-Type: application/json');
@@ -98,6 +99,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Removed MySQL fallback: signup is now MongoDB-only
+// Load Borrowing Agreement & Accountability Policy text from Mongo (if available)
+try {
+    require_once __DIR__ . '/../vendor/autoload.php';
+    require_once __DIR__ . '/db/mongo.php';
+    $db = get_mongo_db();
+    $settingsCol = $db->selectCollection('settings');
+    $cfg = $settingsCol->findOne(['key' => 'borrow_agreement_html']);
+    if ($cfg && isset($cfg['value'])) {
+        $agreementHtml = (string)$cfg['value'];
+    }
+} catch (Throwable $e) {
+    $agreementHtml = '';
+}
 ?>
 <!DOCTYPE html>
 <html>
@@ -311,6 +325,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <p class="signup-switch mt-3">Already have an account? <a href="index.php">Login</a></p>
       </div>
     </div>
+
+    <!-- Borrowing Agreement & Accountability Policy Modal (Signup) -->
+    <div class="modal fade" id="borrowAgreementSignupModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Borrowing Agreement &amp; Accountability Policy</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="agreementScroll" style="max-height: 360px; overflow-y: auto; border: 1px solid #dee2e6; padding: 1rem; border-radius: .5rem;">
+              <?php if ($agreementHtml !== ''): ?>
+                <?php echo $agreementHtml; ?>
+              <?php else: ?>
+                <h6 class="fw-bold mb-2">Borrowing Agreement &amp; Accountability Policy</h6>
+                <p class="mb-2">This is a placeholder for your official Borrowing Agreement &amp; Accountability Policy. We will replace this text with your full policy content.</p>
+                <p class="mb-2">By creating an account and borrowing equipment through this system, you agree to follow all rules and procedures for using, returning, and taking care of the borrowed items.</p>
+                <p class="mb-2">You accept that any loss, damage, or late return may result in obligations, penalties, or sanctions as determined by the MIS Office and school policies.</p>
+                <p class="mb-2">You further acknowledge that all transactions performed under your account are your responsibility, and that misuse of this system or equipment may lead to suspension of borrowing privileges or additional disciplinary actions.</p>
+                <p class="mb-0">Please read the complete policy carefully before agreeing. Scroll down to the bottom of this document to enable the Agree button.</p>
+              <?php endif; ?>
+            </div>
+            <div class="small text-muted mt-2" id="agreementScrollHint">Scroll to the bottom to enable the Agree button.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" id="agreementAcceptBtn" disabled>I Agree &amp; Create Account</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       (function() {
         const pwd = document.getElementById('password');
@@ -478,6 +525,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (userType) userType.addEventListener('change', onIdInput);
         if (fullName) fullName.addEventListener('input', onFullInput);
         if (username) username.addEventListener('input', onUserInput);
+
+        // Borrowing Agreement gating: require scroll + explicit agree before final submit
+        let agreementAccepted = false;
+        const agreementModalEl = document.getElementById('borrowAgreementSignupModal');
+        const agreementScroll = document.getElementById('agreementScroll');
+        const agreementHint = document.getElementById('agreementScrollHint');
+        const agreementAcceptBtn = document.getElementById('agreementAcceptBtn');
+        let agreementModal = null;
+
+        if (agreementModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+          agreementModal = new bootstrap.Modal(agreementModalEl, {backdrop: 'static', keyboard: false});
+        }
+
+        function enableAgreeIfScrolled() {
+          if (!agreementScroll || !agreementAcceptBtn) return;
+          const el = agreementScroll;
+          const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+          if (atBottom) {
+            agreementAcceptBtn.disabled = false;
+            if (agreementHint) agreementHint.textContent = 'You may now click "I Agree & Create Account" to finish signing up.';
+          }
+        }
+
+        if (agreementScroll) {
+          agreementScroll.addEventListener('scroll', enableAgreeIfScrolled);
+        }
+
+        if (agreementAcceptBtn && form) {
+          agreementAcceptBtn.addEventListener('click', function() {
+            agreementAccepted = true;
+            if (agreementModal) {
+              agreementModal.hide();
+            }
+            // Submit the form programmatically after acceptance
+            form.submit();
+          });
+        }
+
+        if (form) {
+          form.addEventListener('submit', function(e) {
+            // Let the server handle validation; only gate on agreement if client-side checks passed
+            if (!agreementAccepted && agreementModal) {
+              e.preventDefault();
+              // Reset scroll/agree state each time
+              if (agreementAcceptBtn) agreementAcceptBtn.disabled = true;
+              if (agreementScroll) {
+                agreementScroll.scrollTop = 0;
+              }
+              if (agreementHint) agreementHint.textContent = 'Scroll to the bottom to enable the Agree button.';
+              agreementModal.show();
+            }
+          });
+        }
       })();
     </script>
     <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>

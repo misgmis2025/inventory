@@ -20,13 +20,20 @@ if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $__act 
 // Action routing must be defined before any endpoint usage
 
 // Initialize Mongo connection early for endpoint handlers
-$USED_MONGO = false; $mongo_db = null; $conn = null;
+$USED_MONGO = false; $mongo_db = null; $conn = null; $borrowAgreementHtml = '';
 try {
   require_once __DIR__ . '/../vendor/autoload.php';
   require_once __DIR__ . '/db/mongo.php';
   require_once __DIR__ . '/db/fcm.php';
   $mongo_db = get_mongo_db();
   $USED_MONGO = true;
+  try {
+    $settingsCol = $mongo_db->selectCollection('settings');
+    $cfg = $settingsCol->findOne(['key' => 'borrow_agreement_html']);
+    if ($cfg && isset($cfg['value'])) {
+      $borrowAgreementHtml = (string)$cfg['value'];
+    }
+  } catch (Throwable $_ba) { $borrowAgreementHtml = ''; }
 } catch (Throwable $e) { $USED_MONGO = false; }
 
 if ($__act === 'register_fcm_token' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -2918,6 +2925,12 @@ if (!empty($my_requests)) {
                   <button type="submit" class="btn btn-primary btn-lg">
                     <i class="bi bi-send me-2"></i>Submit Request
                   </button>
+                </div>
+                <div class="mt-2 small text-muted text-center">
+                  By submitting, you acknowledge the
+                  <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#borrowAgreementModal">
+                    Borrowing Agreement &amp; Accountability Policy
+                  </button>.
                 </div>
                 <div id="formError" class="alert alert-danger mt-3 d-none" role="alert"></div>
               </form>
