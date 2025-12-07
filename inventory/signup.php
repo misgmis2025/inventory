@@ -347,12 +347,71 @@ try {
               <?php if ($agreementHtml !== ''): ?>
                 <?php echo $agreementHtml; ?>
               <?php else: ?>
-                <h6 class="fw-bold mb-2">Borrowing Agreement &amp; Accountability Policy</h6>
-                <p class="mb-2">This is a placeholder for your official Borrowing Agreement &amp; Accountability Policy. We will replace this text with your full policy content.</p>
-                <p class="mb-2">By creating an account and borrowing equipment through this system, you agree to follow all rules and procedures for using, returning, and taking care of the borrowed items.</p>
-                <p class="mb-2">You accept that any loss, damage, or late return may result in obligations, penalties, or sanctions as determined by the MIS Office and school policies.</p>
-                <p class="mb-2">You further acknowledge that all transactions performed under your account are your responsibility, and that misuse of this system or equipment may lead to suspension of borrowing privileges or additional disciplinary actions.</p>
-                <p class="mb-0">Please read the complete policy carefully before agreeing. Scroll down to the bottom of this document to enable the Agree button.</p>
+                <h5 class="fw-bold mb-1 text-center">MIS Borrowing System</h5>
+                <h6 class="fw-bold mb-3 text-center">Borrowing Agreement &amp; Accountability Policy</h6>
+
+                <p class="mb-2">
+                  <strong>Issued by:</strong> MIS Department, Exact Colleges of Asia.<br>
+                  <strong>Applies to:</strong> All Users.
+                </p>
+
+                <h6 class="fw-bold mt-3">1. PURPOSE</h6>
+                <p class="mb-2">This agreement outlines the responsibilities of all users who borrow equipment, devices, tools, or materials from the MIS Inventory System. It ensures proper handling, accountability, and timely return of school property.</p>
+
+                <h6 class="fw-bold mt-3">2. QR CODE LABEL REQUIREMENT</h6>
+                <p class="mb-1">To organize and identify items, all MIS inventory items include a QR code label.</p>
+                <p class="mb-1 fw-bold">By borrowing an item, the user agrees to the following:</p>
+                <ul class="mb-2">
+                  <li>Do not remove or damage the QR code. Removing, peeling, scratching, or damaging the QR label is strictly prohibited.</li>
+                  <li>Any damage to the QR label will be considered damage to the item, and the borrower may be required to shoulder repair or replacement costs.</li>
+                  <li>Borrowed items must be returned with the QR label fully intact and readable.</li>
+                </ul>
+
+                <h6 class="fw-bold mt-3">3. BORROWER RESPONSIBILITIES</h6>
+                <p class="mb-1">All borrowers agree to:</p>
+                <ul class="mb-2">
+                  <li>Use items only for official or academic purposes.</li>
+                  <li>Handle items carefully and keep them secured at all times.</li>
+                  <li>Return items on or before the assigned due date and time.</li>
+                  <li>Ensure the item is in the same condition as when it was borrowed.</li>
+                  <li>Respect all rules implemented by the MIS Department.</li>
+                </ul>
+
+                <h6 class="fw-bold mt-3">4. DAMAGE, LOSS, AND ACCOUNTABILITY</h6>
+                <p class="mb-1">Borrowers accept and acknowledge:</p>
+                <ul class="mb-2">
+                  <li>The borrower is fully responsible for any loss, damage, theft, or tampering involving the item while it is under their possession.</li>
+                  <li>If an item is damaged, the borrower must pay for the repair or provide an equivalent replacement of equal or higher value.</li>
+                  <li>If an item is lost or unreturned, the borrower must pay the full replacement cost at current market value.</li>
+                  <li>Any damage to the QR label (removal, scratches, tearing) will result in a reprinting fee and possibly additional charges if the item itself is affected.</li>
+                  <li>Failure to return items or settle charges may lead to suspension of borrowing privileges, withholding of clearance, or administrative actions.</li>
+                </ul>
+
+                <h6 class="fw-bold mt-3">5. PROHIBITED ACTIONS</h6>
+                <p class="mb-1">Borrowers must NOT:</p>
+                <ul class="mb-2">
+                  <li>Lend the item to another person.</li>
+                  <li>Tamper with any part of the item including the QR label.</li>
+                  <li>Use the item for non-school related or unauthorized activities.</li>
+                  <li>Attempt to alter or modify the item in any way.</li>
+                </ul>
+
+                <h6 class="fw-bold mt-3">6. CONDITIONS OF RELEASE</h6>
+                <p class="mb-1">Items will only be issued if:</p>
+                <ul class="mb-2">
+                  <li>The borrower has no pending obligations or violations.</li>
+                  <li>The borrower provides accurate personal information.</li>
+                  <li>The borrower agrees to all terms listed in this document.</li>
+                </ul>
+
+                <h6 class="fw-bold mt-3">7. AGREEMENT</h6>
+                <p class="mb-2">By borrowing any item from the MIS Inventory System, the borrower agrees that:</p>
+                <ul class="mb-0">
+                  <li>They have read and understood this Borrowing Agreement.</li>
+                  <li>They take full responsibility for the item until it is returned.</li>
+                  <li>They will pay for or replace any item that is lost, damaged, tampered with, or returned with a damaged QR label.</li>
+                  <li>They understand that non-compliance may result in disciplinary action.</li>
+                </ul>
               <?php endif; ?>
             </div>
             <div class="small text-muted mt-2" id="agreementScrollHint">Scroll to the bottom to enable the Agree button.</div>

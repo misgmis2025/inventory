@@ -760,8 +760,71 @@ try {
                 <?php if ($agreementHtml !== ''): ?>
                   <?php echo $agreementHtml; ?>
                 <?php else: ?>
-                  <h6 class="fw-bold mb-2">Borrowing Agreement &amp; Accountability Policy</h6>
-                  <p class="mb-2">This is a placeholder for your official Borrowing Agreement &amp; Accountability Policy. You can edit this text to match your formal policy.</p>
+                  <h5 class="fw-bold mb-1 text-center">MIS Borrowing System</h5>
+                  <h6 class="fw-bold mb-3 text-center">Borrowing Agreement &amp; Accountability Policy</h6>
+
+                  <p class="mb-2">
+                    <strong>Issued by:</strong> MIS Department, Exact Colleges of Asia.<br>
+                    <strong>Applies to:</strong> All Users.
+                  </p>
+
+                  <h6 class="fw-bold mt-3">1. PURPOSE</h6>
+                  <p class="mb-2">This agreement outlines the responsibilities of all users who borrow equipment, devices, tools, or materials from the MIS Inventory System. It ensures proper handling, accountability, and timely return of school property.</p>
+
+                  <h6 class="fw-bold mt-3">2. QR CODE LABEL REQUIREMENT</h6>
+                  <p class="mb-1">To organize and identify items, all MIS inventory items include a QR code label.</p>
+                  <p class="mb-1 fw-bold">By borrowing an item, the user agrees to the following:</p>
+                  <ul class="mb-2">
+                    <li>Do not remove or damage the QR code. Removing, peeling, scratching, or damaging the QR label is strictly prohibited.</li>
+                    <li>Any damage to the QR label will be considered damage to the item, and the borrower may be required to shoulder repair or replacement costs.</li>
+                    <li>Borrowed items must be returned with the QR label fully intact and readable.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">3. BORROWER RESPONSIBILITIES</h6>
+                  <p class="mb-1">All borrowers agree to:</p>
+                  <ul class="mb-2">
+                    <li>Use items only for official or academic purposes.</li>
+                    <li>Handle items carefully and keep them secured at all times.</li>
+                    <li>Return items on or before the assigned due date and time.</li>
+                    <li>Ensure the item is in the same condition as when it was borrowed.</li>
+                    <li>Respect all rules implemented by the MIS Department.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">4. DAMAGE, LOSS, AND ACCOUNTABILITY</h6>
+                  <p class="mb-1">Borrowers accept and acknowledge:</p>
+                  <ul class="mb-2">
+                    <li>The borrower is fully responsible for any loss, damage, theft, or tampering involving the item while it is under their possession.</li>
+                    <li>If an item is damaged, the borrower must pay for the repair or provide an equivalent replacement of equal or higher value.</li>
+                    <li>If an item is lost or unreturned, the borrower must pay the full replacement cost at current market value.</li>
+                    <li>Any damage to the QR label (removal, scratches, tearing) will result in a reprinting fee and possibly additional charges if the item itself is affected.</li>
+                    <li>Failure to return items or settle charges may lead to suspension of borrowing privileges, withholding of clearance, or administrative actions.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">5. PROHIBITED ACTIONS</h6>
+                  <p class="mb-1">Borrowers must NOT:</p>
+                  <ul class="mb-2">
+                    <li>Lend the item to another person.</li>
+                    <li>Tamper with any part of the item including the QR label.</li>
+                    <li>Use the item for non-school related or unauthorized activities.</li>
+                    <li>Attempt to alter or modify the item in any way.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">6. CONDITIONS OF RELEASE</h6>
+                  <p class="mb-1">Items will only be issued if:</p>
+                  <ul class="mb-2">
+                    <li>The borrower has no pending obligations or violations.</li>
+                    <li>The borrower provides accurate personal information.</li>
+                    <li>The borrower agrees to all terms listed in this document.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">7. AGREEMENT</h6>
+                  <p class="mb-2">By borrowing any item from the MIS Inventory System, the borrower agrees that:</p>
+                  <ul class="mb-0">
+                    <li>They have read and understood this Borrowing Agreement.</li>
+                    <li>They take full responsibility for the item until it is returned.</li>
+                    <li>They will pay for or replace any item that is lost, damaged, tampered with, or returned with a damaged QR label.</li>
+                    <li>They understand that non-compliance may result in disciplinary action.</li>
+                  </ul>
                 <?php endif; ?>
               </div>
               <textarea name="borrow_agreement" id="borrowAgreementTextarea" class="d-none"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
@@ -769,7 +832,8 @@ try {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" form="editBorrowAgreementForm" class="btn btn-primary btn-sm">Save Policy</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="resetBorrowAgreementBtn">Reset to Default</button>
+            <button type="submit" form="editBorrowAgreementForm" class="btn btn-primary btn-sm" id="saveBorrowAgreementBtn" disabled>Save Policy</button>
           </div>
         </div>
       </div>
@@ -1075,8 +1139,23 @@ try {
               if (!form) return;
               var editor = document.getElementById('borrowAgreementEditor');
               var hidden = document.getElementById('borrowAgreementTextarea');
+              var saveBtn = document.getElementById('saveBorrowAgreementBtn');
+              var resetBtn = document.getElementById('resetBorrowAgreementBtn');
               if (!editor || !hidden) return;
               var buttons = document.querySelectorAll('.ba-format-btn');
+              var originalHtml = (editor.innerHTML || '').trim();
+
+              function normalizeHtml(html) {
+                return (html || '').replace(/\s+/g, ' ').trim();
+              }
+
+              function updateSaveState() {
+                if (!saveBtn) return;
+                var current = normalizeHtml(editor.innerHTML);
+                var orig = normalizeHtml(originalHtml);
+                var dirty = current !== orig;
+                saveBtn.disabled = !dirty;
+              }
 
               function applyCommand(tag){
                 if (!editor) return;
@@ -1090,6 +1169,7 @@ try {
                 } else if (tag === 'ul') {
                   document.execCommand('insertUnorderedList', false, null);
                 }
+                updateSaveState();
               }
 
               buttons.forEach(function(btn){
@@ -1100,6 +1180,21 @@ try {
                   applyCommand(tag);
                 });
               });
+
+              editor.addEventListener('input', updateSaveState);
+              editor.addEventListener('keyup', updateSaveState);
+              updateSaveState();
+
+              if (resetBtn) {
+                resetBtn.addEventListener('click', function(e){
+                  e.preventDefault();
+                  if (!window.confirm('Reset the policy text back to the last saved version? Unsaved changes will be lost.')) {
+                    return;
+                  }
+                  editor.innerHTML = originalHtml;
+                  updateSaveState();
+                });
+              }
 
               // On submit, copy editor HTML into the hidden textarea
               form.addEventListener('submit', function(){
