@@ -1015,12 +1015,16 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         $doc = $ii->findOne(['$or'=>[['model'=>$model],['item_name'=>$model]]], ['sort'=>['id'=>-1], 'projection'=>['model'=>1,'item_name'=>1,'category'=>1]]);
         $mkey = $doc ? (string)($doc['model'] ?? ($doc['item_name'] ?? $model)) : $model;
         $category = $doc ? ((string)($doc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
-        // Borrow limit (cap)
+        // Borrow limit (cap) – treat models with no active row or borrow_limit <= 0 as not borrowable
         $bmDoc = $bm->findOne(
           ['active'=>1,'model_name'=>$mkey,'category'=>$category],
           ['projection'=>['borrow_limit'=>1], 'collation'=>['locale'=>'en','strength'=>2]]
         );
         $limit = $bmDoc && isset($bmDoc['borrow_limit']) ? (int)$bmDoc['borrow_limit'] : 0;
+        if (!$bmDoc || $limit <= 0) {
+          echo json_encode(['available'=>0]);
+          exit;
+        }
 
         if ($for === 'reservation') {
           // Reservation: include in-use units; exclude items with status Lost/Under Maintenance
@@ -1030,7 +1034,7 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
             ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
           ]); foreach ($agg as $r){ $total = (int)($r->sum ?? 0); break; }
           $base = max(0, $total);
-          $available = ($limit > 0) ? max(0, min($limit, $base)) : $base;
+          $available = max(0, min($limit, $base));
         } else {
           // Immediate: only currently Available units
           $availNow = (int)$ii->countDocuments([
@@ -1039,7 +1043,7 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
             '$or'=>[['model'=>$mkey],['item_name'=>$mkey]],
             'category'=>$category
           ]);
-          $available = ($limit > 0) ? max(0, min($limit, $availNow)) : max(0, $availNow);
+          $available = max(0, min($limit, $availNow));
         }
       }
     } catch (Throwable $e) { $available = 0; }
@@ -1048,11 +1052,15 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     if ($conn && $model !== '') {
       if ($st = $conn->prepare("SELECT COALESCE(NULLIF(model,''), item_name) AS m, COALESCE(NULLIF(category,''),'Uncategorized') AS c FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id DESC LIMIT 1")) { $st->bind_param('ss', $model, $model); $st->execute(); $st->bind_result($m,$c); if ($st->fetch()){ $model=(string)$m; $category=(string)$c; } $st->close(); }
       $limit = 0; if ($q2 = $conn->prepare("SELECT borrow_limit FROM borrowable_models WHERE active=1 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?))")) { $q2->bind_param('ss', $model, $category); $q2->execute(); $q2->bind_result($limit); $q2->fetch(); $q2->close(); }
+      if ((int)$limit <= 0) {
+        echo json_encode(['available'=>0]);
+        exit;
+      }
       if ($for === 'reservation') {
         // Reservation: include in-use; exclude items with status Lost/Under Maintenance
         $sum = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND (status <> 'Lost' AND status <> 'Under Maintenance')")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($sum); $q->fetch(); $q->close(); }
         $base = max(0, (int)$sum);
-        $available = ($limit > 0) ? max(0, min((int)$limit, $base)) : $base;
+        $available = max(0, min((int)$limit, $base));
       } else {
         // Immediate: only currently Available units
         $availNow = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND status='Available' AND quantity>0")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($availNow); $q->fetch(); $q->close(); }
@@ -1139,15 +1147,16 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           }
         }
       } catch (Throwable $_) {}
-      // Build borrow limit map for active models
+      // Build borrow limit map for active models with positive capacity only
       $borrowLimitMap = [];
       $bmCur = $bm->find(['active'=>1], ['projection'=>['model_name'=>1,'category'=>1,'borrow_limit'=>1]]);
       foreach ($bmCur as $b) {
         $cat = trim((string)($b['category'] ?? '')) ?: 'Uncategorized';
         $mod = trim((string)($b['model_name'] ?? ''));
-        if ($mod==='') continue;
+        $lim = isset($b['borrow_limit']) ? (int)$b['borrow_limit'] : 0;
+        if ($mod === '' || $lim <= 0) continue;
         if (!isset($borrowLimitMap[$cat])) $borrowLimitMap[$cat]=[];
-        $borrowLimitMap[$cat][$mod] = (int)($b['borrow_limit'] ?? 0);
+        $borrowLimitMap[$cat][$mod] = $lim;
       }
       // Available counts by (category, model)
       $availCountsLive = [];
@@ -1237,10 +1246,18 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $availableMapLive = []; $catOptionsLive = [];
     if ($conn) {
       $for = isset($_GET['for']) ? (string)$_GET['for'] : '';
-      // Borrow limit map (active only)
+      // Borrow limit map (active only, positive capacity)
       $borrowLimitMap = [];
       if ($bl = $conn->query("SELECT category, model_name, borrow_limit FROM borrowable_models WHERE active=1")) {
-        while ($r=$bl->fetch_assoc()) { $c=(string)$r['category']; $m=(string)$r['model_name']; if ($c==='') $c='Uncategorized'; if ($m==='') continue; if (!isset($borrowLimitMap[$c])) $borrowLimitMap[$c]=[]; $borrowLimitMap[$c][$m]=(int)($r['borrow_limit']??0); }
+        while ($r=$bl->fetch_assoc()) {
+          $c = (string)$r['category'];
+          $m = (string)$r['model_name'];
+          $lim = isset($r['borrow_limit']) ? (int)$r['borrow_limit'] : 0;
+          if ($c==='') $c='Uncategorized';
+          if ($m==='' || $lim <= 0) continue;
+          if (!isset($borrowLimitMap[$c])) $borrowLimitMap[$c]=[];
+          $borrowLimitMap[$c][$m]=$lim;
+        }
         $bl->close();
       }
       // Available counts
@@ -1692,41 +1709,149 @@ if (!$USED_MONGO && $conn) $conn->query("CREATE TABLE IF NOT EXISTS borrowable_m
 $message = '';
 $error = '';
 
-// Build borrowable catalog
+// Build borrowable catalog and capacity-constrained availability
 $availableMap = [];
 $catOptions = [];
-if ($USED_MONGO && $mongo_db) {
-  try {
-    $ii = $mongo_db->selectCollection('inventory_items');
-    $bm = $mongo_db->selectCollection('borrowable_catalog');
-    $bmCur = $bm->find(['active'=>1], ['projection'=>['model_name'=>1,'category'=>1]]);
-    foreach ($bmCur as $b) {
-      $cat = (string)($b['category'] ?? 'Uncategorized'); $mod = (string)($b['model_name'] ?? ''); if ($mod==='') continue;
-      $has = $ii->countDocuments(['status'=>'Available','quantity'=>['$gt'=>0],'category'=>$cat,'$or'=>[['model'=>$mod],['item_name'=>$mod]]]);
-      if ($has > 0) { if (!isset($availableMap[$cat])) { $availableMap[$cat]=[]; $catOptions[]=$cat; } $availableMap[$cat][mb_strtolower($mod)]=$mod; }
-    }
-    if (!empty($catOptions)) { natcasesort($catOptions); $catOptions = array_values(array_unique($catOptions)); }
-  } catch (Throwable $e) { $availableMap=[]; $catOptions=[]; }
-} elseif ($conn) {
-  $sql = "SELECT DISTINCT COALESCE(NULLIF(ii.category,''),'Uncategorized') AS category, COALESCE(NULLIF(ii.model,''), ii.item_name) AS model_name FROM inventory_items ii INNER JOIN borrowable_models bm ON bm.active = 1 AND bm.model_name = COALESCE(NULLIF(ii.model,''), ii.item_name) AND bm.category = COALESCE(NULLIF(ii.category,''),'Uncategorized') WHERE ii.status='Available' AND ii.quantity > 0 ORDER BY category, model_name";
-  if ($res = $conn->query($sql)) { while ($row=$res->fetch_assoc()) { $cat=$row['category']; $mod=$row['model_name']; if (!isset($availableMap[$cat])) { $availableMap[$cat]=[]; $catOptions[]=$cat; } if ($mod!=='') { $availableMap[$cat][mb_strtolower($mod)]=$mod; } } $res->close(); }
-  if (!empty($catOptions)) { natcasesort($catOptions); $catOptions = array_values(array_unique($catOptions)); }
-}
-
-// Availability counts by (category, model)
+// Availability counts by (category, model), constrained by borrow limits and current usage
 $availCounts = [];
 if ($USED_MONGO && $mongo_db) {
   try {
     $ii = $mongo_db->selectCollection('inventory_items');
-    $agg = $ii->aggregate([
+    $bm = $mongo_db->selectCollection('borrowable_catalog');
+    // 1) Build borrow limit map: active models with positive capacity
+    $borrowLimitMap = [];
+    $bmCur = $bm->find(['active'=>1], ['projection'=>['model_name'=>1,'category'=>1,'borrow_limit'=>1]]);
+    foreach ($bmCur as $b) {
+      $cat = trim((string)($b['category'] ?? '')) ?: 'Uncategorized';
+      $mod = trim((string)($b['model_name'] ?? ''));
+      if ($mod === '') continue;
+      $limit = (int)($b['borrow_limit'] ?? 0);
+      if ($limit <= 0) continue; // no capacity left
+      if (!isset($borrowLimitMap[$cat])) $borrowLimitMap[$cat] = [];
+      $borrowLimitMap[$cat][$mod] = $limit;
+    }
+    // 2) Raw available units per (category, model)
+    $availRaw = [];
+    $aggAvail = $ii->aggregate([
       ['$match'=>['status'=>'Available','quantity'=>['$gt'=>0]]],
-      ['$project'=>['category'=>['$ifNull'=>['$category','Uncategorized']], 'model_key'=>['$ifNull'=>['$model','$item_name']], 'q'=>['$ifNull'=>['$quantity',1]]]],
+      ['$project'=>[
+        'category'=>['$ifNull'=>['$category','Uncategorized']],
+        'model_key'=>['$ifNull'=>['$model','$item_name']],
+        'q'=>['$ifNull'=>['$quantity',1]]
+      ]],
       ['$group'=>['_id'=>['c'=>'$category','m'=>'$model_key'], 'avail'=>['$sum'=>'$q']]],
     ]);
-    foreach ($agg as $r) { $c=(string)($r->_id['c']??'Uncategorized'); $m=(string)($r->_id['m']??''); if (!isset($availCounts[$c])) $availCounts[$c]=[]; $availCounts[$c][$m]=(int)($r->avail??0); }
-  } catch (Throwable $e) { $availCounts=[]; }
+    foreach ($aggAvail as $r) {
+      $c = (string)($r->_id['c'] ?? 'Uncategorized');
+      $m = (string)($r->_id['m'] ?? '');
+      if ($m === '') continue;
+      if (!isset($availRaw[$c])) $availRaw[$c] = [];
+      $availRaw[$c][$m] = (int)($r->avail ?? 0);
+    }
+    // 3) Consumed counts: active borrows + pending returned_queue + returned_hold
+    $consumed = [];
+    try {
+      $ubCol = $mongo_db->selectCollection('user_borrows');
+      $aggUb = $ubCol->aggregate([
+        ['$match'=>['status'=>'Borrowed']],
+        ['$lookup'=>['from'=>'inventory_items','localField'=>'model_id','foreignField'=>'id','as'=>'item']],
+        ['$unwind'=>'$item'],
+        ['$project'=>['c'=>['$ifNull'=>['$item.category','Uncategorized']], 'm'=>['$ifNull'=>['$item.model','$item.item_name']]]],
+        ['$group'=>['_id'=>['c'=>'$c','m'=>'$m'],'cnt'=>['$sum'=>1]]]
+      ]);
+      foreach ($aggUb as $r) {
+        $c = (string)($r->_id['c'] ?? 'Uncategorized');
+        $m = (string)($r->_id['m'] ?? '');
+        if ($m === '') continue;
+        if (!isset($consumed[$c])) $consumed[$c] = [];
+        $consumed[$c][$m] = (int)($r->cnt ?? 0) + (int)($consumed[$c][$m] ?? 0);
+      }
+    } catch (Throwable $_) {}
+    try {
+      $rqCol = $mongo_db->selectCollection('returned_queue');
+      $aggRq = $rqCol->aggregate([
+        ['$match'=>['processed_at'=>['$exists'=>false]]],
+        ['$lookup'=>['from'=>'inventory_items','localField'=>'model_id','foreignField'=>'id','as'=>'item']],
+        ['$unwind'=>'$item'],
+        ['$project'=>['c'=>['$ifNull'=>['$item.category','Uncategorized']], 'm'=>['$ifNull'=>['$item.model','$item.item_name']]]],
+        ['$group'=>['_id'=>['c'=>'$c','m'=>'$m'],'cnt'=>['$sum'=>1]]]
+      ]);
+      foreach ($aggRq as $r) {
+        $c = (string)($r->_id['c'] ?? 'Uncategorized');
+        $m = (string)($r->_id['m'] ?? '');
+        if ($m === '') continue;
+        if (!isset($consumed[$c])) $consumed[$c] = [];
+        $consumed[$c][$m] = (int)($r->cnt ?? 0) + (int)($consumed[$c][$m] ?? 0);
+      }
+    } catch (Throwable $_) {}
+    try {
+      $rhCol = $mongo_db->selectCollection('returned_hold');
+      $aggRh = $rhCol->aggregate([
+        ['$project'=>['c'=>['$ifNull'=>['$category','Uncategorized']], 'm'=>['$ifNull'=>['$model_name','']], 'one'=>['$literal'=>1]]],
+        ['$group'=>['_id'=>['c'=>'$c','m'=>'$m'],'cnt'=>['$sum'=>'$one']]]
+      ]);
+      foreach ($aggRh as $r) {
+        $c = (string)($r->_id['c'] ?? 'Uncategorized');
+        $m = (string)($r->_id['m'] ?? '');
+        if ($m === '') continue;
+        if (!isset($consumed[$c])) $consumed[$c] = [];
+        $consumed[$c][$m] = (int)($r->cnt ?? 0) + (int)($consumed[$c][$m] ?? 0);
+      }
+    } catch (Throwable $_) {}
+    // 4) Capacity-constrained availability per (category, model)
+    foreach ($borrowLimitMap as $cat => $mods) {
+      foreach ($mods as $mod => $limit) {
+        $availNow = (int)($availRaw[$cat][$mod] ?? 0);
+        $cons = (int)($consumed[$cat][$mod] ?? 0);
+        $cap = max(0, min(max(0, $limit - $cons), $availNow));
+        if ($cap > 0) {
+          if (!isset($availableMap[$cat])) { $availableMap[$cat] = []; $catOptions[] = $cat; }
+          $availableMap[$cat][mb_strtolower($mod)] = $mod;
+          if (!isset($availCounts[$cat])) $availCounts[$cat] = [];
+          $availCounts[$cat][$mod] = $cap;
+        }
+      }
+    }
+    if (!empty($catOptions)) { natcasesort($catOptions); $catOptions = array_values(array_unique($catOptions)); }
+  } catch (Throwable $e) { $availableMap = []; $catOptions = []; $availCounts = []; }
 } elseif ($conn) {
-  if ($ra = $conn->query("SELECT COALESCE(NULLIF(category,''),'Uncategorized') AS category, COALESCE(NULLIF(model,''), item_name) AS model_name, SUM(quantity) AS avail FROM inventory_items WHERE status='Available' AND quantity > 0 GROUP BY category, model_name")) { while ($r=$ra->fetch_assoc()) { $c=(string)$r['category']; $m=(string)$r['model_name']; if (!isset($availCounts[$c])) { $availCounts[$c]=[]; } $availCounts[$c][$m]=(int)$r['avail']; } $ra->close(); }
+  // MySQL: constrain by borrow_limit and current Available units
+  $borrowLimitMap = [];
+  if ($bl = $conn->query("SELECT category, model_name, borrow_limit FROM borrowable_models WHERE active=1")) {
+    while ($r = $bl->fetch_assoc()) {
+      $c = (string)$r['category'];
+      $m = (string)$r['model_name'];
+      $limit = (int)($r['borrow_limit'] ?? 0);
+      if ($c === '') $c = 'Uncategorized';
+      if ($m === '' || $limit <= 0) continue;
+      if (!isset($borrowLimitMap[$c])) $borrowLimitMap[$c] = [];
+      $borrowLimitMap[$c][$m] = $limit;
+    }
+    $bl->close();
+  }
+  $availRaw = [];
+  if ($ra = $conn->query("SELECT COALESCE(NULLIF(category,''),'Uncategorized') AS category, COALESCE(NULLIF(model,''), item_name) AS model_name, SUM(quantity) AS avail FROM inventory_items WHERE status='Available' AND quantity > 0 GROUP BY category, model_name")) {
+    while ($r = $ra->fetch_assoc()) {
+      $c = (string)$r['category'];
+      $m = (string)$r['model_name'];
+      if (!isset($availRaw[$c])) $availRaw[$c] = [];
+      $availRaw[$c][$m] = (int)$r['avail'];
+    }
+    $ra->close();
+  }
+  foreach ($borrowLimitMap as $c => $mods) {
+    foreach ($mods as $m => $limit) {
+      $availNow = (int)($availRaw[$c][$m] ?? 0);
+      $cap = max(0, min($limit, $availNow));
+      if ($cap > 0) {
+        if (!isset($availableMap[$c])) { $availableMap[$c] = []; $catOptions[] = $c; }
+        $availableMap[$c][mb_strtolower($m)] = $m;
+        if (!isset($availCounts[$c])) $availCounts[$c] = [];
+        $availCounts[$c][$m] = $cap;
+      }
+    }
+  }
+  if (!empty($catOptions)) { natcasesort($catOptions); $catOptions = array_values(array_unique($catOptions)); }
 }
 
 // Handle submit
