@@ -434,6 +434,18 @@ try {
       .accounts-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
       .stats-table-scroll { max-height: 260px; min-height: 260px; overflow-y: auto; }
       .stats-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
+      /* Borrowing Agreement editor: keep toolbar visible while scrolling */
+      #editBorrowAgreementModal .modal-body {
+        max-height: 70vh;
+      }
+      #editBorrowAgreementModal .ba-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: #ffffff;
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+      }
       /* Smaller action buttons in user table */
       .user-actions .btn.btn-sm { padding: 0.1rem 0.3rem; font-size: 0.72rem; line-height: 1; min-height: 1.5rem; }
       .user-actions { gap: 0.2rem !important; }
@@ -750,6 +762,7 @@ try {
               <div class="mb-2 small text-muted">
                 This content is shown on the Signup page and in the user Submit Request / Scan Item QR modals.
               </div>
+              <div class="ba-toolbar">
               <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Formatting">
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="b"><strong>B</strong></button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="i"><em>I</em></button>
@@ -757,6 +770,7 @@ try {
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="ul">&bull; List</button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="center">Center</button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="justify">Justify</button>
+              </div>
               </div>
               <div id="borrowAgreementEditor" class="form-control" contenteditable="true" style="min-height: 260px;">
                 <?php if ($agreementHtml !== ''): ?>
