@@ -319,7 +319,7 @@ try {
             </div>
             <div class="col-12">
               <div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" id="signupAgreementChk" disabled>
+                <input class="form-check-input" type="checkbox" id="signupAgreementChk">
                 <label class="form-check-label small" for="signupAgreementChk">
                   I have read and agree to the Borrowing Agreement &amp; Accountability Policy.
                 </label>
@@ -561,6 +561,22 @@ try {
           agreementScroll.addEventListener('scroll', enableAgreeIfScrolled);
         }
 
+        // When user clicks the checkbox, always open the policy modal so they can (re)read it
+        if (agreementChk && agreementModalEl) {
+          agreementChk.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (agreementAcceptBtn) agreementAcceptBtn.disabled = true;
+            if (agreementScroll) agreementScroll.scrollTop = 0;
+            if (agreementHint) agreementHint.textContent = 'Scroll to the bottom to enable the Agree button.';
+            if (!agreementModal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+              agreementModal = new bootstrap.Modal(agreementModalEl, {backdrop: 'static', keyboard: false});
+            }
+            if (agreementModal) {
+              agreementModal.show();
+            }
+          });
+        }
+
         if (agreementAcceptBtn && form) {
           agreementAcceptBtn.addEventListener('click', function() {
             agreementAccepted = true;
@@ -571,8 +587,8 @@ try {
             if (agreementModal) {
               agreementModal.hide();
             }
-            // Submit the form programmatically after acceptance
-            form.submit();
+            // Re-run validation so the Sign up button reflects the new accepted state
+            try { validateMatch(); } catch(_) {}
           });
         }
 

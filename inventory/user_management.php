@@ -490,6 +490,9 @@ try {
                     <i class="bi bi-people me-2"></i>User Management
                 </h2>
                 <div class="d-flex align-items-center gap-3">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editBorrowAgreementModal">
+                        <i class="bi bi-file-earmark-text me-1"></i>Edit Policy
+                    </button>
                     <div class="position-relative me-2" id="adminBellWrap">
                         <button class="btn btn-light position-relative" id="adminBellBtn" title="Notifications">
                             <i class="bi bi-bell" style="font-size:1.2rem;"></i>
@@ -504,9 +507,6 @@ try {
                             </div>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editBorrowAgreementModal">
-                        <i class="bi bi-file-earmark-text me-1"></i>Edit Policy
-                    </button>
                     <span class="text-muted">Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?>!</span>
                 </div>
             </div>
