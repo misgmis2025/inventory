@@ -2924,19 +2924,46 @@ if (!empty($my_requests)) {
             }
           } catch(_) { }
 
-          // Stack Borrowing Agreement modal on top of Submit Request / QR Scan without closing them
+          // Open Borrowing Agreement modal from Submit Request / QR Scan, then return to the same modal after closing
           try {
             var policyEl = document.getElementById('borrowAgreementModal');
             if (policyEl && window.bootstrap && bootstrap.Modal) {
               var policyModal = bootstrap.Modal.getOrCreateInstance(policyEl);
               var submitLink = document.getElementById('submitBorrowAgreementLink');
               var qrLink = document.getElementById('qrBorrowAgreementLink');
+              var parentModalToRestore = null;
+
+              function openPolicyFrom(parentId) {
+                var parentEl = document.getElementById(parentId);
+                if (!parentEl) {
+                  policyModal.show();
+                  return;
+                }
+                var parentInstance = bootstrap.Modal.getOrCreateInstance(parentEl);
+                parentModalToRestore = parentEl;
+
+                var onceHidden = function() {
+                  parentEl.removeEventListener('hidden.bs.modal', onceHidden);
+                  policyModal.show();
+                };
+                parentEl.addEventListener('hidden.bs.modal', onceHidden);
+                parentInstance.hide();
+              }
+
+              policyEl.addEventListener('hidden.bs.modal', function() {
+                if (parentModalToRestore) {
+                  try {
+                    bootstrap.Modal.getOrCreateInstance(parentModalToRestore).show();
+                  } catch(_) {}
+                  parentModalToRestore = null;
+                }
+              });
 
               if (submitLink) {
                 submitLink.addEventListener('click', function(e) {
                   e.preventDefault();
                   e.stopPropagation();
-                  policyModal.show();
+                  openPolicyFrom('submitRequestModal');
                 });
               }
 
@@ -2944,7 +2971,7 @@ if (!empty($my_requests)) {
                 qrLink.addEventListener('click', function(e) {
                   e.preventDefault();
                   e.stopPropagation();
-                  policyModal.show();
+                  openPolicyFrom('urQrScanModal');
                 });
               }
             }
