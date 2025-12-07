@@ -923,13 +923,21 @@ if ($__act === 'my_history' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           }
         } catch (Throwable $_tr) { $returnedAt = (string)($ub['returned_at'] ?? ''); }
 
+        // Derive latest_action, allowing terminal inventory status to override
+        $latestAction = '';
+        if ($log && isset($log['action'])) { $latestAction = (string)$log['action']; }
+        $invStatus = $ii ? (string)($ii['status'] ?? '') : '';
+        $invLower = strtolower($invStatus);
+        if ($invLower === 'permanently lost') { $latestAction = 'Permanently Lost'; }
+        elseif ($invLower === 'disposed' || $invLower === 'disposal') { $latestAction = 'Disposed'; }
+
         $rows[] = [
           'borrow_id' => (int)($ub['id'] ?? 0),
           'request_id' => $reqId,
           'borrowed_at' => $borrowedAt,
           'returned_at' => $returnedAt,
           'status' => (string)($ub['status'] ?? ''),
-          'latest_action' => (string)($log['action'] ?? ''),
+          'latest_action' => $latestAction,
           'model_id' => $mid,
           'item_name' => $snapItemName,
           'model' => $snapModel,
@@ -2250,13 +2258,21 @@ if (!$USED_MONGO && $conn) {
       }
       if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
 
+      // Derive latest_action, allowing terminal inventory status to override
+      $latestAction = '';
+      if ($log && isset($log['action'])) { $latestAction = (string)$log['action']; }
+      $invStatus = $itm ? (string)($itm['status'] ?? '') : '';
+      $invLower = strtolower($invStatus);
+      if ($invLower === 'permanently lost') { $latestAction = 'Permanently Lost'; }
+      elseif ($invLower === 'disposed' || $invLower === 'disposal') { $latestAction = 'Disposed'; }
+
       $my_history[]=[
         'borrow_id'=>(int)($hv['id']??0),
         'request_id'=>$reqId,
         'borrowed_at'=>(string)($hv['borrowed_at']??''),
         'returned_at'=>(string)($hv['returned_at']??''),
         'status'=>(string)($hv['status']??''),
-        'latest_action'=>(string)($log['action']??''),
+        'latest_action'=>$latestAction,
         'model_id'=>$mid,
         'item_name'=>$snapItemName,
         'model'=>$snapModel,
