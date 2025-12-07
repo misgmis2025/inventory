@@ -385,7 +385,7 @@ try {
         body { overflow: auto; }
         #page-content-wrapper { height: auto; overflow: visible; }
       }
-      .accounts-table-scroll { max-height: 480px; overflow-y: auto; }
+      .accounts-table-scroll { max-height: 480px; min-height: 480px; overflow-y: auto; }
       .accounts-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
       /* Smaller action buttons in user table */
       .user-actions .btn.btn-sm { padding: 0.1rem 0.3rem; font-size: 0.72rem; line-height: 1; min-height: 1.5rem; }
@@ -568,10 +568,28 @@ try {
             </div>
 
             <div class="card mt-4">
-                <div class="card-header"><strong>User Borrowing Records (Students / Staff / Faculty)</strong></div>
+                <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
+                    <strong>User Borrowing Records (Students / Staff / Faculty)</strong>
+                    <div class="d-flex flex-wrap gap-2 ms-auto" style="max-width:100%;">
+                        <input type="text" id="statsSearch" class="form-control form-control-sm" placeholder="Search full name or username">
+                        <select id="statsUserTypeFilter" class="form-select form-select-sm">
+                            <option value="all">All Types</option>
+                            <option value="Student">Student</option>
+                            <option value="Staff">Staff</option>
+                            <option value="Faculty">Faculty</option>
+                        </select>
+                        <select id="statsStatusFilter" class="form-select form-select-sm">
+                            <option value="all">All Records</option>
+                            <option value="clean">Clean Records</option>
+                            <option value="lost">With Lost</option>
+                            <option value="damaged">With Damage</option>
+                            <option value="overdue_only">Overdue Only</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table id="userStatsTable" class="table table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <th>Full Name</th>
@@ -601,9 +619,17 @@ try {
                                         } elseif ($over > 0) {
                                           $rowClass = 'table-warning';
                                         }
+                                        $displayName = ($st['full_name'] !== '' ? $st['full_name'] : $uname);
                                     ?>
-                                    <tr class="<?php echo $rowClass; ?>">
-                                        <td><?php echo htmlspecialchars(($st['full_name'] !== '' ? $st['full_name'] : $uname)); ?></td>
+                                    <tr class="<?php echo $rowClass; ?>"
+                                        data-stats-row="1"
+                                        data-fullname="<?php echo htmlspecialchars($displayName); ?>"
+                                        data-username="<?php echo htmlspecialchars($uname); ?>"
+                                        data-user-type="<?php echo htmlspecialchars($st['user_type'] ?? ''); ?>"
+                                        data-overdue="<?php echo (int)($st['overdue'] ?? 0); ?>"
+                                        data-lost="<?php echo (int)($st['lost'] ?? 0); ?>"
+                                        data-damaged="<?php echo (int)($st['damaged'] ?? 0); ?>">
+                                        <td><?php echo htmlspecialchars($displayName); ?></td>
                                         <td><?php echo htmlspecialchars($uname); ?></td>
                                         <td><?php echo htmlspecialchars($st['user_type'] ?? ''); ?></td>
                                         <td class="text-center"><?php echo (int)($st['borrowed'] ?? 0); ?></td>
@@ -743,6 +769,60 @@ try {
                   }
                 });
               });
+            }
+
+            // User Borrowing Records: search + filter (full name/username, type, status)
+            const statsTable = document.getElementById('userStatsTable');
+            const statsSearch = document.getElementById('statsSearch');
+            const statsUserTypeFilter = document.getElementById('statsUserTypeFilter');
+            const statsStatusFilter = document.getElementById('statsStatusFilter');
+            if (statsTable) {
+              const tbody = statsTable.querySelector('tbody');
+              const rows = tbody ? Array.from(tbody.querySelectorAll('tr[data-stats-row="1"]')) : [];
+              function applyStatsFilters() {
+                const q = (statsSearch && statsSearch.value ? statsSearch.value.toLowerCase().trim() : '');
+                const typeVal = (statsUserTypeFilter && statsUserTypeFilter.value) ? statsUserTypeFilter.value : 'all';
+                const statusVal = (statsStatusFilter && statsStatusFilter.value) ? statsStatusFilter.value : 'all';
+                rows.forEach(function(row) {
+                  let show = true;
+                  const full = (row.getAttribute('data-fullname') || '').toLowerCase();
+                  const uname = (row.getAttribute('data-username') || '').toLowerCase();
+                  if (q) {
+                    if (full.indexOf(q) === -1 && uname.indexOf(q) === -1) {
+                      show = false;
+                    }
+                  }
+                  if (show && typeVal && typeVal !== 'all') {
+                    const ut = (row.getAttribute('data-user-type') || '');
+                    if (ut.toLowerCase() !== typeVal.toLowerCase()) {
+                      show = false;
+                    }
+                  }
+                  if (show && statusVal && statusVal !== 'all') {
+                    const over = parseInt(row.getAttribute('data-overdue') || '0', 10) || 0;
+                    const lost = parseInt(row.getAttribute('data-lost') || '0', 10) || 0;
+                    const dam  = parseInt(row.getAttribute('data-damaged') || '0', 10) || 0;
+                    switch (statusVal) {
+                      case 'clean':
+                        if (over > 0 || lost > 0 || dam > 0) { show = false; }
+                        break;
+                      case 'lost':
+                        if (lost <= 0) { show = false; }
+                        break;
+                      case 'damaged':
+                        if (dam <= 0) { show = false; }
+                        break;
+                      case 'overdue_only':
+                        if (!(over > 0 && lost === 0 && dam === 0)) { show = false; }
+                        break;
+                    }
+                  }
+                  row.classList.toggle('d-none', !show);
+                });
+              }
+              if (statsSearch) statsSearch.addEventListener('input', applyStatsFilters);
+              if (statsUserTypeFilter) statsUserTypeFilter.addEventListener('change', applyStatsFilters);
+              if (statsStatusFilter) statsStatusFilter.addEventListener('change', applyStatsFilters);
             }
 
             // Optional: role modal may not exist anymore
