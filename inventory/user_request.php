@@ -2933,6 +2933,25 @@ if (!empty($my_requests)) {
               var qrLink = document.getElementById('qrBorrowAgreementLink');
               var parentToFocus = null;
 
+              // When policy modal is shown, force it (and its backdrop) above other modals
+              policyEl.addEventListener('shown.bs.modal', function() {
+                try {
+                  // Bring this modal to the very top
+                  policyEl.style.zIndex = '3000';
+                  var dlg = policyEl.querySelector('.modal-dialog');
+                  if (dlg) dlg.style.zIndex = '3001';
+                  // Ensure the latest backdrop (for this modal) is just underneath
+                  var backdrops = document.querySelectorAll('.modal-backdrop');
+                  if (backdrops.length) {
+                    backdrops.forEach(function(bd, idx) {
+                      if (idx === backdrops.length - 1) {
+                        bd.style.zIndex = '2999';
+                      }
+                    });
+                  }
+                } catch(_) {}
+              });
+
               policyEl.addEventListener('hidden.bs.modal', function() {
                 if (parentToFocus) {
                   try { parentToFocus.focus(); } catch(_) {}
