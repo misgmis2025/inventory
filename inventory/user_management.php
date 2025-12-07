@@ -568,9 +568,9 @@ try {
             </div>
 
             <div class="card mt-4">
-                <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
-                    <strong>User Borrowing Records (Students / Staff / Faculty)</strong>
-                    <div class="d-flex flex-wrap gap-2 ms-auto" style="max-width:100%;">
+                <div class="card-header">
+                    <div class="mb-2"><strong>User Borrowing Records (Students / Staff / Faculty)</strong></div>
+                    <div class="d-flex flex-wrap gap-2">
                         <input type="text" id="statsSearch" class="form-control form-control-sm" placeholder="Search full name or username">
                         <select id="statsUserTypeFilter" class="form-select form-select-sm">
                             <option value="all">All Types</option>
@@ -581,9 +581,9 @@ try {
                         <select id="statsStatusFilter" class="form-select form-select-sm">
                             <option value="all">All Records</option>
                             <option value="clean">Clean Records</option>
-                            <option value="lost">With Lost</option>
-                            <option value="damaged">With Damage</option>
-                            <option value="overdue_only">Overdue Only</option>
+                            <option value="lost">Lost</option>
+                            <option value="damaged">Damaged</option>
+                            <option value="overdue_only">Overdue</option>
                         </select>
                     </div>
                 </div>
