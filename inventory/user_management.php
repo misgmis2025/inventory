@@ -385,6 +385,7 @@ try {
         body { overflow: auto; }
         #page-content-wrapper { height: auto; overflow: visible; }
       }
+      .accounts-table-scroll { max-height: 480px; overflow-y: auto; }
       /* Smaller action buttons in user table */
       .user-actions .btn.btn-sm { padding: 0.1rem 0.3rem; font-size: 0.72rem; line-height: 1; min-height: 1.5rem; }
       .user-actions { gap: 0.2rem !important; }
@@ -491,10 +492,15 @@ try {
             <?php endif; ?>
 
             <div class="card">
-                <div class="card-header"><strong>Accounts</strong></div>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>Accounts</strong>
+                    <div class="ms-3" style="max-width: 260px;">
+                        <input type="text" id="accountsSearch" class="form-control form-control-sm" placeholder="Search username, full name, or school ID">
+                    </div>
+                </div>
                 <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover mb-0">
+                    <div class="table-responsive accounts-table-scroll">
+                        <table id="accountsTable" class="table table-striped table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <th>Username</th>
@@ -509,7 +515,7 @@ try {
                                     <tr><td colspan="3" class="text-center text-muted">No users found.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($users as $u): ?>
-                                        <tr>
+                                        <tr data-account-row="1">
                                             <td><?php echo htmlspecialchars($u['username']); ?></td>
                                             <td><?php echo htmlspecialchars($u['full_name'] ?? ''); ?></td>
                                             <td><?php echo htmlspecialchars($u['school_id'] ?? ''); ?></td>
@@ -712,6 +718,32 @@ try {
 
         // Role toggle modal wiring (guarded) and Edit Type wiring
         document.addEventListener('DOMContentLoaded', function() {
+            // Accounts table search filter (username / full name / school ID)
+            const accountsSearch = document.getElementById('accountsSearch');
+            const accountsTable = document.getElementById('accountsTable');
+            if (accountsSearch && accountsTable) {
+              const tbody = accountsTable.querySelector('tbody');
+              const rows = tbody ? Array.from(tbody.querySelectorAll('tr[data-account-row="1"]')) : [];
+              accountsSearch.addEventListener('input', function() {
+                const q = this.value.toLowerCase().trim();
+                rows.forEach(function(row) {
+                  const cells = row.querySelectorAll('td');
+                  let haystack = '';
+                  if (cells[0]) haystack += (cells[0].textContent || '');
+                  if (cells[1]) haystack += ' ' + (cells[1].textContent || '');
+                  if (cells[2]) haystack += ' ' + (cells[2].textContent || '');
+                  haystack = haystack.toLowerCase();
+                  if (!q) {
+                    row.classList.remove('d-none');
+                  } else if (haystack.indexOf(q) !== -1) {
+                    row.classList.remove('d-none');
+                  } else {
+                    row.classList.add('d-none');
+                  }
+                });
+              });
+            }
+
             // Optional: role modal may not exist anymore
             const modalEl = document.getElementById('roleConfirmModal');
             if (modalEl) {
