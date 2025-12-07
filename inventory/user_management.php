@@ -616,7 +616,7 @@ try {
 
             <div class="card mt-4">
                 <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-                    <strong>User Borrowing Records (Students / Staff / Faculty)</strong>
+                    <strong>User Borrowing Records</strong>
                     <div class="d-flex align-items-center gap-1 flex-nowrap" style="white-space: nowrap;">
                         <input type="text" id="statsSearch" class="form-control form-control-sm" placeholder="Search full name or username" style="max-width: 160px;">
                         <select id="statsUserTypeFilter" class="form-select form-select-sm" style="max-width: 120px;">
