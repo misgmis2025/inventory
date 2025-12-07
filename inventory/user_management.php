@@ -568,17 +568,17 @@ try {
             </div>
 
             <div class="card mt-4">
-                <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
                     <strong>User Borrowing Records (Students / Staff / Faculty)</strong>
-                    <div class="d-flex flex-wrap gap-2">
-                        <input type="text" id="statsSearch" class="form-control form-control-sm" placeholder="Search full name or username" style="max-width: 220px;">
-                        <select id="statsUserTypeFilter" class="form-select form-select-sm" style="max-width: 140px;">
+                    <div class="d-flex align-items-center gap-1 flex-nowrap" style="white-space: nowrap;">
+                        <input type="text" id="statsSearch" class="form-control form-control-sm" placeholder="Search full name or username" style="max-width: 160px;">
+                        <select id="statsUserTypeFilter" class="form-select form-select-sm" style="max-width: 120px;">
                             <option value="all">All Types</option>
                             <option value="Student">Student</option>
                             <option value="Staff">Staff</option>
                             <option value="Faculty">Faculty</option>
                         </select>
-                        <select id="statsStatusFilter" class="form-select form-select-sm" style="max-width: 140px;">
+                        <select id="statsStatusFilter" class="form-select form-select-sm" style="max-width: 120px;">
                             <option value="all">All Records</option>
                             <option value="clean">Clean Records</option>
                             <option value="lost">Lost</option>
