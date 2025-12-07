@@ -19,6 +19,7 @@ if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
 
 $UM_MONGO_FILLED = false;
 $users = [];
+$userStats = [];
 try {
     require_once __DIR__ . '/../vendor/autoload.php';
     require_once __DIR__ . '/db/mongo.php';
@@ -109,6 +110,160 @@ try {
                 if ($isMeB && !$isMeA) return 1;
                 return strcasecmp($a['username'], $b['username']);
             });
+        }
+        try {
+            $nameMap = [];
+            $typeMap = [];
+            $usernamesSet = [];
+            foreach ($users as $u) {
+                $ut = (string)($u['usertype'] ?? '');
+                $role = (string)($u['user_type'] ?? '');
+                if ($ut === 'user' && in_array($role, ['Student','Staff','Faculty'], true)) {
+                    $un = (string)($u['username'] ?? '');
+                    if ($un === '') continue;
+                    $usernamesSet[$un] = true;
+                    $nameMap[$un] = (string)($u['full_name'] ?? '');
+                    $typeMap[$un] = $role;
+                }
+            }
+            $usernames = array_keys($usernamesSet);
+            if (!empty($usernames)) {
+                $ubCol = $db->selectCollection('user_borrows');
+                $ldCol = $db->selectCollection('lost_damaged_log');
+                $iiCol = $db->selectCollection('inventory_items');
+                $uCol  = $db->selectCollection('users');
+                $nowTs = time();
+                foreach ($usernames as $un) {
+                    $userStats[$un] = [
+                        'full_name' => isset($nameMap[$un]) ? $nameMap[$un] : '',
+                        'user_type' => isset($typeMap[$un]) ? $typeMap[$un] : '',
+                        'borrowed' => 0,
+                        'returned' => 0,
+                        'overdue' => 0,
+                        'lost' => 0,
+                        'damaged' => 0,
+                    ];
+                }
+
+                $curBor = $ubCol->find(['username' => ['$in' => $usernames]], ['projection' => ['username'=>1,'borrowed_at'=>1,'returned_at'=>1,'expected_return_at'=>1]]);
+                foreach ($curBor as $b) {
+                    $un = isset($b['username']) ? (string)$b['username'] : '';
+                    if ($un === '' || !isset($userStats[$un])) continue;
+                    $userStats[$un]['borrowed']++;
+                    $retStr = '';
+                    try {
+                        if (isset($b['returned_at']) && $b['returned_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                            $dt = $b['returned_at']->toDateTime();
+                            $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                            $retStr = $dt->format('Y-m-d H:i:s');
+                        } else {
+                            $retStr = trim((string)($b['returned_at'] ?? ''));
+                        }
+                    } catch (Throwable $_r) {
+                        $retStr = trim((string)($b['returned_at'] ?? ''));
+                    }
+                    if ($retStr !== '') {
+                        $userStats[$un]['returned']++;
+                    }
+                    $dueStr = '';
+                    try {
+                        if (isset($b['expected_return_at']) && $b['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                            $dt2 = $b['expected_return_at']->toDateTime();
+                            $dt2->setTimezone(new DateTimeZone('Asia/Manila'));
+                            $dueStr = $dt2->format('Y-m-d H:i:s');
+                        } else {
+                            $dueStr = trim((string)($b['expected_return_at'] ?? ''));
+                        }
+                    } catch (Throwable $_e) {
+                        $dueStr = trim((string)($b['expected_return_at'] ?? ''));
+                    }
+                    if ($dueStr === '') continue;
+                    $dueTs = @strtotime($dueStr);
+                    if (!$dueTs) continue;
+                    if ($retStr === '') {
+                        if ($dueTs < $nowTs) {
+                            $userStats[$un]['overdue']++;
+                        }
+                    } else {
+                        $retTs = @strtotime($retStr);
+                        if ($retTs && $retTs > $dueTs) {
+                            $userStats[$un]['overdue']++;
+                        }
+                    }
+                }
+
+                $userSet = array_flip($usernames);
+                $tryBorrow = function($mid, $when) use ($ubCol) {
+                    $pick = '';
+                    if (!$mid || $when === '') return '';
+                    try {
+                        $q1 = [
+                            'model_id' => $mid,
+                            'borrowed_at' => ['$lte' => $when],
+                            '$or' => [
+                                ['returned_at' => null],
+                                ['returned_at' => ''],
+                                ['returned_at' => ['$gte' => $when]],
+                            ],
+                        ];
+                        $opt = ['sort' => ['borrowed_at' => -1, 'id' => -1], 'limit' => 1];
+                        foreach ($ubCol->find($q1, $opt) as $br) {
+                            $pick = (string)($br['username'] ?? '');
+                            if ($pick !== '') break;
+                        }
+                        if ($pick === '') {
+                            $q2 = ['model_id' => $mid, 'borrowed_at' => ['$lte' => $when]];
+                            foreach ($ubCol->find($q2, $opt) as $br) {
+                                $pick = (string)($br['username'] ?? '');
+                                if ($pick !== '') break;
+                            }
+                        }
+                    } catch (Throwable $_t) {}
+                    return $pick;
+                };
+
+                $ldCur = $ldCol->find(
+                    ['action' => ['$in' => ['Lost','Under Maintenance','Permanently Lost','Disposed']]],
+                    ['sort' => ['created_at' => -1, 'id' => -1], 'limit' => 2000]
+                );
+                foreach ($ldCur as $l) {
+                    $mid = isset($l['model_id']) ? (int)$l['model_id'] : 0;
+                    $logWhen = '';
+                    try {
+                        if (isset($l['created_at']) && $l['created_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                            $dt3 = $l['created_at']->toDateTime();
+                            $dt3->setTimezone(new DateTimeZone('Asia/Manila'));
+                            $logWhen = $dt3->format('Y-m-d H:i:s');
+                        } else {
+                            $logWhen = trim((string)($l['created_at'] ?? ''));
+                        }
+                    } catch (Throwable $_c) {
+                        $logWhen = trim((string)($l['created_at'] ?? ''));
+                    }
+                    $userU = '';
+                    if (isset($l['affected_username'])) {
+                        $userU = trim((string)$l['affected_username']);
+                    }
+                    if ($userU === '') {
+                        $userU = $tryBorrow($mid, $logWhen);
+                    }
+                    if ($userU === '' && isset($l['username'])) {
+                        $cand = trim((string)$l['username']);
+                        if (isset($userSet[$cand])) {
+                            $userU = $cand;
+                        }
+                    }
+                    if ($userU === '' || !isset($userStats[$userU])) continue;
+                    $action = (string)($l['action'] ?? '');
+                    if ($action === 'Lost' || $action === 'Permanently Lost') {
+                        $userStats[$userU]['lost']++;
+                    } elseif ($action === 'Under Maintenance' || $action === 'Disposed') {
+                        $userStats[$userU]['damaged']++;
+                    }
+                }
+            }
+        } catch (Throwable $_agg) {
+            $userStats = [];
         }
     }
     $UM_MONGO_FILLED = true;
@@ -304,6 +459,59 @@ try {
                                                 </div>
                                             </td>
                                         </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header"><strong>User Borrowing Records (Students / Staff / Faculty)</strong></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Full Name</th>
+                                    <th>Username</th>
+                                    <th>User Type</th>
+                                    <th class="text-center">Total Borrowed</th>
+                                    <th class="text-center">Total Returned</th>
+                                    <th class="text-center">Total Overdue</th>
+                                    <th class="text-center">Total Lost</th>
+                                    <th class="text-center">Total Damaged</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($userStats)): ?>
+                                    <tr><td colspan="8" class="text-center text-muted">No borrowing records found for non-admin users.</td></tr>
+                                <?php else: ?>
+                                    <?php
+                                      $statsRows = $userStats;
+                                      ksort($statsRows);
+                                      foreach ($statsRows as $uname => $st):
+                                        $over = (int)($st['overdue'] ?? 0);
+                                        $lost = (int)($st['lost'] ?? 0);
+                                        $dam  = (int)($st['damaged'] ?? 0);
+                                        $rowClass = 'table-success';
+                                        if ($lost > 0 || $dam > 0) {
+                                          $rowClass = 'table-danger';
+                                        } elseif ($over > 0) {
+                                          $rowClass = 'table-warning';
+                                        }
+                                    ?>
+                                    <tr class="<?php echo $rowClass; ?>">
+                                        <td><?php echo htmlspecialchars(($st['full_name'] !== '' ? $st['full_name'] : $uname)); ?></td>
+                                        <td><?php echo htmlspecialchars($uname); ?></td>
+                                        <td><?php echo htmlspecialchars($st['user_type'] ?? ''); ?></td>
+                                        <td class="text-center"><?php echo (int)($st['borrowed'] ?? 0); ?></td>
+                                        <td class="text-center"><?php echo (int)($st['returned'] ?? 0); ?></td>
+                                        <td class="text-center"><?php echo (int)($st['overdue'] ?? 0); ?></td>
+                                        <td class="text-center"><?php echo (int)($st['lost'] ?? 0); ?></td>
+                                        <td class="text-center"><?php echo (int)($st['damaged'] ?? 0); ?></td>
+                                    </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                             </tbody>
