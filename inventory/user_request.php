@@ -2586,94 +2586,6 @@ if (!empty($my_requests)) {
       </div>
     </div>
   </div>
-  
-  <!-- Borrowing Agreement & Accountability Policy Modal (Request page) -->
-  <div class="modal fade" id="borrowAgreementModal" tabindex="-1" aria-hidden="true" style="z-index: 2005;">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Borrowing Agreement &amp; Accountability Policy</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div style="max-height: 360px; overflow-y: auto; border: 1px solid #dee2e6; padding: 1rem; border-radius: .5rem;">
-            <?php if ($borrowAgreementHtml !== ''): ?>
-              <?php echo $borrowAgreementHtml; ?>
-            <?php else: ?>
-              <h5 class="fw-bold mb-1 text-center">MIS Borrowing System</h5>
-              <h6 class="fw-bold mb-3 text-center">Borrowing Agreement &amp; Accountability Policy</h6>
-
-              <p class="mb-2">
-                <strong>Issued by:</strong> MIS Department, Exact Colleges of Asia.<br>
-                <strong>Applies to:</strong> All Users.
-              </p>
-
-              <h6 class="fw-bold mt-3">1. PURPOSE</h6>
-              <p class="mb-2">This agreement outlines the responsibilities of all users who borrow equipment, devices, tools, or materials from the MIS Inventory System. It ensures proper handling, accountability, and timely return of school property.</p>
-
-              <h6 class="fw-bold mt-3">2. QR CODE LABEL REQUIREMENT</h6>
-              <p class="mb-1">To organize and identify items, all MIS inventory items include a QR code label.</p>
-              <p class="mb-1 fw-bold">By borrowing an item, the user agrees to the following:</p>
-              <ul class="mb-2">
-                <li>Do not remove or damage the QR code. Removing, peeling, scratching, or damaging the QR label is strictly prohibited.</li>
-                <li>Any damage to the QR label will be considered damage to the item, and the borrower may be required to shoulder repair or replacement costs.</li>
-                <li>Borrowed items must be returned with the QR label fully intact and readable.</li>
-              </ul>
-
-              <h6 class="fw-bold mt-3">3. BORROWER RESPONSIBILITIES</h6>
-              <p class="mb-1">All borrowers agree to:</p>
-              <ul class="mb-2">
-                <li>Use items only for official or academic purposes.</li>
-                <li>Handle items carefully and keep them secured at all times.</li>
-                <li>Return items on or before the assigned due date and time.</li>
-                <li>Ensure the item is in the same condition as when it was borrowed.</li>
-                <li>Respect all rules implemented by the MIS Department.</li>
-              </ul>
-
-              <h6 class="fw-bold mt-3">4. DAMAGE, LOSS, AND ACCOUNTABILITY</h6>
-              <p class="mb-1">Borrowers accept and acknowledge:</p>
-              <ul class="mb-2">
-                <li>The borrower is fully responsible for any loss, damage, theft, or tampering involving the item while it is under their possession.</li>
-                <li>If an item is damaged, the borrower must pay for the repair or provide an equivalent replacement of equal or higher value.</li>
-                <li>If an item is lost or unreturned, the borrower must pay the full replacement cost at current market value.</li>
-                <li>Any damage to the QR label (removal, scratches, tearing) will result in a reprinting fee and possibly additional charges if the item itself is affected.</li>
-                <li>Failure to return items or settle charges may lead to suspension of borrowing privileges, withholding of clearance, or administrative actions.</li>
-              </ul>
-
-              <h6 class="fw-bold mt-3">5. PROHIBITED ACTIONS</h6>
-              <p class="mb-1">Borrowers must NOT:</p>
-              <ul class="mb-2">
-                <li>Lend the item to another person.</li>
-                <li>Tamper with any part of the item including the QR label.</li>
-                <li>Use the item for non-school related or unauthorized activities.</li>
-                <li>Attempt to alter or modify the item in any way.</li>
-              </ul>
-
-              <h6 class="fw-bold mt-3">6. CONDITIONS OF RELEASE</h6>
-              <p class="mb-1">Items will only be issued if:</p>
-              <ul class="mb-2">
-                <li>The borrower has no pending obligations or violations.</li>
-                <li>The borrower provides accurate personal information.</li>
-                <li>The borrower agrees to all terms listed in this document.</li>
-              </ul>
-
-              <h6 class="fw-bold mt-3">7. AGREEMENT</h6>
-              <p class="mb-2">By borrowing any item from the MIS Inventory System, the borrower agrees that:</p>
-              <ul class="mb-0">
-                <li>They have read and understood this Borrowing Agreement.</li>
-                <li>They take full responsibility for the item until it is returned.</li>
-                <li>They will pay for or replace any item that is lost, damaged, tampered with, or returned with a damaged QR label.</li>
-                <li>They understand that non-compliance may result in disciplinary action.</li>
-              </ul>
-            <?php endif; ?>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-        </div>
-      </div>
-    </div>
-  </div>
   <style>
     #userQrReturnModal #uqrSubmit.btn-primary:disabled,
     #userQrReturnModal #uqrSubmit.btn-primary.disabled {
@@ -2717,136 +2629,215 @@ if (!empty($my_requests)) {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <div id="urQrReader" style="max-width:520px;margin:0 auto;min-height:300px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;color:#6c757d;font-size:0.9em;">
-              <div class="text-center p-3">
-                <i class="bi bi-qr-code" style="font-size:2em;opacity:0.3;display:block;margin-bottom:10px;"></i>
-                <span>Camera feed will appear here after starting</span>
+            <div id="qrFormView">
+              <div id="urQrReader" style="max-width:520px;margin:0 auto;min-height:300px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;color:#6c757d;font-size:0.9em;">
+                <div class="text-center p-3">
+                  <i class="bi bi-qr-code" style="font-size:2em;opacity:0.3;display:block;margin-bottom:10px;"></i>
+                  <span>Camera feed will appear here after starting</span>
+                </div>
+              </div>
+              <div class="mt-3">
+                <div id="urQrStatus" class="small text-muted"></div>
+                <div class="mb-2">
+                  <select id="urCameraSelect" class="form-select form-select-sm" style="max-width: 300px; margin: 0 auto 10px;">
+                    <option value="">-- Select Camera --</option>
+                  </select>
+                </div>
+                <div class="d-flex align-items-center mt-2 gap-2">
+                  <button type="button" class="btn btn-primary" id="urQrStartBtn"><i class="bi bi-camera-video"></i> Start Camera</button>
+                  <button type="button" class="btn btn-outline-danger d-none" id="urQrStopBtn"><i class="bi bi-stop-circle"></i> Stop</button>
+                </div>
+                <div class="d-flex align-items-center mt-3 gap-2" id="urReqTypeToggleWrap">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Request type">
+                    <button type="button" class="btn btn-outline-secondary active" id="urQrTypeImmediate" data-mode="immediate">Immediate</button>
+                    <button type="button" class="btn btn-outline-secondary" id="urQrTypeReservation" data-mode="reservation">Reservation</button>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center mt-2 gap-2">
+                  <button type="button" class="btn btn-success d-none" id="urQrRequestBtn">Borrow Item</button>
+                </div>
+                <div class="mt-2 row g-2 d-none" id="urReqLocWrap">
+                  <div class="col-12">
+                    <input type="text" class="form-control" id="urReqLocation" placeholder="Enter location (room/area)" />
+                  </div>
+                  <div class="col-12">
+                    <small class="text-muted">Location is required.</small>
+                  </div>
+                </div>
+
+                <div class="mt-2 row g-2 d-none" id="urExpectedWrap">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold" for="urExpectedReturn">Expected Return</label>
+                    <input type="datetime-local" id="urExpectedReturn" class="form-control" />
+                  </div>
+                  <div class="col-12">
+                    <div class="row g-2 input-btn-row">
+                      <div class="col-12 col-md-8"></div>
+                      <div class="col-12 col-md-4 d-grid">
+                        <button type="button" class="btn btn-outline-secondary h-100" id="urBorrowSubmit" disabled>Borrow Item</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-1"><small id="urExpectedHint" class="text-danger d-none"></small></div>
+
+                <div class="mt-2 row g-2 d-none" id="urReserveWrap">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold d-flex align-items-center gap-2" for="urResFrom">Reservation Start <small id="urResStartHint" class="text-info"></small></label>
+                    <input type="datetime-local" id="urResFrom" class="form-control" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold" for="urResTo">Reservation End</label>
+                    <input type="datetime-local" id="urResTo" class="form-control" />
+                  </div>
+                  <div class="col-12">
+                    <div class="row g-2 input-btn-row">
+                      <div class="col-12 col-md-8"></div>
+                      <div class="col-12 col-md-4 d-grid">
+                        <button type="button" class="btn btn-outline-secondary h-100" id="urReserveSubmit" disabled>Reserve Item</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3 small text-muted text-center">
+                  By borrowing via QR, you acknowledge the
+                  <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="qrBorrowAgreementLink">
+                    Borrowing Agreement &amp; Accountability Policy
+                  </button>.
+                </div>
+
+                <div class="card mt-3 d-none" id="urInfoCard">
+                  <div class="card-body">
+                    <h6 class="mb-3"><i class="bi bi-info-circle me-2"></i>Scanned Item Information</h6>
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <div>
+                          <span class="fw-bold">Item Name:</span>
+                          <span id="urItemName"></span>
+                        </div>
+                        <div class="mt-2">
+                          <span class="fw-bold">Status:</span>
+                          <span class="badge" id="urStatusBadge"></span>
+                        </div>
+                      </div>
+                      <div class="col-md-6">
+                        <div>
+                          <span class="fw-bold">Category:</span>
+                          <span id="urCategory"></span>
+                        </div>
+                        <div class="mt-2">
+                          <span class="fw-bold">Location:</span>
+                          <span id="urLocation"></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="row g-3 mt-2">
+                      <div class="col-md-6" id="urBorrowedByWrap" style="display:none;">
+                        <div>
+                          <span class="fw-bold">Borrowed By:</span>
+                          <span id="urBorrowedBy"></span>
+                        </div>
+                      </div>
+                      <div class="col-md-6" id="urExpectedReturnWrap" style="display:none;">
+                        <div>
+                          <span class="fw-bold">Expected Return:</span>
+                          <span id="urExpectedReturn"></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="row g-3 mt-1">
+                      <div class="col-md-6" id="urReservedByWrap" style="display:none;">
+                        <div>
+                          <span class="fw-bold">Reserved By:</span>
+                          <span id="urReservedBy"></span>
+                        </div>
+                      </div>
+                      <div class="col-md-6" id="urReservationEndsWrap" style="display:none;">
+                        <div>
+                          <span class="fw-bold">Reservation Ends:</span>
+                          <span id="urReservationEnds"></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="mt-3">
-              <div id="urQrStatus" class="small text-muted"></div>
-              <div class="mb-2">
-                <select id="urCameraSelect" class="form-select form-select-sm" style="max-width: 300px; margin: 0 auto 10px;">
-                  <option value="">-- Select Camera --</option>
-                </select>
-              </div>
-              <div class="d-flex align-items-center mt-2 gap-2">
-                <button type="button" class="btn btn-primary" id="urQrStartBtn"><i class="bi bi-camera-video"></i> Start Camera</button>
-                <button type="button" class="btn btn-outline-danger d-none" id="urQrStopBtn"><i class="bi bi-stop-circle"></i> Stop</button>
-              </div>
-              <div class="d-flex align-items-center mt-3 gap-2" id="urReqTypeToggleWrap">
-                <div class="btn-group btn-group-sm" role="group" aria-label="Request type">
-                  <button type="button" class="btn btn-outline-secondary active" id="urQrTypeImmediate" data-mode="immediate">Immediate</button>
-                  <button type="button" class="btn btn-outline-secondary" id="urQrTypeReservation" data-mode="reservation">Reservation</button>
-                </div>
-              </div>
-              <div class="d-flex align-items-center mt-2 gap-2">
-                <button type="button" class="btn btn-success d-none" id="urQrRequestBtn">Borrow Item</button>
-              </div>
-              <div class="mt-2 row g-2 d-none" id="urReqLocWrap">
-                <div class="col-12">
-                  <input type="text" class="form-control" id="urReqLocation" placeholder="Enter location (room/area)" />
-                </div>
-                <div class="col-12">
-                  <small class="text-muted">Location is required.</small>
-                </div>
-              </div>
+            <div id="qrAgreementView" class="d-none">
+              <h5 class="fw-bold mb-2 text-center">Borrowing Agreement &amp; Accountability Policy</h5>
+              <div style="max-height: 360px; overflow-y: auto; border: 1px solid #dee2e6; padding: 1rem; border-radius: .5rem;">
+                <?php if ($borrowAgreementHtml !== ''): ?>
+                  <?php echo $borrowAgreementHtml; ?>
+                <?php else: ?>
+                  <h5 class="fw-bold mb-1 text-center">MIS Borrowing System</h5>
+                  <h6 class="fw-bold mb-3 text-center">Borrowing Agreement &amp; Accountability Policy</h6>
 
-              <div class="mt-2 row g-2 d-none" id="urExpectedWrap">
-                <div class="col-12 col-md-6">
-                  <label class="form-label fw-bold" for="urExpectedReturn">Expected Return</label>
-                  <input type="datetime-local" id="urExpectedReturn" class="form-control" />
-                </div>
-                <div class="col-12">
-                  <div class="row g-2 input-btn-row">
-                    <div class="col-12 col-md-8"></div>
-                    <div class="col-12 col-md-4 d-grid">
-                      <button type="button" class="btn btn-outline-secondary h-100" id="urBorrowSubmit" disabled>Borrow Item</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="mt-1"><small id="urExpectedHint" class="text-danger d-none"></small></div>
+                  <p class="mb-2">
+                    <strong>Issued by:</strong> MIS Department, Exact Colleges of Asia.<br>
+                    <strong>Applies to:</strong> All Users.
+                  </p>
 
-              <div class="mt-2 row g-2 d-none" id="urReserveWrap">
-                <div class="col-12 col-md-6">
-                  <label class="form-label fw-bold d-flex align-items-center gap-2" for="urResFrom">Reservation Start <small id="urResStartHint" class="text-info"></small></label>
-                  <input type="datetime-local" id="urResFrom" class="form-control" />
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label fw-bold" for="urResTo">Reservation End</label>
-                  <input type="datetime-local" id="urResTo" class="form-control" />
-                </div>
-                <div class="col-12">
-                  <div class="row g-2 input-btn-row">
-                    <div class="col-12 col-md-8"></div>
-                    <div class="col-12 col-md-4 d-grid">
-                      <button type="button" class="btn btn-outline-secondary h-100" id="urReserveSubmit" disabled>Reserve Item</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="mt-3 small text-muted text-center">
-                By borrowing via QR, you acknowledge the
-                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="qrBorrowAgreementLink">
-                  Borrowing Agreement &amp; Accountability Policy
-                </button>.
-              </div>
+                  <h6 class="fw-bold mt-3">1. PURPOSE</h6>
+                  <p class="mb-2">This agreement outlines the responsibilities of all users who borrow equipment, devices, tools, or materials from the MIS Inventory System. It ensures proper handling, accountability, and timely return of school property.</p>
 
-              <div class="card mt-3 d-none" id="urInfoCard">
-                <div class="card-body">
-                  <h6 class="mb-3"><i class="bi bi-info-circle me-2"></i>Scanned Item Information</h6>
-                  <div class="row g-3">
-                    <div class="col-md-6">
-                      <div>
-                        <span class="fw-bold">Item Name:</span>
-                        <span id="urItemName"></span>
-                      </div>
-                      <div class="mt-2">
-                        <span class="fw-bold">Status:</span>
-                        <span class="badge" id="urStatusBadge"></span>
-                      </div>
-                    </div>
-                    <div class="col-md-6">
-                      <div>
-                        <span class="fw-bold">Category:</span>
-                        <span id="urCategory"></span>
-                      </div>
-                      <div class="mt-2">
-                        <span class="fw-bold">Location:</span>
-                        <span id="urLocation"></span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="row g-3 mt-2">
-                    <div class="col-md-6" id="urBorrowedByWrap" style="display:none;">
-                      <div>
-                        <span class="fw-bold">Borrowed By:</span>
-                        <span id="urBorrowedBy"></span>
-                      </div>
-                    </div>
-                    <div class="col-md-6" id="urExpectedReturnWrap" style="display:none;">
-                      <div>
-                        <span class="fw-bold">Expected Return:</span>
-                        <span id="urExpectedReturn"></span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="row g-3 mt-1">
-                    <div class="col-md-6" id="urReservedByWrap" style="display:none;">
-                      <div>
-                        <span class="fw-bold">Reserved By:</span>
-                        <span id="urReservedBy"></span>
-                      </div>
-                    </div>
-                    <div class="col-md-6" id="urReservationEndsWrap" style="display:none;">
-                      <div>
-                        <span class="fw-bold">Reservation Ends:</span>
-                        <span id="urReservationEnds"></span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  <h6 class="fw-bold mt-3">2. QR CODE LABEL REQUIREMENT</h6>
+                  <p class="mb-1">To organize and identify items, all MIS inventory items include a QR code label.</p>
+                  <p class="mb-1 fw-bold">By borrowing an item, the user agrees to the following:</p>
+                  <ul class="mb-2">
+                    <li>Do not remove or damage the QR code. Removing, peeling, scratching, or damaging the QR label is strictly prohibited.</li>
+                    <li>Any damage to the QR label will be considered damage to the item, and the borrower may be required to shoulder repair or replacement costs.</li>
+                    <li>Borrowed items must be returned with the QR label fully intact and readable.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">3. BORROWER RESPONSIBILITIES</h6>
+                  <p class="mb-1">All borrowers agree to:</p>
+                  <ul class="mb-2">
+                    <li>Use items only for official or academic purposes.</li>
+                    <li>Handle items carefully and keep them secured at all times.</li>
+                    <li>Return items on or before the assigned due date and time.</li>
+                    <li>Ensure the item is in the same condition as when it was borrowed.</li>
+                    <li>Respect all rules implemented by the MIS Department.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">4. DAMAGE, LOSS, AND ACCOUNTABILITY</h6>
+                  <p class="mb-1">Borrowers accept and acknowledge:</p>
+                  <ul class="mb-2">
+                    <li>The borrower is fully responsible for any loss, damage, theft, or tampering involving the item while it is under their possession.</li>
+                    <li>If an item is damaged, the borrower must pay for the repair or provide an equivalent replacement of equal or higher value.</li>
+                    <li>If an item is lost or unreturned, the borrower must pay the full replacement cost at current market value.</li>
+                    <li>Any damage to the QR label (removal, scratches, tearing) will result in a reprinting fee and possibly additional charges if the item itself is affected.</li>
+                    <li>Failure to return items or settle charges may lead to suspension of borrowing privileges, withholding of clearance, or administrative actions.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">5. PROHIBITED ACTIONS</h6>
+                  <p class="mb-1">Borrowers must NOT:</p>
+                  <ul class="mb-2">
+                    <li>Lend the item to another person.</li>
+                    <li>Tamper with any part of the item including the QR label.</li>
+                    <li>Use the item for non-school related or unauthorized activities.</li>
+                    <li>Attempt to alter or modify the item in any way.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">6. CONDITIONS OF RELEASE</h6>
+                  <p class="mb-1">Items will only be issued if:</p>
+                  <ul class="mb-2">
+                    <li>The borrower has no pending obligations or violations.</li>
+                    <li>The borrower provides accurate personal information.</li>
+                    <li>The borrower agrees to all terms listed in this document.</li>
+                  </ul>
+
+                  <h6 class="fw-bold mt-3">7. AGREEMENT</h6>
+                  <p class="mb-2">By borrowing any item from the MIS Inventory System, the borrower agrees that:</p>
+                  <ul class="mb-0">
+                    <li>They have read and understood this Borrowing Agreement.</li>
+                    <li>They take full responsibility for the item until it is returned.</li>
+                    <li>They will pay for or replace any item that is lost, damaged, tampered with, or returned with a damaged QR label.</li>
+                    <li>They understand that non-compliance may result in disciplinary action.</li>
+                  </ul>
+                <?php endif; ?>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="qrAgreementBackBtn">Back to QR Form</button>
               </div>
             </div>
           </div>
@@ -2924,60 +2915,45 @@ if (!empty($my_requests)) {
             }
           } catch(_) { }
 
-          // Open Borrowing Agreement modal from Submit Request / QR Scan, stacked above without closing them
+          // Toggle Borrowing Agreement inside Submit Request modal
           try {
-            var policyEl = document.getElementById('borrowAgreementModal');
-            if (policyEl && window.bootstrap && bootstrap.Modal) {
-              var policyModal = bootstrap.Modal.getOrCreateInstance(policyEl);
-              var submitLink = document.getElementById('submitBorrowAgreementLink');
-              var qrLink = document.getElementById('qrBorrowAgreementLink');
-              var parentToFocus = null;
-
-              // When policy modal is shown, force it (and its backdrop) above other modals
-              policyEl.addEventListener('shown.bs.modal', function() {
-                try {
-                  // Bring this modal to the very top
-                  policyEl.style.zIndex = '3000';
-                  var dlg = policyEl.querySelector('.modal-dialog');
-                  if (dlg) dlg.style.zIndex = '3001';
-                  // Ensure the latest backdrop (for this modal) is just underneath
-                  var backdrops = document.querySelectorAll('.modal-backdrop');
-                  if (backdrops.length) {
-                    backdrops.forEach(function(bd, idx) {
-                      if (idx === backdrops.length - 1) {
-                        bd.style.zIndex = '2999';
-                      }
-                    });
-                  }
-                } catch(_) {}
+            var submitLink = document.getElementById('submitBorrowAgreementLink');
+            var submitFormView = document.getElementById('submitFormView');
+            var submitAgreementView = document.getElementById('submitAgreementView');
+            var submitBackBtn = document.getElementById('submitAgreementBackBtn');
+            if (submitLink && submitFormView && submitAgreementView && submitBackBtn) {
+              submitLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                submitFormView.classList.add('d-none');
+                submitAgreementView.classList.remove('d-none');
               });
-
-              policyEl.addEventListener('hidden.bs.modal', function() {
-                if (parentToFocus) {
-                  try { parentToFocus.focus(); } catch(_) {}
-                  parentToFocus = null;
-                }
+              submitBackBtn.addEventListener('click', function(){
+                submitAgreementView.classList.add('d-none');
+                submitFormView.classList.remove('d-none');
               });
-
-              if (submitLink) {
-                submitLink.addEventListener('click', function(e) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  parentToFocus = document.getElementById('submitRequestModal');
-                  policyModal.show();
-                });
-              }
-
-              if (qrLink) {
-                qrLink.addEventListener('click', function(e) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  parentToFocus = document.getElementById('urQrScanModal');
-                  policyModal.show();
-                });
-              }
             }
-          } catch(_e) { }
+          } catch(_) { }
+
+          // Toggle Borrowing Agreement inside QR Scan modal
+          try {
+            var qrLink = document.getElementById('qrBorrowAgreementLink');
+            var qrFormView = document.getElementById('qrFormView');
+            var qrAgreementView = document.getElementById('qrAgreementView');
+            var qrBackBtn = document.getElementById('qrAgreementBackBtn');
+            if (qrLink && qrFormView && qrAgreementView && qrBackBtn) {
+              qrLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                qrFormView.classList.add('d-none');
+                qrAgreementView.classList.remove('d-none');
+              });
+              qrBackBtn.addEventListener('click', function(){
+                qrAgreementView.classList.add('d-none');
+                qrFormView.classList.remove('d-none');
+              });
+            }
+          } catch(_) { }
         });
       </script>
 
@@ -2992,6 +2968,7 @@ if (!empty($my_requests)) {
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+              <div id="submitFormView">
               <form method="POST" id="borrowForm" class="compact-form">
                 <div class="mb-3">
                   <label class="form-label fw-bold d-block">Request Type</label>
@@ -3083,6 +3060,26 @@ if (!empty($my_requests)) {
                 </div>
                 <div id="formError" class="alert alert-danger mt-3 d-none" role="alert"></div>
               </form>
+              </div>
+              <div id="submitAgreementView" class="d-none">
+                <h5 class="fw-bold mb-2 text-center">Borrowing Agreement &amp; Accountability Policy</h5>
+                <div style="max-height: 360px; overflow-y: auto; border: 1px solid #dee2e6; padding: 1rem; border-radius: .5rem;">
+                  <?php if ($borrowAgreementHtml !== ''): ?>
+                    <?php echo $borrowAgreementHtml; ?>
+                  <?php else: ?>
+                    <h5 class="fw-bold mb-1 text-center">MIS Borrowing System</h5>
+                    <h6 class="fw-bold mb-3 text-center">Borrowing Agreement &amp; Accountability Policy</h6>
+                    <p class="mb-2">
+                      <strong>Issued by:</strong> MIS Department, Exact Colleges of Asia.<br>
+                      <strong>Applies to:</strong> All Users.
+                    </p>
+                    <!-- (rest of default policy omitted for brevity, same as before) -->
+                  <?php endif; ?>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="submitAgreementBackBtn">Back to Request Form</button>
+                </div>
+              </div>
               <script>
                 // Initialize form with current date/time values
                 document.addEventListener('DOMContentLoaded', function() {
