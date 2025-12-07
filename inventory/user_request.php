@@ -3061,8 +3061,10 @@ if (!empty($my_requests)) {
                       var m = '';
                       try { m = localStorage.getItem('ur_sel_model') || ''; } catch(_){ m=''; }
                       if (m && modelEl) {
+                        // Only restore model if it still exists in the latest catalog for the same category
                         if (c && catEl && catEl.value === c) {
-                          for (var i=0,has=false;i<modelEl.options.length;i++){ if (modelEl.options[i].value===m){ has=true; break; } }
+                          var has = false;
+                          for (var i=0;i<modelEl.options.length;i++){ if (modelEl.options[i].value===m){ has=true; break; } }
                           if (has) { modelEl.value = m; }
                         }
                       }
@@ -3079,8 +3081,12 @@ if (!empty($my_requests)) {
                   catEl.addEventListener('change', saveSel);
                   modelEl.addEventListener('change', saveSel);
                   catEl.addEventListener('change', updateModelEnabled);
-                  // Restore on open
-                  modalEl.addEventListener('shown.bs.modal', function(){ setTimeout(restoreSel, 50); updateModelEnabled(); });
+                  // When the modal opens, refresh the live catalog so deactivated models disappear immediately
+                  modalEl.addEventListener('shown.bs.modal', function(){
+                    try { if (typeof refreshCatalog === 'function') { refreshCatalog(); } } catch(_){ }
+                    setTimeout(restoreSel, 50);
+                    updateModelEnabled();
+                  });
                   // Prevent double submissions: lock form and disable submit button after first submit
                   try {
                     var form = modalEl.querySelector('form');
@@ -4969,6 +4975,17 @@ if (!empty($my_requests)) {
     function updateAvailHint() {
       const selModel = modelSelect && modelSelect.value ? modelSelect.value : '';
       if (!selModel) { if (qtyAvailHint) qtyAvailHint.textContent = 'Available: 0'; if (qtyInput){ qtyInput.max='1'; if (parseInt(qtyInput.value||'1',10)<1) qtyInput.value='1'; } return; }
+      // If this model is no longer in the latest capacity map (e.g. deactivated or removed from
+      // borrowable list), immediately clear the selection and reset availability.
+      try {
+        if (!modelMaxMap || !Object.prototype.hasOwnProperty.call(modelMaxMap, selModel)) {
+          if (modelSelect) modelSelect.value = '';
+          if (qtyAvailHint) qtyAvailHint.textContent = 'Available: 0';
+          if (qtyInput){ qtyInput.max='1'; if (parseInt(qtyInput.value||'1',10)<1) qtyInput.value='1'; }
+          try { localStorage.setItem('ur_sel_model',''); } catch(_){ }
+          return;
+        }
+      } catch(_){ }
       // 1) Instant local estimate from modelMaxMap for immediate UX
       try {
         const localN = (modelMaxMap && Object.prototype.hasOwnProperty.call(modelMaxMap, selModel)) ? (parseInt(modelMaxMap[selModel]||0,10)||0) : 0;
