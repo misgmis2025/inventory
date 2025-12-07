@@ -872,11 +872,36 @@ if ($__act === 'my_history' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       foreach ($cur as $ub) {
         $mid=(int)($ub['model_id']??0);
         $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
-        // Pick the most recent lost/damaged log by created_at (then id) so Found/Fixed/Permanent/Disposed are honored
-        $log = $ldCol->findOne(
-          ['model_id'=>$mid, 'created_at'=>['$gte'=>(string)($ub['borrowed_at'] ?? '')]],
-          ['sort'=>['created_at'=>-1,'id'=>-1]]
-        );
+        // Per-episode: only consider lost/damaged logs for this model that occur between
+        // this borrow's borrowed_at and the next borrow's borrowed_at for the same user+model.
+        $log = null;
+        if ($mid > 0) {
+          $startTs = (string)($ub['borrowed_at'] ?? '');
+          $createdFilter = ['model_id'=>$mid];
+          if ($startTs !== '') {
+            $createdFilter['created_at'] = ['$gte'=>$startTs];
+          }
+          // Find the next borrow of this model by this user
+          $upper = '';
+          try {
+            $nextBorrow = $ubCol->findOne(
+              [
+                'username'=>(string)$_SESSION['username'],
+                'model_id'=>$mid,
+                'borrowed_at' => ['$gt' => $startTs]
+              ],
+              ['sort'=>['borrowed_at'=>1,'id'=>1], 'projection'=>['borrowed_at'=>1]]
+            );
+            if ($nextBorrow && isset($nextBorrow['borrowed_at'])) {
+              $upper = (string)$nextBorrow['borrowed_at'];
+            }
+          } catch (Throwable $_nb) { $upper = ''; }
+          if ($upper !== '') {
+            if (!isset($createdFilter['created_at'])) { $createdFilter['created_at'] = []; }
+            $createdFilter['created_at']['$lt'] = $upper;
+          }
+          $log = $ldCol->findOne($createdFilter, ['sort'=>['created_at'=>-1,'id'=>-1]]);
+        }
         $alloc = $raCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
         // Prefer request_id stored on the borrow itself, then allocation; do not guess beyond that
         $reqId = isset($ub['request_id']) ? (int)$ub['request_id'] : 0;
@@ -927,13 +952,9 @@ if ($__act === 'my_history' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           }
         } catch (Throwable $_tr) { $returnedAt = (string)($ub['returned_at'] ?? ''); }
 
-        // Derive latest_action, allowing terminal inventory status to override
+        // Derive latest_action purely from the latest lost/damaged log in this borrow window
         $latestAction = '';
         if ($log && isset($log['action'])) { $latestAction = (string)$log['action']; }
-        $invStatus = $ii ? (string)($ii['status'] ?? '') : '';
-        $invLower = strtolower($invStatus);
-        if ($invLower === 'permanently lost') { $latestAction = 'Permanently Lost'; }
-        elseif ($invLower === 'disposed' || $invLower === 'disposal') { $latestAction = 'Disposed'; }
 
         $rows[] = [
           'borrow_id' => (int)($ub['id'] ?? 0),
@@ -2235,11 +2256,35 @@ if (!$USED_MONGO && $conn) {
     foreach($cur as $hv){ 
       $mid=(int)($hv['model_id']??0); 
       $itm=$mid>0?$ii->findOne(['id'=>$mid]):null; 
-      // Most recent lost/damaged log by created_at (then id)
-      $log=$ld->findOne(
-        ['model_id'=>$mid,'created_at'=>['$gte'=>(string)($hv['borrowed_at']??'')]],
-        ['sort'=>['created_at'=>-1,'id'=>-1]]
-      ); 
+      // Per-episode: lost/damaged logs between this borrow's borrowed_at and the
+      // next borrow's borrowed_at for the same user+model
+      $log = null;
+      if ($mid > 0) {
+        $startTs = (string)($hv['borrowed_at']??'');
+        $createdFilter = ['model_id'=>$mid];
+        if ($startTs !== '') {
+          $createdFilter['created_at'] = ['$gte'=>$startTs];
+        }
+        $upper = '';
+        try {
+          $nextBorrow = $ub->findOne(
+            [
+              'username'=>(string)$_SESSION['username'],
+              'model_id'=>$mid,
+              'borrowed_at' => ['$gt' => $startTs]
+            ],
+            ['sort'=>['borrowed_at'=>1,'id'=>1], 'projection'=>['borrowed_at'=>1]]
+          );
+          if ($nextBorrow && isset($nextBorrow['borrowed_at'])) {
+            $upper = (string)$nextBorrow['borrowed_at'];
+          }
+        } catch (Throwable $_nb) { $upper = ''; }
+        if ($upper !== '') {
+          if (!isset($createdFilter['created_at'])) { $createdFilter['created_at'] = []; }
+          $createdFilter['created_at']['$lt'] = $upper;
+        }
+        $log = $ld->findOne($createdFilter, ['sort'=>['created_at'=>-1,'id'=>-1]]);
+      }
       $alloc=$ra->findOne(['borrow_id'=>(int)($hv['id']??0)], ['projection'=>['request_id'=>1]]);
       // Prefer request_id stored on the borrow itself, then allocation; do not guess beyond that
       $reqId = isset($hv['request_id']) ? (int)$hv['request_id'] : 0;
@@ -2266,13 +2311,9 @@ if (!$USED_MONGO && $conn) {
       }
       if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
 
-      // Derive latest_action, allowing terminal inventory status to override
+      // Derive latest_action purely from the latest lost/damaged log in this borrow window
       $latestAction = '';
       if ($log && isset($log['action'])) { $latestAction = (string)$log['action']; }
-      $invStatus = $itm ? (string)($itm['status'] ?? '') : '';
-      $invLower = strtolower($invStatus);
-      if ($invLower === 'permanently lost') { $latestAction = 'Permanently Lost'; }
-      elseif ($invLower === 'disposed' || $invLower === 'disposal') { $latestAction = 'Disposed'; }
 
       $my_history[]=[
         'borrow_id'=>(int)($hv['id']??0),
