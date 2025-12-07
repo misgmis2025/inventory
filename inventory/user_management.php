@@ -399,7 +399,7 @@ try {
         body { overflow: auto; }
         #page-content-wrapper { height: auto; overflow: visible; }
       }
-      .accounts-table-scroll { max-height: 260px; min-height: 260px; overflow-y: auto; }
+      .accounts-table-scroll { max-height: 260px; min-height: 260px; overflow-y: auto; padding-bottom: 3.5rem; }
       .accounts-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
       .stats-table-scroll { max-height: 260px; min-height: 260px; overflow-y: auto; }
       .stats-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
@@ -558,7 +558,7 @@ try {
                                             </td>
                                             <td>
                                                 <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
-                                                <div class="dropdown dropup">
+                                                <div class="dropdown">
                                                     <button class="btn btn-sm btn-outline-secondary btn-actions-thin dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                                         Actions
                                                     </button>
