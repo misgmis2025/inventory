@@ -162,9 +162,6 @@ try {
                     } catch (Throwable $_r) {
                         $retStr = trim((string)($b['returned_at'] ?? ''));
                     }
-                    if ($retStr !== '') {
-                        $userStats[$un]['returned']++;
-                    }
                     $dueStr = '';
                     try {
                         if (isset($b['expected_return_at']) && $b['expected_return_at'] instanceof MongoDB\BSON\UTCDateTime) {
@@ -177,18 +174,26 @@ try {
                     } catch (Throwable $_e) {
                         $dueStr = trim((string)($b['expected_return_at'] ?? ''));
                     }
-                    if ($dueStr === '') continue;
-                    $dueTs = @strtotime($dueStr);
-                    if (!$dueTs) continue;
-                    if ($retStr === '') {
-                        if ($dueTs < $nowTs) {
-                            $userStats[$un]['overdue']++;
+                    $isOverdue = false;
+                    if ($dueStr !== '') {
+                        $dueTs = @strtotime($dueStr);
+                        if ($dueTs) {
+                            if ($retStr === '') {
+                                if ($dueTs < $nowTs) {
+                                    $isOverdue = true;
+                                    $userStats[$un]['overdue']++;
+                                }
+                            } else {
+                                $retTs = @strtotime($retStr);
+                                if ($retTs && $retTs > $dueTs) {
+                                    $isOverdue = true;
+                                    $userStats[$un]['overdue']++;
+                                }
+                            }
                         }
-                    } else {
-                        $retTs = @strtotime($retStr);
-                        if ($retTs && $retTs > $dueTs) {
-                            $userStats[$un]['overdue']++;
-                        }
+                    }
+                    if ($retStr !== '' && !$isOverdue) {
+                        $userStats[$un]['returned']++;
                     }
                 }
 
@@ -537,7 +542,7 @@ try {
                                     <th>Username</th>
                                     <th>User Type</th>
                                     <th class="text-center">Total Borrowed</th>
-                                    <th class="text-center">Total Returned</th>
+                                    <th class="text-center">Successful Returns</th>
                                     <th class="text-center">Total Overdue</th>
                                     <th class="text-center">Total Lost</th>
                                     <th class="text-center">Total Damaged</th>
