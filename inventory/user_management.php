@@ -407,6 +407,7 @@ try {
       .user-actions .btn.btn-sm { padding: 0.1rem 0.3rem; font-size: 0.72rem; line-height: 1; min-height: 1.5rem; }
       .user-actions { gap: 0.2rem !important; }
       .user-actions .btn .bi { font-size: 0.85em; margin-right: 0.25rem !important; }
+      .btn-actions-thin { padding: 0.1rem 0.45rem; font-size: 0.78rem; line-height: 1.1; }
     </style>
 </head>
 <body>
@@ -558,7 +559,7 @@ try {
                                             <td>
                                                 <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
                                                 <div class="dropdown">
-                                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    <button class="btn btn-sm btn-outline-secondary btn-actions-thin dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                                         Actions
                                                     </button>
                                                     <ul class="dropdown-menu dropdown-menu-end">
