@@ -134,6 +134,7 @@ if (!function_exists('inventory_ensure_indexes')) {
             $users = $db->selectCollection('users');
             $users->createIndex(['username' => 1], ['name' => 'users_username', 'unique' => true]);
             $users->createIndex(['usertype' => 1], ['name' => 'users_usertype']);
+            $users->createIndex(['disabled' => 1], ['name' => 'users_disabled']);
 
             $scans = $db->selectCollection('inventory_scans');
             $scans->createIndex(['id' => 1], ['name' => 'scans_id', 'unique' => true]);

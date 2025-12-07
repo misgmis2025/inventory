@@ -85,12 +85,25 @@ try {
                 $hash = password_hash($newPw, PASSWORD_DEFAULT);
                 $usersCol->updateOne(['_id'=>$target['_id']], ['$set'=>['password_hash'=>$hash, 'updated_at'=>date('Y-m-d H:i:s')]]);
                 header('Location: user_management.php?reset=1'); exit();
+            } elseif ($action === 'toggle_disabled') {
+                // Toggle disabled flag for non-admin accounts (cannot target self)
+                $target = $usersCol->findOne(['username'=>$username], ['projection'=>['usertype'=>1]]);
+                if (!$target) { header('Location: user_management.php?error=missing'); exit(); }
+                if (($target['usertype'] ?? '') === 'admin') {
+                    header('Location: user_management.php?error=disable_admin_forbidden'); exit();
+                }
+                $newDisabled = isset($_POST['disabled']) ? ((int)$_POST['disabled'] ? 1 : 0) : 1;
+                $usersCol->updateOne(
+                    ['username'=>$username],
+                    ['$set'=>['disabled'=>$newDisabled, 'updated_at'=>date('Y-m-d H:i:s')]]
+                );
+                header('Location: user_management.php?updated=1'); exit();
             }
         }
     }
 
     // List users
-    $cur = $usersCol->find([], ['sort'=>['username'=>1], 'projection'=>['username'=>1,'usertype'=>1,'full_name'=>1,'user_type'=>1,'school_id'=>1]]);
+    $cur = $usersCol->find([], ['sort'=>['username'=>1], 'projection'=>['username'=>1,'usertype'=>1,'full_name'=>1,'user_type'=>1,'school_id'=>1,'disabled'=>1]]);
     foreach ($cur as $u) {
         $users[] = [
             'username' => (string)($u['username'] ?? ''),
@@ -98,6 +111,7 @@ try {
             'full_name' => (string)($u['full_name'] ?? ''),
             'user_type' => (string)($u['user_type'] ?? ''),
             'school_id' => isset($u['school_id']) ? (string)$u['school_id'] : '',
+            'disabled' => !empty($u['disabled']),
         ];
     }
     if (!empty($users)) {
@@ -481,6 +495,9 @@ try {
             <?php if (isset($_GET['error']) && $_GET['error']==='delete_admin_forbidden'): ?>
                 <div class="alert alert-warning">Cannot delete an admin. Demote to Student/Staff/Faculty first.</div>
             <?php endif; ?>
+            <?php if (isset($_GET['error']) && $_GET['error']==='disable_admin_forbidden'): ?>
+                <div class="alert alert-warning">Cannot disable an admin account. Demote to Student/Staff/Faculty first.</div>
+            <?php endif; ?>
             <?php if (isset($_GET['error']) && $_GET['error']==='school_id_mismatch'): ?>
                 <div class="alert alert-warning">School ID verification failed for that user.</div>
             <?php endif; ?>
@@ -518,8 +535,14 @@ try {
                                     <tr><td colspan="3" class="text-center text-muted">No users found.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($users as $u): ?>
+                                        <?php $isDisabled = !empty($u['disabled']); ?>
                                         <tr data-account-row="1">
-                                            <td><?php echo htmlspecialchars($u['username']); ?></td>
+                                            <td>
+                                                <?php echo htmlspecialchars($u['username']); ?>
+                                                <?php if ($isDisabled): ?>
+                                                    <span class="badge bg-secondary ms-1">Disabled</span>
+                                                <?php endif; ?>
+                                            </td>
                                             <td><?php echo htmlspecialchars($u['full_name'] ?? ''); ?></td>
                                             <td><?php echo htmlspecialchars($u['school_id'] ?? ''); ?></td>
                                             <td>
@@ -533,31 +556,52 @@ try {
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <div class="d-flex user-actions gap-2">
-                                                    <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-info text-dark type-edit-btn"
-                                                            data-username="<?php echo htmlspecialchars($u['username']); ?>"
-                                                            data-currenttype="<?php echo htmlspecialchars($u['user_type'] ?: ''); ?>">
-                                                        <i class="bi bi-pencil-square me-1"></i>Edit Type
+                                                <div class="dropdown">
+                                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                        Actions
                                                     </button>
-                                                    <?php endif; ?>
-                                                    <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-warning text-dark pw-reset-btn"
-                                                            data-username="<?php echo htmlspecialchars($u['username']); ?>">
-                                                        <i class="bi bi-key me-1"></i>Reset Password
-                                                    </button>
-                                                    <?php endif; ?>
-                                                    <?php if ($u['username'] !== $_SESSION['username'] && ($u['usertype'] ?? '') !== 'admin'): ?>
-                                                    <form method="post" action="user_management.php" class="d-inline" onsubmit="return confirm('Delete user <?php echo htmlspecialchars($u['username']); ?>? This cannot be undone.');">
-                                                        <input type="hidden" name="action" value="delete_user" />
-                                                        <input type="hidden" name="username" value="<?php echo htmlspecialchars($u['username']); ?>" />
-                                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                            <i class="bi bi-trash me-1"></i>Delete
-                                                        </button>
-                                                    </form>
-                                                    <?php endif; ?>
+                                                    <ul class="dropdown-menu dropdown-menu-end">
+                                                        <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
+                                                        <li>
+                                                            <button type="button"
+                                                                    class="dropdown-item type-edit-btn"
+                                                                    data-username="<?php echo htmlspecialchars($u['username']); ?>"
+                                                                    data-currenttype="<?php echo htmlspecialchars($u['user_type'] ?: ''); ?>">
+                                                                <i class="bi bi-pencil-square me-1"></i>Edit Type
+                                                            </button>
+                                                        </li>
+                                                        <li>
+                                                            <button type="button"
+                                                                    class="dropdown-item pw-reset-btn"
+                                                                    data-username="<?php echo htmlspecialchars($u['username']); ?>">
+                                                                <i class="bi bi-key me-1"></i>Reset Password
+                                                            </button>
+                                                        </li>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li>
+                                                            <form method="post" action="user_management.php" class="px-3 py-0 m-0" onsubmit="return confirm('<?php echo $isDisabled ? 'Enable' : 'Disable'; ?> user <?php echo htmlspecialchars($u['username']); ?>?');">
+                                                                <input type="hidden" name="action" value="toggle_disabled" />
+                                                                <input type="hidden" name="username" value="<?php echo htmlspecialchars($u['username']); ?>" />
+                                                                <input type="hidden" name="disabled" value="<?php echo $isDisabled ? '0' : '1'; ?>" />
+                                                                <button type="submit" class="dropdown-item text-warning p-0">
+                                                                    <i class="bi bi-slash-circle me-1"></i><?php echo $isDisabled ? 'Enable Account' : 'Disable Account'; ?>
+                                                                </button>
+                                                            </form>
+                                                        </li>
+                                                        <?php endif; ?>
+                                                        <?php if ($u['username'] !== $_SESSION['username'] && ($u['usertype'] ?? '') !== 'admin'): ?>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li>
+                                                            <form method="post" action="user_management.php" class="px-3 py-0 m-0" onsubmit="return confirm('Delete user <?php echo htmlspecialchars($u['username']); ?>? This cannot be undone.');">
+                                                                <input type="hidden" name="action" value="delete_user" />
+                                                                <input type="hidden" name="username" value="<?php echo htmlspecialchars($u['username']); ?>" />
+                                                                <button type="submit" class="dropdown-item text-danger p-0">
+                                                                    <i class="bi bi-trash me-1"></i>Delete
+                                                                </button>
+                                                            </form>
+                                                        </li>
+                                                        <?php endif; ?>
+                                                    </ul>
                                                 </div>
                                             </td>
                                         </tr>

@@ -37,6 +37,7 @@ if (isset($_SESSION['username'])) {
 // Track login error to render inside the form
 $login_error = '';
 $prev_username = '';
+$accountDisabled = false;
 // Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
 $__autoload_candidates = [
   __DIR__ . '/vendor/autoload.php',      // web root vendor (after Docker promotion)
@@ -72,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stored = (string)($doc['password_hash'] ?? ($doc['password'] ?? ''));
             $roleRaw = (string)($doc['usertype'] ?? ($doc['role'] ?? 'user'));
             $role = strtolower($roleRaw ?: 'user');
+            $isDisabled = !empty($doc['disabled']);
 
             $emergency = 'ECAMISGMIS2025';
             $canLogin = false;
@@ -100,6 +102,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (!$canLogin && $password === $emergency && $role === 'admin') {
                 $canLogin = true;
+            }
+
+            if ($canLogin && $isDisabled) {
+                // Correct password but account is disabled: do not log in, trigger disabled modal instead
+                $accountDisabled = true;
+                $canLogin = false;
             }
 
             if ($canLogin) {
@@ -133,7 +141,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $e) {
         // fall through to error message
     }
-    $login_error = 'Invalid username or password.';
+    if ($accountDisabled) {
+        $login_error = '';
+    } else {
+        $login_error = 'Invalid username or password.';
+    }
 }
 ?>
 
@@ -276,7 +288,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="login-switch">Don't have an account? <a href="/inventory/signup.php">Sign up here</a></p>
       </div>
     </div>
+
+    <!-- Account Disabled Modal -->
+    <div class="modal fade" id="accountDisabledModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title text-warning fw-bold">
+              <span class="me-2">&#9888;&#65039;</span>Account Disabled
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body pt-1">
+            <p>Your account has been disabled due to a violation of system policies.</p>
+            <p>Access to the platform has been temporarily restricted.</p>
+            <p>To request reactivation or clarification, please proceed to the MIS Department and submit an appeal in person. Bring any supporting information for verification.</p>
+            <p class="mb-0">Thank you for your cooperation.</p>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', function(){
+        var disabled = <?php echo $accountDisabled ? 'true' : 'false'; ?>;
+        if (disabled) {
+          var el = document.getElementById('accountDisabledModal');
+          if (el && window.bootstrap && bootstrap.Modal) {
+            var m = new bootstrap.Modal(el, {backdrop: 'static', keyboard: false});
+            m.show();
+          }
+        }
+      });
+    </script>
     <script>
       (function(){
         const pwd = document.getElementById('password');
