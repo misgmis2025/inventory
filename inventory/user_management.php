@@ -226,6 +226,7 @@ try {
                     ['action' => ['$in' => ['Lost','Under Maintenance','Permanently Lost','Disposed']]],
                     ['sort' => ['created_at' => -1, 'id' => -1], 'limit' => 2000]
                 );
+                $perUserItem = [];
                 foreach ($ldCur as $l) {
                     $mid = isset($l['model_id']) ? (int)$l['model_id'] : 0;
                     $logWhen = '';
@@ -253,11 +254,27 @@ try {
                             $userU = $cand;
                         }
                     }
-                    if ($userU === '' || !isset($userStats[$userU])) continue;
+                    if ($userU === '' || !isset($userStats[$userU]) || $mid <= 0) continue;
                     $action = (string)($l['action'] ?? '');
+                    $key = $userU . '|' . $mid;
+                    if (!isset($perUserItem[$key])) {
+                        $perUserItem[$key] = ['lost' => false, 'damaged' => false];
+                    }
                     if ($action === 'Lost' || $action === 'Permanently Lost') {
-                        $userStats[$userU]['lost']++;
+                        $perUserItem[$key]['lost'] = true;
+                        $perUserItem[$key]['damaged'] = false;
                     } elseif ($action === 'Under Maintenance' || $action === 'Disposed') {
+                        if (!$perUserItem[$key]['lost']) {
+                            $perUserItem[$key]['damaged'] = true;
+                        }
+                    }
+                }
+                foreach ($perUserItem as $key => $flags) {
+                    list($userU,) = explode('|', $key, 2);
+                    if (!isset($userStats[$userU])) continue;
+                    if (!empty($flags['lost'])) {
+                        $userStats[$userU]['lost']++;
+                    } elseif (!empty($flags['damaged'])) {
                         $userStats[$userU]['damaged']++;
                     }
                 }
