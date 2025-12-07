@@ -589,7 +589,6 @@ try {
                                                                 </button>
                                                             </form>
                                                         </li>
-                                                        <?php if ($u['username'] !== $_SESSION['username'] && ($u['usertype'] ?? '') !== 'admin'): ?>
                                                         <li><hr class="dropdown-divider"></li>
                                                         <li>
                                                             <form method="post" action="user_management.php" class="px-3 py-0 m-0" onsubmit="return confirm('Delete user <?php echo htmlspecialchars($u['username']); ?>? This cannot be undone.');">
