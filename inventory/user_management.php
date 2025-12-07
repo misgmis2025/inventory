@@ -145,9 +145,11 @@ try {
                     ];
                 }
 
-                $curBor = $ubCol->find(['username' => ['$in' => $usernames]], ['projection' => ['username'=>1,'borrowed_at'=>1,'returned_at'=>1,'expected_return_at'=>1]]);
+                $borrowMeta = [];
+                $curBor = $ubCol->find(['username' => ['$in' => $usernames]], ['projection' => ['id'=>1,'username'=>1,'borrowed_at'=>1,'returned_at'=>1,'expected_return_at'=>1]]);
                 foreach ($curBor as $b) {
                     $un = isset($b['username']) ? (string)$b['username'] : '';
+                    $bid = isset($b['id']) ? (int)$b['id'] : 0;
                     if ($un === '' || !isset($userStats[$un])) continue;
                     $userStats[$un]['borrowed']++;
                     $retStr = '';
@@ -192,15 +194,20 @@ try {
                             }
                         }
                     }
-                    if ($retStr !== '' && !$isOverdue) {
-                        $userStats[$un]['returned']++;
+                    $onTime = ($retStr !== '' && !$isOverdue);
+                    if ($bid > 0) {
+                        $borrowMeta[$bid] = [
+                            'username' => $un,
+                            'on_time' => $onTime,
+                        ];
                     }
                 }
 
                 $userSet = array_flip($usernames);
-                $tryBorrow = function($mid, $when) use ($ubCol) {
-                    $pick = '';
-                    if (!$mid || $when === '') return '';
+                $badBorrowIds = [];
+                $tryBorrowDoc = function($mid, $when) use ($ubCol) {
+                    $pick = null;
+                    if (!$mid || $when === '') return null;
                     try {
                         $q1 = [
                             'model_id' => $mid,
@@ -213,14 +220,14 @@ try {
                         ];
                         $opt = ['sort' => ['borrowed_at' => -1, 'id' => -1], 'limit' => 1];
                         foreach ($ubCol->find($q1, $opt) as $br) {
-                            $pick = (string)($br['username'] ?? '');
-                            if ($pick !== '') break;
+                            $pick = $br;
+                            break;
                         }
-                        if ($pick === '') {
+                        if ($pick === null) {
                             $q2 = ['model_id' => $mid, 'borrowed_at' => ['$lte' => $when]];
                             foreach ($ubCol->find($q2, $opt) as $br) {
-                                $pick = (string)($br['username'] ?? '');
-                                if ($pick !== '') break;
+                                $pick = $br;
+                                break;
                             }
                         }
                     } catch (Throwable $_t) {}
@@ -258,11 +265,15 @@ try {
                     // Start a new episode when we see a loss/damage-type action and none is open
                     if ($isStartCandidate && $ep === null) {
                         $userU = '';
+                        $borrowDoc = null;
                         if (isset($l['affected_username'])) {
                             $userU = trim((string)$l['affected_username']);
                         }
-                        if ($userU === '') {
-                            $userU = $tryBorrow($mid, $logWhen);
+                        if ($logWhen !== '') {
+                            $borrowDoc = $tryBorrowDoc($mid, $logWhen);
+                            if ($userU === '' && $borrowDoc) {
+                                $userU = (string)($borrowDoc['username'] ?? '');
+                            }
                         }
                         if ($userU === '' && isset($l['username'])) {
                             $cand = trim((string)$l['username']);
@@ -272,6 +283,13 @@ try {
                         }
                         if ($userU !== '' && isset($userStats[$userU])) {
                             $isLost = in_array($act, ['lost','permanently lost'], true);
+                            $borrowId = 0;
+                            if ($borrowDoc && (string)($borrowDoc['username'] ?? '') === $userU) {
+                                $borrowId = isset($borrowDoc['id']) ? (int)$borrowDoc['id'] : 0;
+                                if ($borrowId > 0) {
+                                    $badBorrowIds[$borrowId] = true;
+                                }
+                            }
                             $ep = [
                                 'user' => $userU,
                                 'lost' => $isLost,
@@ -325,6 +343,17 @@ try {
                     $st['damaged'] = isset($damagedEpisodes[$uname]) ? (int)$damagedEpisodes[$uname] : 0;
                 }
                 unset($st);
+
+                // Successful Returns: on-time returns that are not tied to any lost/damaged episode
+                if (!empty($borrowMeta)) {
+                    foreach ($borrowMeta as $bid => $meta) {
+                        $un = (string)($meta['username'] ?? '');
+                        if ($un === '' || !isset($userStats[$un])) continue;
+                        if (!empty($meta['on_time']) && empty($badBorrowIds[$bid])) {
+                            $userStats[$un]['returned']++;
+                        }
+                    }
+                }
             }
         } catch (Throwable $_agg) {
             $userStats = [];
