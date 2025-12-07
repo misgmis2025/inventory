@@ -326,7 +326,7 @@ try {
               </div>
             </div>
             <div class="col-12">
-              <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Sign up</button>
+              <button type="submit" id="signupSubmitBtn" class="btn btn-secondary btn-lg mt-3 w-100" disabled>Sign up</button>
             </div>
           </div>
         </form>
@@ -496,6 +496,12 @@ try {
           const passOk = passwordValid();
           const idOk = /^[\d-]+$/.test(schoolId.value || '');
           const typeOk = ['Student','Staff','Faculty'].includes(userType.value);
+          const fullOk = !!(fullName && fullName.value.trim());
+          const userOk = !!(username && username.value.trim());
+
+          const idTakenBad = idTakenMsg && idTakenMsg.style.display === 'block';
+          const fullTakenBad = fullTakenMsg && fullTakenMsg.style.display === 'block';
+          const userTakenBad = userTakenMsg && userTakenMsg.style.display === 'block';
 
           // Show message only after user types something in Confirm Password
           if (confirmTyped && !matched) {
@@ -504,8 +510,19 @@ try {
             msg.style.display = 'none';
           }
 
-          // Disable submit until password is valid and passwords match (when confirm typed)
-          if (submitBtn) submitBtn.disabled = !passOk || (confirmTyped && !matched) || !idOk || !typeOk;
+          const fieldsOk = passOk && (!confirmTyped || matched) && idOk && typeOk && fullOk && userOk && !idTakenBad && !fullTakenBad && !userTakenBad;
+          const allOk = fieldsOk && agreementAccepted;
+
+          if (submitBtn) {
+            submitBtn.disabled = !allOk;
+            if (allOk) {
+              submitBtn.classList.add('btn-primary');
+              submitBtn.classList.remove('btn-secondary');
+            } else {
+              submitBtn.classList.add('btn-secondary');
+              submitBtn.classList.remove('btn-primary');
+            }
+          }
         }
 
         pwd.addEventListener('focus', function(){ reqMsg.style.display = 'block'; validateMatch(); });
