@@ -174,6 +174,7 @@ if (defined('USE_MONGO') && USE_MONGO) {
     if ($isAdmin) {
       $iiCol = $db->selectCollection('inventory_items');
       $uCol  = $db->selectCollection('users');
+      $delCol = $db->selectCollection('inventory_delete_log');
       if (!$reservationMode) {
         // Only BORROW history
         $ubCol = $db->selectCollection('user_borrows');
@@ -181,32 +182,72 @@ if (defined('USE_MONGO') && USE_MONGO) {
         foreach ($bhCur as $bh) {
           $row = (array)$bh;
           $username = (string)($row['username'] ?? '');
-          $user_id = '';
-          $full_name = '';
-          $school_id = '';
-          if ($username !== '') {
+
+          // Snapshot user fields first
+          $user_id = isset($row['user_id']) ? (string)$row['user_id'] : '';
+          $school_id = isset($row['school_id']) ? (string)$row['school_id'] : '';
+          $full_name = isset($row['full_name']) ? (string)$row['full_name'] : '';
+
+          // If any user snapshot is missing, fall back to live users collection
+          if ($username !== '' && ($user_id === '' || $school_id === '' || $full_name === '')) {
             try { $u = $uCol->findOne(['username'=>$username], ['projection'=>['id'=>1,'full_name'=>1,'school_id'=>1]]); } catch (Throwable $e) { $u = null; }
-            if ($u) { $user_id = (string)($u['id'] ?? ''); $full_name = (string)($u['full_name'] ?? ''); $school_id = (string)($u['school_id'] ?? ''); }
-          }
-          if ($full_name === '' && $username !== '') { $full_name = $username; }
-          $model_id = intval($row['model_id'] ?? 0);
-          $model_name = '';
-          $category = '';
-          if ($model_id > 0) {
-            try { $itm = $iiCol->findOne(['id'=>$model_id], ['projection'=>['model'=>1,'item_name'=>1,'category'=>1,'serial_no'=>1]]); } catch (Throwable $e) { $itm = null; }
-            if ($itm) {
-              $mn = trim((string)($itm['model'] ?? ''));
-              $model_name = $mn !== '' ? $mn : (string)($itm['item_name'] ?? '');
-              $category = trim((string)($itm['category'] ?? ''));
-              $row['serial_no'] = (string)($itm['serial_no'] ?? '');
+            if ($u) {
+              if ($user_id === '') { $user_id = (string)($u['id'] ?? ''); }
+              if ($full_name === '') { $full_name = (string)($u['full_name'] ?? ''); }
+              if ($school_id === '') { $school_id = (string)($u['school_id'] ?? ''); }
             }
           }
+          if ($full_name === '' && $username !== '') { $full_name = $username; }
+
+          $model_id = intval($row['model_id'] ?? 0);
+
+          // Snapshot item fields from user_borrows first
+          $model_name = '';
+          $category = '';
+          $serial_no = isset($row['serial_no']) ? (string)$row['serial_no'] : '';
+          $snapModel = isset($row['model']) ? (string)$row['model'] : '';
+          $snapItemName = isset($row['item_name']) ? (string)$row['item_name'] : '';
+          $snapCategory = isset($row['category']) ? (string)$row['category'] : '';
+
+          if ($snapModel !== '' || $snapItemName !== '') {
+            $model_name = $snapModel !== '' ? $snapModel : $snapItemName;
+          }
+          if ($snapCategory !== '') { $category = $snapCategory; }
+
+          // If still missing some fields, fall back to inventory_items
+          if ($model_id > 0 && ($model_name === '' || $category === '' || $serial_no === '')) {
+            try { $itm = $iiCol->findOne(['id'=>$model_id], ['projection'=>['model'=>1,'item_name'=>1,'category'=>1,'serial_no'=>1]]); } catch (Throwable $e) { $itm = null; }
+            if ($itm) {
+              if ($model_name === '') {
+                $mn = trim((string)($itm['model'] ?? ''));
+                $model_name = $mn !== '' ? $mn : (string)($itm['item_name'] ?? '');
+              }
+              if ($category === '') { $category = trim((string)($itm['category'] ?? '')); }
+              if ($serial_no === '') { $serial_no = (string)($itm['serial_no'] ?? ''); }
+            }
+          }
+
+          // If item has been deleted, recover from inventory_delete_log
+          if ($model_id > 0 && ($model_name === '' || $category === '' || $serial_no === '')) {
+            try { $del = $delCol->findOne(['item_id'=>$model_id], ['sort'=>['id'=>-1], 'projection'=>['item_name'=>1,'model'=>1,'category'=>1,'serial_no'=>1]]); } catch (Throwable $e) { $del = null; }
+            if ($del) {
+              if ($model_name === '') {
+                $mn = trim((string)($del['model'] ?? ''));
+                $model_name = $mn !== '' ? $mn : (string)($del['item_name'] ?? '');
+              }
+              if ($category === '') { $category = (string)($del['category'] ?? 'Uncategorized'); }
+              if ($serial_no === '') { $serial_no = (string)($del['serial_no'] ?? ''); }
+            }
+          }
+
           if ($category === '') { $category = 'Uncategorized'; }
+
           $row['user_id'] = $user_id;
           $row['school_id'] = $school_id;
           $row['full_name'] = $full_name;
           $row['model_name'] = $model_name;
           $row['category'] = $category;
+          $row['serial_no'] = $serial_no;
           $borrow_history[] = $row;
         }
       } else {

@@ -1767,6 +1767,19 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       $snapModel = (string)($claimed['model'] ?? '');
       $snapCategory = trim((string)($claimed['category'] ?? '')) !== '' ? (string)$claimed['category'] : 'Uncategorized';
       $snapSerial = (string)($claimed['serial_no'] ?? '');
+      // Snapshot user identity for history/print stability
+      $snapUserId = '';
+      $snapSchoolId = '';
+      $snapFullName = $user;
+      try {
+        $uCol = $db->selectCollection('users');
+        $uSnap = $uCol->findOne(['username'=>$user], ['projection'=>['id'=>1,'school_id'=>1,'full_name'=>1]]);
+        if ($uSnap) {
+          $snapUserId = (string)($uSnap['id'] ?? '');
+          $snapSchoolId = (string)($uSnap['school_id'] ?? '');
+          $snapFullName = (string)($uSnap['full_name'] ?? $snapFullName);
+        }
+      } catch (Throwable $_us) {}
       $ub->insertOne([
         'id'=>$borrowId,
         'username'=>$user,
@@ -1780,6 +1793,9 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         'model'=>$snapModel,
         'category'=>$snapCategory,
         'serial_no'=>$snapSerial,
+        'user_id'=>$snapUserId,
+        'school_id'=>$snapSchoolId,
+        'full_name'=>$snapFullName,
       ]);
       $exists = $ra->countDocuments(['request_id'=>$id,'borrow_id'=>$borrowId]);
       if ($exists === 0) { $ra->insertOne(['id'=>$nextId('request_allocations'),'request_id'=>$id,'borrow_id'=>$borrowId,'allocated_at'=>$now]); }

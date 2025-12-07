@@ -16,6 +16,7 @@ $ubCol = $db->selectCollection('user_borrows');
 $iiCol = $db->selectCollection('inventory_items');
 $erCol = $db->selectCollection('equipment_requests');
 $ldCol = $db->selectCollection('lost_damaged_log');
+$delLogCol = $db->selectCollection('inventory_delete_log');
 
 // Ensure user_reports table exists
 // (user_reports table intentionally not managed here; user reporting disabled by design)
@@ -60,10 +61,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
                     } catch (Throwable $_c) { /* keep $ba as now */ }
+
                     $snapItemName = (string)($exists['item_name'] ?? '');
                     $snapModel = (string)($exists['model'] ?? '');
                     $snapCategory = trim((string)($exists['category'] ?? '')) !== '' ? (string)$exists['category'] : 'Uncategorized';
                     $snapSerial = (string)($exists['serial_no'] ?? '');
+
+                    // Snapshot user identity for history/print stability
+                    $snapUserId = '';
+                    $snapSchoolId = '';
+                    $snapFullName = (string)$_SESSION['username'];
+                    try {
+                        $uCol = $db->selectCollection('users');
+                        $uSnap = $uCol->findOne(['username'=>(string)$_SESSION['username']], ['projection'=>['id'=>1,'school_id'=>1,'full_name'=>1]]);
+                        if ($uSnap) {
+                            $snapUserId = (string)($uSnap['id'] ?? '');
+                            $snapSchoolId = (string)($uSnap['school_id'] ?? '');
+                            $snapFullName = (string)($uSnap['full_name'] ?? $snapFullName);
+                        }
+                    } catch (Throwable $_us) {}
+
                     $ubCol->insertOne([
                         'id' => $nextId,
                         'username' => (string)$_SESSION['username'],
@@ -77,6 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'model' => $snapModel,
                         'category' => $snapCategory,
                         'serial_no' => $snapSerial,
+                        'user_id' => $snapUserId,
+                        'school_id' => $snapSchoolId,
+                        'full_name' => $snapFullName,
                     ]);
                     $message = 'Item marked as borrowed.';
                 }
@@ -191,6 +211,15 @@ try {
             if ($snapItemName === '') { $snapItemName = (string)($itm['item_name'] ?? ''); }
             if ($snapModel === '') { $snapModel = (string)($itm['model'] ?? ''); }
             if ($snapCategory === '') { $snapCategory = (string)($itm['category'] ?? 'Uncategorized'); }
+        }
+        // If item has been deleted, recover snapshot from inventory_delete_log
+        if (!$itm && $mid > 0) {
+            try { $del = $delLogCol->findOne(['item_id' => $mid], ['sort' => ['id' => -1], 'projection' => ['item_name'=>1,'model'=>1,'category'=>1]]); } catch (Throwable $_del) { $del = null; }
+            if ($del) {
+                if ($snapItemName === '') { $snapItemName = (string)($del['item_name'] ?? ''); }
+                if ($snapModel === '') { $snapModel = (string)($del['model'] ?? ''); }
+                if ($snapCategory === '') { $snapCategory = (string)($del['category'] ?? 'Uncategorized'); }
+            }
         }
         if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
 

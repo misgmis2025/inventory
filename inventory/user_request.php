@@ -2135,6 +2135,7 @@ if (!$USED_MONGO && $conn) {
     $ld=$mongo_db->selectCollection('lost_damaged_log'); 
     $ra=$mongo_db->selectCollection('request_allocations'); 
     $er=$mongo_db->selectCollection('equipment_requests'); 
+    $delLog=$mongo_db->selectCollection('inventory_delete_log'); 
     $cur=$ub->find(['username'=>(string)$_SESSION['username'],'status'=>['$ne'=>'Borrowed']], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit'=>150]); 
     foreach($cur as $hv){ 
       $mid=(int)($hv['model_id']??0); 
@@ -2154,6 +2155,15 @@ if (!$USED_MONGO && $conn) {
         if ($snapItemName === '') { $snapItemName = (string)($itm['item_name'] ?? ''); }
         if ($snapModel === '') { $snapModel = (string)($itm['model'] ?? ''); }
         if ($snapCategory === '') { $snapCategory = (string)($itm['category'] ?? 'Uncategorized'); }
+      }
+      // If item has been deleted from inventory_items, try to recover snapshot from inventory_delete_log
+      if (!$itm && $mid > 0) {
+        try { $del = $delLog->findOne(['item_id'=>$mid], ['sort'=>['id'=>-1], 'projection'=>['item_name'=>1,'model'=>1,'category'=>1]]); } catch (Throwable $_del) { $del = null; }
+        if ($del) {
+          if ($snapItemName === '') { $snapItemName = (string)($del['item_name'] ?? ''); }
+          if ($snapModel === '') { $snapModel = (string)($del['model'] ?? ''); }
+          if ($snapCategory === '') { $snapCategory = (string)($del['category'] ?? 'Uncategorized'); }
+        }
       }
       if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
 

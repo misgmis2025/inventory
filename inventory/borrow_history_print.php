@@ -70,10 +70,20 @@ try {
     }
     foreach ($rows as $r) {
         $usernameRow = (string)($r['username'] ?? '');
-        $full_name = '';
-        if ($usernameRow !== '') {
+
+        // Snapshot user fields from user_borrows first
+        $user_id = isset($r['user_id']) ? (string)$r['user_id'] : '';
+        $school_id = isset($r['school_id']) ? (string)$r['school_id'] : '';
+        $full_name = isset($r['full_name']) ? (string)$r['full_name'] : '';
+
+        // If any are missing, fall back to users collection
+        if ($usernameRow !== '' && ($user_id === '' || $school_id === '' || $full_name === '')) {
             try { $u = $uCol->findOne(['username'=>$usernameRow], ['projection'=>['id'=>1,'full_name'=>1,'school_id'=>1]]); } catch (Throwable $e) { $u = null; }
-            if ($u) { $full_name = (string)($u['full_name'] ?? ''); $user_id = (string)($u['id'] ?? ''); $school_id = (string)($u['school_id'] ?? ''); }
+            if ($u) {
+                if ($full_name === '') { $full_name = (string)($u['full_name'] ?? ''); }
+                if ($user_id === '') { $user_id = (string)($u['id'] ?? ''); }
+                if ($school_id === '') { $school_id = (string)($u['school_id'] ?? ''); }
+            }
         }
         if ($full_name === '' && $usernameRow !== '') { $full_name = $usernameRow; }
 
@@ -123,8 +133,8 @@ try {
             } else { $ra = (string)($r['returned_at'] ?? ''); }
         } catch (Throwable $_t2) { $ra = (string)($r['returned_at'] ?? ''); }
         $history[] = [
-            'user_id' => isset($user_id) ? (string)$user_id : '',
-            'school_id' => isset($school_id) ? (string)$school_id : '',
+            'user_id' => (string)$user_id,
+            'school_id' => (string)$school_id,
             'full_name' => $full_name,
             'username' => $usernameRow,
             'serial_no' => $serial_no,
