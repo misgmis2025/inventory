@@ -577,6 +577,7 @@ try {
                                                                 <i class="bi bi-key me-1"></i>Reset Password
                                                             </button>
                                                         </li>
+                                                        <?php if (($u['usertype'] ?? '') !== 'admin'): ?>
                                                         <li><hr class="dropdown-divider"></li>
                                                         <li>
                                                             <form method="post" action="user_management.php" class="px-3 py-0 m-0" onsubmit="return confirm('<?php echo $isDisabled ? 'Enable' : 'Disable'; ?> user <?php echo htmlspecialchars($u['username']); ?>?');">
@@ -588,6 +589,7 @@ try {
                                                                 </button>
                                                             </form>
                                                         </li>
+                                                        <?php endif; ?>
                                                         <?php endif; ?>
                                                         <?php if ($u['username'] !== $_SESSION['username'] && ($u['usertype'] ?? '') !== 'admin'): ?>
                                                         <li><hr class="dropdown-divider"></li>
