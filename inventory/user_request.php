@@ -2698,6 +2698,12 @@ if (!empty($my_requests)) {
                   </div>
                 </div>
               </div>
+              <div class="mt-3 small text-muted text-center">
+                By borrowing via QR, you acknowledge the
+                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="qrBorrowAgreementLink">
+                  Borrowing Agreement &amp; Accountability Policy
+                </button>.
+              </div>
 
               <div class="card mt-3 d-none" id="urInfoCard">
                 <div class="card-body">
@@ -2829,6 +2835,32 @@ if (!empty($my_requests)) {
               }
             }
           } catch(_) { }
+
+          // Stack Borrowing Agreement modal on top of Submit Request / QR Scan without closing them
+          try {
+            var policyEl = document.getElementById('borrowAgreementModal');
+            if (policyEl && window.bootstrap && bootstrap.Modal) {
+              var policyModal = bootstrap.Modal.getOrCreateInstance(policyEl);
+              var submitLink = document.getElementById('submitBorrowAgreementLink');
+              var qrLink = document.getElementById('qrBorrowAgreementLink');
+
+              if (submitLink) {
+                submitLink.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  policyModal.show();
+                });
+              }
+
+              if (qrLink) {
+                qrLink.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  policyModal.show();
+                });
+              }
+            }
+          } catch(_e) { }
         });
       </script>
 
@@ -2928,7 +2960,7 @@ if (!empty($my_requests)) {
                 </div>
                 <div class="mt-2 small text-muted text-center">
                   By submitting, you acknowledge the
-                  <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#borrowAgreementModal">
+                  <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="submitBorrowAgreementLink">
                     Borrowing Agreement &amp; Accountability Policy
                   </button>.
                 </div>

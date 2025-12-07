@@ -755,8 +755,10 @@ try {
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="i"><em>I</em></button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="u"><span style="text-decoration:underline;">U</span></button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="ul">&bull; List</button>
+                <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="center">Center</button>
+                <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="justify">Justify</button>
               </div>
-              <div id="borrowAgreementEditor" class="form-control" contenteditable="true" style="min-height: 260px; white-space: pre-wrap;">
+              <div id="borrowAgreementEditor" class="form-control" contenteditable="true" style="min-height: 260px;">
                 <?php if ($agreementHtml !== ''): ?>
                   <?php echo $agreementHtml; ?>
                 <?php else: ?>
@@ -1168,6 +1170,10 @@ try {
                   document.execCommand('underline', false, null);
                 } else if (tag === 'ul') {
                   document.execCommand('insertUnorderedList', false, null);
+                } else if (tag === 'center') {
+                  document.execCommand('justifyCenter', false, null);
+                } else if (tag === 'justify') {
+                  document.execCommand('justifyFull', false, null);
                 }
                 updateSaveState();
               }
