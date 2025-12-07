@@ -1173,6 +1173,54 @@ try {
                 saveBtn.disabled = !dirty;
               }
 
+              function isSelectionInsideEditor() {
+                if (!editor) return false;
+                var sel = window.getSelection ? window.getSelection() : null;
+                if (!sel || sel.rangeCount === 0) return false;
+                var range = sel.getRangeAt(0);
+                var node = range.commonAncestorContainer;
+                if (!node) return false;
+                if (node.nodeType === 3) {
+                  node = node.parentNode;
+                }
+                return editor.contains(node);
+              }
+
+              function updateToolbarActiveState() {
+                if (!buttons || !buttons.length) return;
+                var inside = isSelectionInsideEditor();
+                buttons.forEach(function(btn){
+                  var tag = btn.getAttribute('data-tag') || '';
+                  var active = false;
+                  if (inside && tag) {
+                    try {
+                      if (tag === 'b') {
+                        active = document.queryCommandState && document.queryCommandState('bold');
+                      } else if (tag === 'i') {
+                        active = document.queryCommandState && document.queryCommandState('italic');
+                      } else if (tag === 'u') {
+                        active = document.queryCommandState && document.queryCommandState('underline');
+                      } else if (tag === 'ul') {
+                        active = document.queryCommandState && document.queryCommandState('insertUnorderedList');
+                      } else if (tag === 'center') {
+                        active = document.queryCommandState && document.queryCommandState('justifyCenter');
+                      } else if (tag === 'justify') {
+                        active = document.queryCommandState && document.queryCommandState('justifyFull');
+                      }
+                    } catch (e) {
+                      active = false;
+                    }
+                  }
+                  if (active) {
+                    btn.classList.add('btn-primary');
+                    btn.classList.remove('btn-outline-secondary');
+                  } else {
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-outline-secondary');
+                  }
+                });
+              }
+
               function applyCommand(tag){
                 if (!editor) return;
                 editor.focus();
@@ -1190,6 +1238,7 @@ try {
                   document.execCommand('justifyFull', false, null);
                 }
                 updateSaveState();
+                updateToolbarActiveState();
               }
 
               buttons.forEach(function(btn){
@@ -1201,9 +1250,15 @@ try {
                 });
               });
 
-              editor.addEventListener('input', updateSaveState);
-              editor.addEventListener('keyup', updateSaveState);
+              editor.addEventListener('input', function(){
+                updateSaveState();
+                updateToolbarActiveState();
+              });
+              editor.addEventListener('keyup', updateToolbarActiveState);
+              editor.addEventListener('mouseup', updateToolbarActiveState);
+              document.addEventListener('selectionchange', updateToolbarActiveState);
               updateSaveState();
+              updateToolbarActiveState();
 
               if (resetBtn) {
                 resetBtn.addEventListener('click', function(e){
@@ -1213,6 +1268,7 @@ try {
                   }
                   editor.innerHTML = originalHtml;
                   updateSaveState();
+                  updateToolbarActiveState();
                 });
               }
 
