@@ -318,6 +318,14 @@ try {
               <small id="pwMismatch" style="color:#dc3545; display:none; margin-top: .25rem;">Passwords don't match</small>
             </div>
             <div class="col-12">
+              <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="signupAgreementChk" disabled>
+                <label class="form-check-label small" for="signupAgreementChk">
+                  I have read and agree to the Borrowing Agreement &amp; Accountability Policy.
+                </label>
+              </div>
+            </div>
+            <div class="col-12">
               <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Sign up</button>
             </div>
           </div>
@@ -532,6 +540,7 @@ try {
         const agreementScroll = document.getElementById('agreementScroll');
         const agreementHint = document.getElementById('agreementScrollHint');
         const agreementAcceptBtn = document.getElementById('agreementAcceptBtn');
+        const agreementChk = document.getElementById('signupAgreementChk');
         let agreementModal = null;
 
         if (agreementModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
@@ -555,6 +564,10 @@ try {
         if (agreementAcceptBtn && form) {
           agreementAcceptBtn.addEventListener('click', function() {
             agreementAccepted = true;
+            if (agreementChk) {
+              agreementChk.disabled = false;
+              agreementChk.checked = true;
+            }
             if (agreementModal) {
               agreementModal.hide();
             }
