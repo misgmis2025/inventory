@@ -756,7 +756,15 @@ try {
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="u"><span style="text-decoration:underline;">U</span></button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="ul">&bull; List</button>
               </div>
-              <textarea name="borrow_agreement" class="form-control" rows="10"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
+              <div id="borrowAgreementEditor" class="form-control" contenteditable="true" style="min-height: 260px; white-space: pre-wrap;">
+                <?php if ($agreementHtml !== ''): ?>
+                  <?php echo $agreementHtml; ?>
+                <?php else: ?>
+                  <h6 class="fw-bold mb-2">Borrowing Agreement &amp; Accountability Policy</h6>
+                  <p class="mb-2">This is a placeholder for your official Borrowing Agreement &amp; Accountability Policy. You can edit this text to match your formal policy.</p>
+                <?php endif; ?>
+              </div>
+              <textarea name="borrow_agreement" id="borrowAgreementTextarea" class="d-none"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
             </form>
           </div>
           <div class="modal-footer">
@@ -1061,61 +1069,43 @@ try {
               }
             }
 
-            // Borrowing Agreement edit modal formatting buttons
+            // Borrowing Agreement edit modal formatting buttons (WYSIWYG)
             (function(){
               var form = document.getElementById('editBorrowAgreementForm');
               if (!form) return;
-              var textarea = form.querySelector('textarea[name="borrow_agreement"]');
-              if (!textarea) return;
+              var editor = document.getElementById('borrowAgreementEditor');
+              var hidden = document.getElementById('borrowAgreementTextarea');
+              if (!editor || !hidden) return;
               var buttons = document.querySelectorAll('.ba-format-btn');
-              function wrapSelection(tag){
-                if (!textarea) return;
-                textarea.focus();
-                var start = textarea.selectionStart || 0;
-                var end = textarea.selectionEnd || 0;
-                var value = textarea.value || '';
-                var selected = value.substring(start, end);
-                var before = value.substring(0, start);
-                var after = value.substring(end);
 
-                // Handle bullet list specially
-                if (tag === 'ul') {
-                  if (!selected) { selected = 'Item 1'; }
-                  // Split selected text into lines and wrap each in <li>
-                  var lines = selected.split(/\r?\n/).map(function(line){
-                    var t = line.trim();
-                    if (!t) return '';
-                    return '<li>' + t + '</li>';
-                  }).filter(function(li){ return li !== ''; });
-                  if (!lines.length) {
-                    lines = ['<li>Item 1</li>'];
-                  }
-                  var inner = lines.join('\n');
-                  var wrapped = '<ul>\n' + inner + '\n</ul>';
-                  textarea.value = before + wrapped + after;
-                  var cursor = (before + wrapped).length;
-                  textarea.selectionStart = textarea.selectionEnd = cursor;
-                  return;
+              function applyCommand(tag){
+                if (!editor) return;
+                editor.focus();
+                if (tag === 'b') {
+                  document.execCommand('bold', false, null);
+                } else if (tag === 'i') {
+                  document.execCommand('italic', false, null);
+                } else if (tag === 'u') {
+                  document.execCommand('underline', false, null);
+                } else if (tag === 'ul') {
+                  document.execCommand('insertUnorderedList', false, null);
                 }
-
-                // Default inline wrap (b, i, u)
-                var open = '<' + tag + '>';
-                var close = '</' + tag + '>';
-                if (!selected) {
-                  selected = 'Text';
-                }
-                var wrappedInline = open + selected + close;
-                textarea.value = before + wrappedInline + after;
-                var cursorInline = (before + wrappedInline).length;
-                textarea.selectionStart = textarea.selectionEnd = cursorInline;
               }
+
               buttons.forEach(function(btn){
                 btn.addEventListener('click', function(e){
                   e.preventDefault();
                   var tag = this.getAttribute('data-tag') || '';
                   if (!tag) return;
-                  wrapSelection(tag);
+                  applyCommand(tag);
                 });
+              });
+
+              // On submit, copy editor HTML into the hidden textarea
+              form.addEventListener('submit', function(){
+                if (hidden && editor) {
+                  hidden.value = editor.innerHTML;
+                }
               });
             })();
 
