@@ -558,7 +558,7 @@ try {
                                             </td>
                                             <td>
                                                 <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
-                                                <div class="dropdown">
+                                                <div class="dropdown dropup">
                                                     <button class="btn btn-sm btn-outline-secondary btn-actions-thin dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                                         Actions
                                                     </button>
