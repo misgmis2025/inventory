@@ -386,6 +386,7 @@ try {
         #page-content-wrapper { height: auto; overflow: visible; }
       }
       .accounts-table-scroll { max-height: 480px; overflow-y: auto; }
+      .accounts-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
       /* Smaller action buttons in user table */
       .user-actions .btn.btn-sm { padding: 0.1rem 0.3rem; font-size: 0.72rem; line-height: 1; min-height: 1.5rem; }
       .user-actions { gap: 0.2rem !important; }
