@@ -336,7 +336,7 @@ try {
 
     <!-- Borrowing Agreement & Accountability Policy Modal (Signup) -->
     <div class="modal fade" id="borrowAgreementSignupModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Borrowing Agreement &amp; Accountability Policy</h5>

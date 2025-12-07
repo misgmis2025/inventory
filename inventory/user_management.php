@@ -750,6 +750,11 @@ try {
               <div class="mb-2 small text-muted">
                 This content is shown on the Signup page and in the user Submit Request / Scan Item QR modals.
               </div>
+              <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Formatting">
+                <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="b"><strong>B</strong></button>
+                <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="i"><em>I</em></button>
+                <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="u"><span style="text-decoration:underline;">U</span></button>
+              </div>
               <textarea name="borrow_agreement" class="form-control" rows="10"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
             </form>
           </div>
@@ -1054,6 +1059,41 @@ try {
                 });
               }
             }
+
+            // Borrowing Agreement edit modal formatting buttons
+            (function(){
+              var form = document.getElementById('editBorrowAgreementForm');
+              if (!form) return;
+              var textarea = form.querySelector('textarea[name="borrow_agreement"]');
+              if (!textarea) return;
+              var buttons = document.querySelectorAll('.ba-format-btn');
+              function wrapSelection(tag){
+                if (!textarea) return;
+                textarea.focus();
+                var start = textarea.selectionStart || 0;
+                var end = textarea.selectionEnd || 0;
+                var value = textarea.value || '';
+                var selected = value.substring(start, end);
+                var open = '<'+tag+'>';
+                var close = '</'+tag+'>';
+                if (!selected) {
+                  selected = 'Text';
+                }
+                var before = value.substring(0, start);
+                var after = value.substring(end);
+                textarea.value = before + open + selected + close + after;
+                var cursor = (before + open + selected + close).length;
+                textarea.selectionStart = textarea.selectionEnd = cursor;
+              }
+              buttons.forEach(function(btn){
+                btn.addEventListener('click', function(e){
+                  e.preventDefault();
+                  var tag = this.getAttribute('data-tag') || '';
+                  if (!tag) return;
+                  wrapSelection(tag);
+                });
+              });
+            })();
 
             // Optional: role modal may not exist anymore
             const modalEl = document.getElementById('roleConfirmModal');
