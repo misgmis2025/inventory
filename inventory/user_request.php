@@ -708,87 +708,114 @@ if ($__act === 'my_borrowed' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       $iiCol = $mongo_db->selectCollection('inventory_items');
       $erCol = $mongo_db->selectCollection('equipment_requests');
       $raCol = $mongo_db->selectCollection('request_allocations');
+      $delLogCol = $mongo_db->selectCollection('inventory_delete_log');
+      $rsCol = null;
+      try { $rsCol = $mongo_db->selectCollection('returnship_requests'); } catch (Throwable $_rpcol) { $rsCol = null; }
       $cur = $ubCol->find(['username'=>(string)$_SESSION['username'],'status'=>'Borrowed'], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit' => $limit]);
       foreach ($cur as $ub) {
-        $mid = (int)($ub['model_id'] ?? 0); $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
+        $mid = (int)($ub['model_id'] ?? 0);
+        $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
         $alloc = $raCol->findOne(['borrow_id' => (int)($ub['id'] ?? 0)], ['projection'=>['request_id'=>1]]);
-        $reqId = (int)($alloc['request_id'] ?? 0);
-        if ($reqId <= 0) {
-          // Fallback: find nearest user's request
-          $when = (string)($ub['borrowed_at'] ?? '');
-          $req = null;
-          if ($ii) {
-            $cands = array_values(array_unique(array_filter([(string)($ii['model'] ?? ''),(string)($ii['item_name'] ?? '')])));
-            if (!empty($cands)) {
-              $req = $erCol->findOne([
-                'username' => (string)$_SESSION['username'],
-                'item_name' => ['$in' => $cands],
-                'created_at' => ['$lte' => $when]
-              ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
-              if (!$req) {
-                $req = $erCol->findOne([
-                  'username' => (string)$_SESSION['username'],
-                  'item_name' => ['$in' => $cands]
-                ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
-              }
-            }
-          }
-          if (!$req) {
-            // As a last resort, match by time only
-            $req = $erCol->findOne([
-              'username' => (string)$_SESSION['username'],
-              'created_at' => ['$lte' => $when]
-            ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
-            if (!$req) {
-              $req = $erCol->findOne([
-                'username' => (string)$_SESSION['username']
-              ], ['sort' => ['created_at' => -1, 'id' => -1], 'projection' => ['id' => 1]]);
-            }
-          }
-          if ($req && isset($req['id'])) { $reqId = (int)$req['id']; }
+        // Prefer snapshotted request_id on the borrow itself, then allocation; do not guess beyond that
+        $reqId = isset($ub['request_id']) ? (int)$ub['request_id'] : 0;
+        if ($reqId <= 0 && $alloc && isset($alloc['request_id'])) {
+          $reqId = (int)$alloc['request_id'];
         }
-        // Ensure model name is populated (prefer model, fallback to item_name; if missing, use request.item_name)
-        $dispModel = '';
-        if ($ii) { $dispModel = (string)($ii['model'] ?? ''); if ($dispModel==='') { $dispModel = (string)($ii['item_name'] ?? ''); } }
-        if ($dispModel === '' && $reqId > 0) {
-          $reqDoc = $erCol->findOne(['id'=>$reqId], ['projection'=>['item_name'=>1]]);
-          if ($reqDoc && isset($reqDoc['item_name'])) { $dispModel = (string)$reqDoc['item_name']; }
+
+        // Snapshot item fields from user_borrows first
+        $snapItemName = isset($ub['item_name']) ? (string)$ub['item_name'] : '';
+        $snapModel = isset($ub['model']) ? (string)$ub['model'] : '';
+        $snapCategory = isset($ub['category']) ? (string)$ub['category'] : '';
+        $snapCondition = isset($ub['condition']) ? (string)$ub['condition'] : '';
+        $snapSerial = isset($ub['serial_no']) ? (string)$ub['serial_no'] : '';
+
+        // Fill missing fields from live inventory if it still exists
+        if ($ii) {
+          if ($snapItemName === '') { $snapItemName = (string)($ii['item_name'] ?? ''); }
+          if ($snapModel === '') { $snapModel = (string)($ii['model'] ?? ''); }
+          if ($snapCategory === '') { $snapCategory = (string)($ii['category'] ?? 'Uncategorized'); }
+          if ($snapCondition === '') { $snapCondition = (string)($ii['condition'] ?? ''); }
+          if ($snapSerial === '') { $snapSerial = (string)($ii['serial_no'] ?? ''); }
         }
-        // Load request doc to get approved_at (and optionally approved_by if exists)
-        $reqDoc = null; if ($reqId > 0) { $reqDoc = $erCol->findOne(['id'=>$reqId], ['projection'=>['approved_at'=>1,'approved_by'=>1,'item_name'=>1]]); }
+
+        // If inventory_items is missing (item deleted), fall back to inventory_delete_log snapshots
+        if (!$ii && $mid > 0) {
+          try {
+            $del = $delLogCol->findOne(
+              ['item_id'=>$mid],
+              ['sort'=>['id'=>-1], 'projection'=>['item_name'=>1,'model'=>1,'category'=>1,'condition'=>1,'serial_no'=>1]]
+            );
+          } catch (Throwable $_del) { $del = null; }
+          if ($del) {
+            if ($snapItemName === '') { $snapItemName = (string)($del['item_name'] ?? ''); }
+            if ($snapModel === '') { $snapModel = (string)($del['model'] ?? ''); }
+            if ($snapCategory === '') { $snapCategory = (string)($del['category'] ?? 'Uncategorized'); }
+            if ($snapCondition === '') { $snapCondition = (string)($del['condition'] ?? ''); }
+            if ($snapSerial === '') { $snapSerial = (string)($del['serial_no'] ?? ''); }
+          }
+        }
+        if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
+
+        // Display name: prefer model, then item_name
+        $dispModel = $snapModel !== '' ? $snapModel : $snapItemName;
+
+        // Load request doc to get approved_at / approved_by and QR/manual type, only if we have a stable request_id
         $approvedAt = '';
-        try {
-          if ($reqDoc && isset($reqDoc['approved_at']) && $reqDoc['approved_at'] instanceof MongoDB\BSON\UTCDateTime) { $dtA = $reqDoc['approved_at']->toDateTime(); $dtA->setTimezone(new DateTimeZone('Asia/Manila')); $approvedAt = $dtA->format('Y-m-d H:i:s'); }
-          else if ($reqDoc && isset($reqDoc['approved_at'])) { $approvedAt = (string)$reqDoc['approved_at']; }
-        } catch (Throwable $e3) { $approvedAt = (string)($reqDoc['approved_at'] ?? ''); }
-        $approvedBy = $reqDoc ? (string)($reqDoc['approved_by'] ?? '') : '';
-        // Determine type (QR vs Manual) from related request if available
-        $reqType = '';
-        if ($reqId > 0) {
-          $req4 = $erCol->findOne(['id'=>$reqId], ['projection'=>['qr_serial_no'=>1]]);
-          if ($req4 && isset($req4['qr_serial_no']) && trim((string)$req4['qr_serial_no'])!=='') { $reqType = 'QR'; } else { $reqType = 'Manual'; }
-        }
-        // Determine if a return verification is already pending for this request
-        $returnPending = false;
+        $approvedBy = '';
+        $reqType = 'Manual';
         if ($reqId > 0) {
           try {
-            $rsCol = $mongo_db->selectCollection('returnship_requests');
+            $reqDoc = $erCol->findOne(['id'=>$reqId], ['projection'=>['approved_at'=>1,'approved_by'=>1,'qr_serial_no'=>1]]);
+          } catch (Throwable $_rd) { $reqDoc = null; }
+          if ($reqDoc) {
+            try {
+              if (isset($reqDoc['approved_at']) && $reqDoc['approved_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                $dtA = $reqDoc['approved_at']->toDateTime();
+                $dtA->setTimezone(new DateTimeZone('Asia/Manila'));
+                $approvedAt = $dtA->format('Y-m-d H:i:s');
+              } elseif (isset($reqDoc['approved_at'])) {
+                $approvedAt = (string)$reqDoc['approved_at'];
+              }
+            } catch (Throwable $_ta) { $approvedAt = (string)($reqDoc['approved_at'] ?? ''); }
+            $approvedBy = isset($reqDoc['approved_by']) ? (string)$reqDoc['approved_by'] : '';
+            if (isset($reqDoc['qr_serial_no']) && trim((string)$reqDoc['qr_serial_no'])!=='') { $reqType = 'QR'; }
+          }
+        }
+
+        // Determine if a return verification is already pending for this request
+        $returnPending = false;
+        if ($reqId > 0 && $rsCol) {
+          try {
             $rp = $rsCol->findOne(['request_id'=>$reqId, 'status'=>'Requested'], ['projection'=>['id'=>1]]);
             $returnPending = $rp ? true : false;
           } catch (Throwable $e_rp) { $returnPending = false; }
         }
+
+        // Normalize borrowed_at to Asia/Manila string
+        $borrowedAt = '';
+        try {
+          if (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime) {
+            $dtB = $ub['borrowed_at']->toDateTime();
+            $dtB->setTimezone(new DateTimeZone('Asia/Manila'));
+            $borrowedAt = $dtB->format('Y-m-d H:i:s');
+          } else {
+            $borrowedAt = (string)($ub['borrowed_at'] ?? '');
+          }
+        } catch (Throwable $_tb) { $borrowedAt = (string)($ub['borrowed_at'] ?? ''); }
+
         $rows[] = [
           'borrow_id' => (int)($ub['id'] ?? 0),
           'request_id' => $reqId,
-          'borrowed_at' => (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($ub['borrowed_at']) : (string)($ub['borrowed_at'] ?? '')),
+          'borrowed_at' => $borrowedAt,
           'approved_at' => $approvedAt,
           'approved_by' => $approvedBy,
           'model_id' => $mid,
-          'item_name' => ($dispModel !== '' ? $dispModel : ''),
-          'model' => ($dispModel !== '' ? $dispModel : ''),
-          'model_display' => ($dispModel !== '' ? $dispModel : ''),
-          'category' => ($ii ? (string)($ii['category'] ?? '') : 'Uncategorized'),
-          'condition' => ($ii ? (string)($ii['condition'] ?? '') : ''),
+          'item_name' => $dispModel,
+          'model' => $dispModel,
+          'model_display' => $dispModel,
+          'category' => $snapCategory,
+          'condition' => $snapCondition,
+          'serial_no' => $snapSerial,
           'type' => $reqType,
           'return_pending' => $returnPending,
         ];
@@ -835,23 +862,78 @@ if ($__act === 'my_history' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   if ($USED_MONGO && $mongo_db) {
     $rows = [];
     try {
-      $ubCol=$mongo_db->selectCollection('user_borrows'); $iiCol=$mongo_db->selectCollection('inventory_items'); $ldCol=$mongo_db->selectCollection('lost_damaged_log'); $erCol=$mongo_db->selectCollection('equipment_requests');
+      $ubCol=$mongo_db->selectCollection('user_borrows');
+      $iiCol=$mongo_db->selectCollection('inventory_items');
+      $ldCol=$mongo_db->selectCollection('lost_damaged_log');
+      $raCol=$mongo_db->selectCollection('request_allocations');
+      $erCol=$mongo_db->selectCollection('equipment_requests');
+      $delLog=$mongo_db->selectCollection('inventory_delete_log');
       $cur = $ubCol->find(['username'=>(string)$_SESSION['username'],'status'=>['$ne'=>'Borrowed']], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit'=>200]);
       foreach ($cur as $ub) {
-        $mid=(int)($ub['model_id']??0); $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
+        $mid=(int)($ub['model_id']??0);
+        $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
         $log = $ldCol->findOne(['model_id'=>$mid, 'created_at'=>['$gte'=>(string)($ub['borrowed_at'] ?? '')]], ['sort'=>['id'=>-1]]);
-        $req = $erCol->findOne(['username'=>(string)$_SESSION['username'],'item_name'=>['$in'=>array_values(array_unique(array_filter([(string)($ii['model'] ?? ''),(string)($ii['item_name'] ?? '')])))]], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
+        $alloc = $raCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
+        // Prefer request_id stored on the borrow itself, then allocation; do not guess beyond that
+        $reqId = isset($ub['request_id']) ? (int)$ub['request_id'] : 0;
+        if ($reqId <= 0 && $alloc && isset($alloc['request_id'])) {
+          $reqId = (int)$alloc['request_id'];
+        }
+
+        // Snapshot item fields off user_borrows first, then fall back to current inventory item
+        $snapItemName = isset($ub['item_name']) ? (string)$ub['item_name'] : '';
+        $snapModel = isset($ub['model']) ? (string)$ub['model'] : '';
+        $snapCategory = isset($ub['category']) ? (string)$ub['category'] : '';
+        if ($ii) {
+          if ($snapItemName === '') { $snapItemName = (string)($ii['item_name'] ?? ''); }
+          if ($snapModel === '') { $snapModel = (string)($ii['model'] ?? ''); }
+          if ($snapCategory === '') { $snapCategory = (string)($ii['category'] ?? 'Uncategorized'); }
+        }
+        // If item has been deleted from inventory_items, try to recover snapshot from inventory_delete_log
+        if (!$ii && $mid > 0) {
+          try { $del = $delLog->findOne(['item_id'=>$mid], ['sort'=>['id'=>-1], 'projection'=>['item_name'=>1,'model'=>1,'category'=>1]]); } catch (Throwable $_del) { $del = null; }
+          if ($del) {
+            if ($snapItemName === '') { $snapItemName = (string)($del['item_name'] ?? ''); }
+            if ($snapModel === '') { $snapModel = (string)($del['model'] ?? ''); }
+            if ($snapCategory === '') { $snapCategory = (string)($del['category'] ?? 'Uncategorized'); }
+          }
+        }
+        if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
+
+        // Normalize times
+        $borrowedAt = '';
+        try {
+          if (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime) {
+            $dtB = $ub['borrowed_at']->toDateTime();
+            $dtB->setTimezone(new DateTimeZone('Asia/Manila'));
+            $borrowedAt = $dtB->format('Y-m-d H:i:s');
+          } else {
+            $borrowedAt = (string)($ub['borrowed_at'] ?? '');
+          }
+        } catch (Throwable $_tb) { $borrowedAt = (string)($ub['borrowed_at'] ?? ''); }
+
+        $returnedAt = '';
+        try {
+          if (isset($ub['returned_at']) && $ub['returned_at'] instanceof MongoDB\BSON\UTCDateTime) {
+            $dtR = $ub['returned_at']->toDateTime();
+            $dtR->setTimezone(new DateTimeZone('Asia/Manila'));
+            $returnedAt = $dtR->format('Y-m-d H:i:s');
+          } else {
+            $returnedAt = (string)($ub['returned_at'] ?? '');
+          }
+        } catch (Throwable $_tr) { $returnedAt = (string)($ub['returned_at'] ?? ''); }
+
         $rows[] = [
           'borrow_id' => (int)($ub['id'] ?? 0),
-          'request_id' => (int)($req['id'] ?? 0),
-          'borrowed_at' => (isset($ub['borrowed_at']) && $ub['borrowed_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($ub['borrowed_at']) : (string)($ub['borrowed_at'] ?? '')),
-          'returned_at' => (isset($ub['returned_at']) && $ub['returned_at'] instanceof MongoDB\BSON\UTCDateTime ? (function($x){ $dt=$x->toDateTime(); $dt->setTimezone(new DateTimeZone('Asia/Manila')); return $dt->format('Y-m-d H:i:s'); })($ub['returned_at']) : (string)($ub['returned_at'] ?? '')),
+          'request_id' => $reqId,
+          'borrowed_at' => $borrowedAt,
+          'returned_at' => $returnedAt,
           'status' => (string)($ub['status'] ?? ''),
           'latest_action' => (string)($log['action'] ?? ''),
           'model_id' => $mid,
-          'item_name' => $ii ? (string)($ii['item_name'] ?? '') : '',
-          'model' => $ii ? (string)($ii['model'] ?? '') : '',
-          'category' => $ii ? (string)($ii['category'] ?? '') : '',
+          'item_name' => $snapItemName,
+          'model' => $snapModel,
+          'category' => $snapCategory,
         ];
       }
     } catch (Throwable $e) { $rows=[]; }
@@ -2014,54 +2096,48 @@ if (!$USED_MONGO && $conn) {
     $ii=$mongo_db->selectCollection('inventory_items'); 
     $ra=$mongo_db->selectCollection('request_allocations'); 
     $er=$mongo_db->selectCollection('equipment_requests'); 
+    $delLog=$mongo_db->selectCollection('inventory_delete_log');
     $cur=$ub->find(['username'=>(string)$_SESSION['username'],'status'=>'Borrowed'], ['sort'=>['borrowed_at'=>-1,'id'=>-1], 'limit'=>100]); 
     foreach($cur as $b){ 
       $mid=(int)($b['model_id']??0); 
       $itm=$mid>0?$ii->findOne(['id'=>$mid]):null; 
       $alloc=$ra->findOne(['borrow_id'=>(int)($b['id']??0)], ['projection'=>['request_id'=>1]]);
-      $reqId=(int)($alloc['request_id']??0);
-      if ($reqId<=0){
-        $when = (string)($b['borrowed_at'] ?? '');
-        $req = null;
-        if ($itm){
-          $cands = array_values(array_unique(array_filter([(string)($itm['model'] ?? ''),(string)($itm['item_name'] ?? '')])));
-          if (!empty($cands)){
-            $req = $er->findOne([
-              'username'=>(string)$_SESSION['username'],
-              'item_name'=>['$in'=>$cands],
-              'created_at' => ['$lte' => $when]
-            ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-            if (!$req) {
-              $req = $er->findOne([
-                'username'=>(string)$_SESSION['username'],
-                'item_name'=>['$in'=>$cands],
-              ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-            }
-          }
-        }
-        if (!$req){
-          $req = $er->findOne([
-            'username'=>(string)$_SESSION['username'],
-            'created_at' => ['$lte' => $when]
-          ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-          if (!$req) {
-            $req = $er->findOne([
-              'username'=>(string)$_SESSION['username']
-            ], ['sort'=>['created_at'=>-1,'id'=>-1], 'projection'=>['id'=>1]]);
-          }
-        }
-        if ($req && isset($req['id'])) { $reqId = (int)$req['id']; }
+      // Prefer snapshotted request_id on the borrow, then allocation; no heuristic guessing
+      $reqId = isset($b['request_id']) ? (int)$b['request_id'] : 0;
+      if ($reqId<=0 && $alloc && isset($alloc['request_id'])) {
+        $reqId = (int)$alloc['request_id'];
       }
-      // Ensure model name is populated (prefer model, fallback to item_name; if missing, use request.item_name)
-      $dispModel = '';
-      if ($itm) { $dispModel = (string)($itm['model'] ?? ''); if ($dispModel==='') { $dispModel = (string)($itm['item_name'] ?? ''); } }
-      if ($dispModel === '' && $reqId > 0) {
-        $reqDoc = $er->findOne(['id'=>$reqId], ['projection'=>['item_name'=>1]]);
-        if ($reqDoc && isset($reqDoc['item_name'])) { $dispModel = (string)$reqDoc['item_name']; }
+
+      // Snapshot item fields from user_borrows, then fill from live inventory or delete log
+      $snapItemName = isset($b['item_name']) ? (string)$b['item_name'] : '';
+      $snapModel = isset($b['model']) ? (string)$b['model'] : '';
+      $snapCategory = isset($b['category']) ? (string)$b['category'] : '';
+      $snapCondition = isset($b['condition']) ? (string)$b['condition'] : '';
+      $snapSerial = isset($b['serial_no']) ? (string)$b['serial_no'] : '';
+
+      if ($itm){
+        if ($snapItemName === '') { $snapItemName = (string)($itm['item_name'] ?? ''); }
+        if ($snapModel === '') { $snapModel = (string)($itm['model'] ?? ''); }
+        if ($snapCategory === '') { $snapCategory = (string)($itm['category'] ?? 'Uncategorized'); }
+        if ($snapCondition === '') { $snapCondition = (string)($itm['condition'] ?? ''); }
+        if ($snapSerial === '') { $snapSerial = (string)($itm['serial_no'] ?? ''); }
       }
-      // Determine QR vs Manual based on request's qr_serial_no
-      $qrSer = '';
-      if ($reqId > 0) { $rd = $er->findOne(['id'=>$reqId], ['projection'=>['qr_serial_no'=>1]]); if ($rd && isset($rd['qr_serial_no'])) { $qrSer = (string)$rd['qr_serial_no']; } }
+
+      if (!$itm && $mid > 0) {
+        try { $del = $delLog->findOne(['item_id'=>$mid], ['sort'=>['id'=>-1], 'projection'=>['item_name'=>1,'model'=>1,'category'=>1,'condition'=>1,'serial_no'=>1]]); } catch (Throwable $_del) { $del = null; }
+        if ($del) {
+          if ($snapItemName === '') { $snapItemName = (string)($del['item_name'] ?? ''); }
+          if ($snapModel === '') { $snapModel = (string)($del['model'] ?? ''); }
+          if ($snapCategory === '') { $snapCategory = (string)($del['category'] ?? 'Uncategorized'); }
+          if ($snapCondition === '') { $snapCondition = (string)($del['condition'] ?? ''); }
+          if ($snapSerial === '') { $snapSerial = (string)($del['serial_no'] ?? ''); }
+        }
+      }
+      if ($snapCategory === '') { $snapCategory = 'Uncategorized'; }
+
+      // Display name
+      $dispModel = $snapModel !== '' ? $snapModel : $snapItemName;
+
       // Normalize times
       $ba = '';
       try {
@@ -2072,27 +2148,34 @@ if (!$USED_MONGO && $conn) {
         } else { $ba = (string)($b['borrowed_at'] ?? ''); }
       } catch (Throwable $_) { $ba = (string)($b['borrowed_at'] ?? ''); }
       $apprAt = '';
+      $approvedBy = '';
       if ($reqId > 0) {
         try {
-          $ap = $er->findOne(['id'=>$reqId], ['projection'=>['approved_at'=>1]]);
+          $ap = $er->findOne(['id'=>$reqId], ['projection'=>['approved_at'=>1,'approved_by'=>1]]);
           if ($ap && isset($ap['approved_at'])) {
             if ($ap['approved_at'] instanceof MongoDB\BSON\UTCDateTime) { $d=$ap['approved_at']->toDateTime(); $d->setTimezone(new DateTimeZone('Asia/Manila')); $apprAt = $d->format('Y-m-d H:i:s'); }
             else { $apprAt = (string)$ap['approved_at']; }
           }
+          if ($ap && isset($ap['approved_by'])) { $approvedBy = (string)$ap['approved_by']; }
         } catch (Throwable $_a) { $apprAt = (string)($ap['approved_at'] ?? ''); }
       }
+      // Determine QR vs Manual based on request's qr_serial_no
+      $qrSer = '';
+      if ($reqId > 0) { $rd = $er->findOne(['id'=>$reqId], ['projection'=>['qr_serial_no'=>1]]); if ($rd && isset($rd['qr_serial_no'])) { $qrSer = (string)$rd['qr_serial_no']; } }
+
       $my_borrowed[]=[
         'borrow_id'=>(int)($b['id']??0),
         'request_id'=>$reqId,
         'model_id'=>$mid,
         'borrowed_at'=>$ba,
         'approved_at'=>$apprAt,
-        'item_name'=>($dispModel!==''?$dispModel:''),
-        'model'=>($dispModel!==''?$dispModel:''),
-        'model_display'=>($dispModel!==''?$dispModel:''),
-        'category'=>$itm?(string)($itm['category']??'Uncategorized'):'Uncategorized',
-        'condition'=>$itm?(string)($itm['condition']??''):'',
-        'serial_no'=>$itm?(string)($itm['serial_no']??''):'',
+        'approved_by'=>$approvedBy,
+        'item_name'=>$dispModel,
+        'model'=>$dispModel,
+        'model_display'=>$dispModel,
+        'category'=>$snapCategory,
+        'condition'=>$snapCondition,
+        'serial_no'=>$snapSerial,
         'qr_serial_no'=>$qrSer,
         'status'=>'Borrowed'
       ]; 
