@@ -754,6 +754,7 @@ try {
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="b"><strong>B</strong></button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="i"><em>I</em></button>
                 <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="u"><span style="text-decoration:underline;">U</span></button>
+                <button type="button" class="btn btn-outline-secondary ba-format-btn" data-tag="ul">&bull; List</button>
               </div>
               <textarea name="borrow_agreement" class="form-control" rows="10"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
             </form>
@@ -1074,16 +1075,39 @@ try {
                 var end = textarea.selectionEnd || 0;
                 var value = textarea.value || '';
                 var selected = value.substring(start, end);
-                var open = '<'+tag+'>';
-                var close = '</'+tag+'>';
+                var before = value.substring(0, start);
+                var after = value.substring(end);
+
+                // Handle bullet list specially
+                if (tag === 'ul') {
+                  if (!selected) { selected = 'Item 1'; }
+                  // Split selected text into lines and wrap each in <li>
+                  var lines = selected.split(/\r?\n/).map(function(line){
+                    var t = line.trim();
+                    if (!t) return '';
+                    return '<li>' + t + '</li>';
+                  }).filter(function(li){ return li !== ''; });
+                  if (!lines.length) {
+                    lines = ['<li>Item 1</li>'];
+                  }
+                  var inner = lines.join('\n');
+                  var wrapped = '<ul>\n' + inner + '\n</ul>';
+                  textarea.value = before + wrapped + after;
+                  var cursor = (before + wrapped).length;
+                  textarea.selectionStart = textarea.selectionEnd = cursor;
+                  return;
+                }
+
+                // Default inline wrap (b, i, u)
+                var open = '<' + tag + '>';
+                var close = '</' + tag + '>';
                 if (!selected) {
                   selected = 'Text';
                 }
-                var before = value.substring(0, start);
-                var after = value.substring(end);
-                textarea.value = before + open + selected + close + after;
-                var cursor = (before + open + selected + close).length;
-                textarea.selectionStart = textarea.selectionEnd = cursor;
+                var wrappedInline = open + selected + close;
+                textarea.value = before + wrappedInline + after;
+                var cursorInline = (before + wrappedInline).length;
+                textarea.selectionStart = textarea.selectionEnd = cursorInline;
               }
               buttons.forEach(function(btn){
                 btn.addEventListener('click', function(e){
