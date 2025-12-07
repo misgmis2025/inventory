@@ -872,7 +872,11 @@ if ($__act === 'my_history' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       foreach ($cur as $ub) {
         $mid=(int)($ub['model_id']??0);
         $ii = $mid>0 ? $iiCol->findOne(['id'=>$mid]) : null;
-        $log = $ldCol->findOne(['model_id'=>$mid, 'created_at'=>['$gte'=>(string)($ub['borrowed_at'] ?? '')]], ['sort'=>['id'=>-1]]);
+        // Pick the most recent lost/damaged log by created_at (then id) so Found/Fixed/Permanent/Disposed are honored
+        $log = $ldCol->findOne(
+          ['model_id'=>$mid, 'created_at'=>['$gte'=>(string)($ub['borrowed_at'] ?? '')]],
+          ['sort'=>['created_at'=>-1,'id'=>-1]]
+        );
         $alloc = $raCol->findOne(['borrow_id'=>(int)($ub['id']??0)], ['projection'=>['request_id'=>1]]);
         // Prefer request_id stored on the borrow itself, then allocation; do not guess beyond that
         $reqId = isset($ub['request_id']) ? (int)$ub['request_id'] : 0;
@@ -2231,7 +2235,11 @@ if (!$USED_MONGO && $conn) {
     foreach($cur as $hv){ 
       $mid=(int)($hv['model_id']??0); 
       $itm=$mid>0?$ii->findOne(['id'=>$mid]):null; 
-      $log=$ld->findOne(['model_id'=>$mid,'created_at'=>['$gte'=>(string)($hv['borrowed_at']??'')]], ['sort'=>['id'=>-1]]); 
+      // Most recent lost/damaged log by created_at (then id)
+      $log=$ld->findOne(
+        ['model_id'=>$mid,'created_at'=>['$gte'=>(string)($hv['borrowed_at']??'')]],
+        ['sort'=>['created_at'=>-1,'id'=>-1]]
+      ); 
       $alloc=$ra->findOne(['borrow_id'=>(int)($hv['id']??0)], ['projection'=>['request_id'=>1]]);
       // Prefer request_id stored on the borrow itself, then allocation; do not guess beyond that
       $reqId = isset($hv['request_id']) ? (int)$hv['request_id'] : 0;
@@ -3962,20 +3970,18 @@ if (!empty($my_requests)) {
                               $stRaw = (string)($hv['latest_action'] ?? ($hv['status'] ?? ''));
                               $stNorm = strtolower($stRaw);
                               $stShow = $stRaw;
-                              // Normalize lifecycle: Damaged, Returned (Found/Fixed), Permanently Lost, Disposed
+                              // Normalize lifecycle: Damaged, Permanently Lost, Disposed (keep Found/Fixed explicit)
                               if ($stNorm === 'under maintenance' || $stNorm === 'damaged') {
                                 $stShow = 'Damaged';
-                              } elseif ($stNorm === 'found' || $stNorm === 'fixed') {
-                                $stShow = 'Returned';
                               } elseif ($stNorm === 'permanently lost') {
                                 $stShow = 'Permanently Lost';
                               } elseif ($stNorm === 'disposed' || $stNorm === 'disposal') {
                                 $stShow = 'Disposed';
                               }
                               $badge = 'secondary';
-                              if ($stShow === 'Returned') {
+                              if (in_array($stShow, ['Returned','Found','Fixed'], true)) {
                                 $badge = 'success';
-                              } elseif ($stShow === 'Lost' || $stShow === 'Permanently Lost' || $stShow === 'Disposed') {
+                              } elseif (in_array($stShow, ['Lost','Permanently Lost','Disposed'], true)) {
                                 $badge = 'danger';
                               } elseif ($stShow === 'Damaged') {
                                 $badge = 'warning';
@@ -5065,20 +5071,18 @@ if (!empty($my_requests)) {
           const stRaw = String(hv.latest_action || hv.status || '');
           const stNorm = stRaw.toLowerCase();
           let stShow = stRaw;
-          // Normalize lifecycle: Damaged, Returned (Found/Fixed), Permanently Lost, Disposed
+          // Normalize lifecycle: Damaged, Permanently Lost, Disposed (keep Found/Fixed explicit)
           if (stNorm === 'under maintenance' || stNorm === 'damaged') {
             stShow = 'Damaged';
-          } else if (stNorm === 'found' || stNorm === 'fixed') {
-            stShow = 'Returned';
           } else if (stNorm === 'permanently lost') {
             stShow = 'Permanently Lost';
           } else if (stNorm === 'disposed' || stNorm === 'disposal') {
             stShow = 'Disposed';
           }
           let badge = 'secondary';
-          if (stShow === 'Returned') {
+          if (['Returned','Found','Fixed'].includes(stShow)) {
             badge = 'success';
-          } else if (stShow === 'Lost' || stShow === 'Permanently Lost' || stShow === 'Disposed') {
+          } else if (['Lost','Permanently Lost','Disposed'].includes(stShow)) {
             badge = 'danger';
           } else if (stShow === 'Damaged') {
             badge = 'warning';
