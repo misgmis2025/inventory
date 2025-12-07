@@ -581,21 +581,26 @@ try {
                                                         <?php if (($u['usertype'] ?? '') !== 'admin'): ?>
                                                         <li><hr class="dropdown-divider"></li>
                                                         <li>
-                                                            <form method="post" action="user_management.php" class="px-3 py-0 m-0" onsubmit="return confirm('<?php echo $isDisabled ? 'Enable' : 'Disable'; ?> user <?php echo htmlspecialchars($u['username']); ?>?');">
+                                                            <form method="post" action="user_management.php" class="px-3 py-0 m-0 account-toggle-form">
                                                                 <input type="hidden" name="action" value="toggle_disabled" />
                                                                 <input type="hidden" name="username" value="<?php echo htmlspecialchars($u['username']); ?>" />
                                                                 <input type="hidden" name="disabled" value="<?php echo $isDisabled ? '0' : '1'; ?>" />
-                                                                <button type="submit" class="dropdown-item text-warning p-0">
+                                                                <button type="button"
+                                                                        class="dropdown-item text-warning p-0 account-disable-btn"
+                                                                        data-username="<?php echo htmlspecialchars($u['username']); ?>"
+                                                                        data-mode="<?php echo $isDisabled ? 'enable' : 'disable'; ?>">
                                                                     <i class="bi bi-slash-circle me-1"></i><?php echo $isDisabled ? 'Enable Account' : 'Disable Account'; ?>
                                                                 </button>
                                                             </form>
                                                         </li>
                                                         <li><hr class="dropdown-divider"></li>
                                                         <li>
-                                                            <form method="post" action="user_management.php" class="px-3 py-0 m-0" onsubmit="return confirm('Delete user <?php echo htmlspecialchars($u['username']); ?>? This cannot be undone.');">
+                                                            <form method="post" action="user_management.php" class="px-3 py-0 m-0 account-delete-form">
                                                                 <input type="hidden" name="action" value="delete_user" />
                                                                 <input type="hidden" name="username" value="<?php echo htmlspecialchars($u['username']); ?>" />
-                                                                <button type="submit" class="dropdown-item text-danger p-0">
+                                                                <button type="button"
+                                                                        class="dropdown-item text-danger p-0 account-delete-btn"
+                                                                        data-username="<?php echo htmlspecialchars($u['username']); ?>">
                                                                     <i class="bi bi-trash me-1"></i>Delete
                                                                 </button>
                                                             </form>
@@ -693,6 +698,52 @@ try {
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Account Disable/Enable Modal -->
+    <div class="modal fade" id="accountDisableModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Disable Account</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p class="account-disable-body-main">
+              Are you sure you want to disable this account? The user will be blocked from logging in.
+            </p>
+            <p class="mb-0">
+              Target account: <strong id="accountDisableUsername"></strong>
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-warning btn-sm" id="accountDisableConfirmBtn">Disable</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Account Delete Modal -->
+    <div class="modal fade" id="accountDeleteModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title text-danger">Delete Account</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Are you sure you want to permanently delete this account?</p>
+            <p class="mb-0">
+              Target account: <strong id="accountDeleteUsername"></strong>
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-danger btn-sm" id="accountDeleteConfirmBtn">Delete</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -870,6 +921,77 @@ try {
               if (statsSearch) statsSearch.addEventListener('input', applyStatsFilters);
               if (statsUserTypeFilter) statsUserTypeFilter.addEventListener('change', applyStatsFilters);
               if (statsStatusFilter) statsStatusFilter.addEventListener('change', applyStatsFilters);
+            }
+
+            // Account disable / enable modal wiring
+            const disableModalEl = document.getElementById('accountDisableModal');
+            const deleteModalEl = document.getElementById('accountDeleteModal');
+            const accountsTbody = document.querySelector('#accountsTable tbody');
+            let pendingDisableForm = null;
+            let pendingDeleteForm = null;
+            if (disableModalEl && deleteModalEl && accountsTbody) {
+              const disableModal = new bootstrap.Modal(disableModalEl);
+              const deleteModal = new bootstrap.Modal(deleteModalEl);
+              const disableUserSpan = document.getElementById('accountDisableUsername');
+              const deleteUserSpan = document.getElementById('accountDeleteUsername');
+              const disableBodyMain = disableModalEl.querySelector('.account-disable-body-main');
+              const disableConfirmBtn = document.getElementById('accountDisableConfirmBtn');
+              const deleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn');
+
+              accountsTbody.addEventListener('click', function(e) {
+                const disableBtn = e.target.closest('.account-disable-btn');
+                const deleteBtn = e.target.closest('.account-delete-btn');
+                if (disableBtn) {
+                  e.preventDefault();
+                  const form = disableBtn.closest('form.account-toggle-form');
+                  if (!form) return;
+                  pendingDisableForm = form;
+                  const uname = disableBtn.getAttribute('data-username') || '';
+                  const mode = disableBtn.getAttribute('data-mode') || 'disable';
+                  if (disableUserSpan) disableUserSpan.textContent = uname;
+                  if (disableBodyMain) {
+                    if (mode === 'enable') {
+                      disableBodyMain.textContent = 'Are you sure you want to enable this account? The user will be able to log in again.';
+                    } else {
+                      disableBodyMain.textContent = 'Are you sure you want to disable this account? The user will be blocked from logging in.';
+                    }
+                  }
+                  if (disableConfirmBtn) {
+                    disableConfirmBtn.textContent = (mode === 'enable') ? 'Enable' : 'Disable';
+                    disableConfirmBtn.classList.toggle('btn-warning', mode !== 'enable');
+                    disableConfirmBtn.classList.toggle('btn-success', mode === 'enable');
+                  }
+                  disableModal.show();
+                  return;
+                }
+                if (deleteBtn) {
+                  e.preventDefault();
+                  const form = deleteBtn.closest('form.account-delete-form');
+                  if (!form) return;
+                  pendingDeleteForm = form;
+                  const uname = deleteBtn.getAttribute('data-username') || '';
+                  if (deleteUserSpan) deleteUserSpan.textContent = uname;
+                  deleteModal.show();
+                  return;
+                }
+              });
+
+              if (disableConfirmBtn) {
+                disableConfirmBtn.addEventListener('click', function() {
+                  if (pendingDisableForm) {
+                    pendingDisableForm.submit();
+                    pendingDisableForm = null;
+                  }
+                });
+              }
+              if (deleteConfirmBtn) {
+                deleteConfirmBtn.addEventListener('click', function() {
+                  if (pendingDeleteForm) {
+                    pendingDeleteForm.submit();
+                    pendingDeleteForm = null;
+                  }
+                });
+              }
             }
 
             // Optional: role modal may not exist anymore
