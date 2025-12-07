@@ -6353,6 +6353,13 @@ try {
           var val = String(inputEl.value || '');
           var match = expected && (val.trim() === expected);
           okBtn.disabled = !match;
+          if (match) {
+            okBtn.classList.remove('btn-danger');
+            okBtn.classList.add('btn-primary');
+          } else {
+            okBtn.classList.remove('btn-primary');
+            okBtn.classList.add('btn-danger');
+          }
         }
 
         parent.addEventListener('click', function(e){
@@ -6380,6 +6387,8 @@ try {
           }
           if (okBtn) {
             okBtn.disabled = true;
+            okBtn.classList.remove('btn-primary');
+            okBtn.classList.add('btn-danger');
           }
           if (modelInput) modelInput.value = mid;
           if (doInput) {
