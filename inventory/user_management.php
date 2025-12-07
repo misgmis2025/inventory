@@ -556,12 +556,12 @@ try {
                                                 <?php endif; ?>
                                             </td>
                                             <td>
+                                                <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
                                                 <div class="dropdown">
                                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                                         Actions
                                                     </button>
                                                     <ul class="dropdown-menu dropdown-menu-end">
-                                                        <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
                                                         <li>
                                                             <button type="button"
                                                                     class="dropdown-item type-edit-btn"
@@ -589,8 +589,6 @@ try {
                                                                 </button>
                                                             </form>
                                                         </li>
-                                                        <?php endif; ?>
-                                                        <?php endif; ?>
                                                         <?php if ($u['username'] !== $_SESSION['username'] && ($u['usertype'] ?? '') !== 'admin'): ?>
                                                         <li><hr class="dropdown-divider"></li>
                                                         <li>
@@ -605,6 +603,7 @@ try {
                                                         <?php endif; ?>
                                                     </ul>
                                                 </div>
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>

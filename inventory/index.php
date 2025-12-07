@@ -300,9 +300,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body pt-1">
-            <p>Your account has been disabled due to a violation of system policies.</p>
+            <p>Your account has been suspended due to a violation of system policies.</p>
             <p>Access to the platform has been temporarily restricted.</p>
-            <p>To request reactivation or clarification, please proceed to the MIS Department and submit an appeal in person. Bring any supporting information for verification.</p>
+            <p>To request reactivation or clarification, please proceed to the MIS Office and submit an appeal in person. Bring any supporting information for verification.</p>
             <p class="mb-0">Thank you for your cooperation.</p>
           </div>
           <div class="modal-footer border-0 pt-0">
