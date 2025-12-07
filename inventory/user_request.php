@@ -1026,25 +1026,14 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           exit;
         }
 
-        if ($for === 'reservation') {
-          // Reservation: include in-use units; exclude items with status Lost/Under Maintenance
-          $total = 0; $agg = $ii->aggregate([
-            ['$match'=>['$or'=>[['model'=>$mkey],['item_name'=>$mkey]], 'category'=>$category, 'status'=>['$nin'=>['Lost','Under Maintenance']]]],
-            ['$project'=>['q'=>['$ifNull'=>['$quantity',1]]]],
-            ['$group'=>['_id'=>null,'sum'=>['$sum'=>'$q']]]
-          ]); foreach ($agg as $r){ $total = (int)($r->sum ?? 0); break; }
-          $base = max(0, $total);
-          $available = max(0, min($limit, $base));
-        } else {
-          // Immediate: only currently Available units
-          $availNow = (int)$ii->countDocuments([
-            'status'=>'Available',
-            'quantity'=>['$gt'=>0],
-            '$or'=>[['model'=>$mkey],['item_name'=>$mkey]],
-            'category'=>$category
-          ]);
-          $available = max(0, min($limit, $availNow));
-        }
+        // For both Immediate and Reservation, count only currently Available units
+        $availNow = (int)$ii->countDocuments([
+          'status'=>'Available',
+          'quantity'=>['$gt'=>0],
+          '$or'=>[['model'=>$mkey],['item_name'=>$mkey]],
+          'category'=>$category
+        ]);
+        $available = max(0, min($limit, $availNow));
       }
     } catch (Throwable $e) { $available = 0; }
     echo json_encode(['available'=>(int)$available]);
@@ -1056,16 +1045,9 @@ if ($__act === 'avail' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         echo json_encode(['available'=>0]);
         exit;
       }
-      if ($for === 'reservation') {
-        // Reservation: include in-use; exclude items with status Lost/Under Maintenance
-        $sum = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND (status <> 'Lost' AND status <> 'Under Maintenance')")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($sum); $q->fetch(); $q->close(); }
-        $base = max(0, (int)$sum);
-        $available = max(0, min((int)$limit, $base));
-      } else {
-        // Immediate: only currently Available units
-        $availNow = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND status='Available' AND quantity>0")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($availNow); $q->fetch(); $q->close(); }
-        $available = max(0, min((int)$limit, (int)$availNow));
-      }
+      // For both Immediate and Reservation, count only currently Available units
+      $availNow = 0; if ($q = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(NULLIF(category,''),'Uncategorized')))=LOWER(TRIM(?)) AND status='Available' AND quantity>0")) { $q->bind_param('ss', $model, $category); $q->execute(); $q->bind_result($availNow); $q->fetch(); $q->close(); }
+      $available = max(0, min((int)$limit, (int)$availNow));
     }
     echo json_encode(['available'=>(int)$available]);
   }
@@ -1218,7 +1200,7 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
           $modelMaxMapLive[$mod] = $cap;
         }
       }
-      // For reservation: include single-quantity models (exactly one unit) even if currently In Use (not Available)
+      // For reservation: include single-quantity models (exactly one unit)
       if ($for === 'reservation') {
         try {
           foreach ($borrowLimitMap as $cat => $mods) {
@@ -1233,7 +1215,7 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
               if ($sum === 1) {
                 if (!isset($availableMapLive[$cat])) { $availableMapLive[$cat] = []; $catOptionsLive[] = $cat; }
                 $availableMapLive[$cat][mb_strtolower($mod)] = $mod;
-                if (!isset($modelMaxMapLive[$mod])) { $modelMaxMapLive[$mod] = 1; }
+                // Do not override modelMaxMapLive here; capacity stays based on actual Available units
               }
             }
           }
@@ -1283,7 +1265,7 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
             if ((int)$sum === 1) {
               if (!isset($availableMapLive[$c])) { $availableMapLive[$c]=[]; $catOptionsLive[]=$c; }
               $availableMapLive[$c][mb_strtolower($m)] = $m;
-              if (!isset($modelMaxMapLive[$m]) || (int)$modelMaxMapLive[$m] < 1) { $modelMaxMapLive[$m] = 1; }
+              // Do not override modelMaxMapLive here; capacity stays based on actual Available units
             }
           }
         }
