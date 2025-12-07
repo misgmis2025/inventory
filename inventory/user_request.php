@@ -3944,12 +3944,26 @@ if (!empty($my_requests)) {
                             <td><?php echo htmlspecialchars(($hv['category'] ?: 'Uncategorized')); ?></td>
                             <td><?php 
                               $stRaw = (string)($hv['latest_action'] ?? ($hv['status'] ?? ''));
-                              $stShow = ($stRaw === 'Under Maintenance') ? 'Damaged' : $stRaw;
-                              if ($stRaw === 'Found' || $stRaw === 'Fixed') { $stShow = 'Returned'; }
+                              $stNorm = strtolower($stRaw);
+                              $stShow = $stRaw;
+                              // Normalize lifecycle: Damaged, Returned (Found/Fixed), Permanently Lost, Disposed
+                              if ($stNorm === 'under maintenance' || $stNorm === 'damaged') {
+                                $stShow = 'Damaged';
+                              } elseif ($stNorm === 'found' || $stNorm === 'fixed') {
+                                $stShow = 'Returned';
+                              } elseif ($stNorm === 'permanently lost') {
+                                $stShow = 'Permanently Lost';
+                              } elseif ($stNorm === 'disposed' || $stNorm === 'disposal') {
+                                $stShow = 'Disposed';
+                              }
                               $badge = 'secondary';
-                              if ($stShow === 'Returned') { $badge = 'success'; }
-                              elseif ($stShow === 'Lost') { $badge = 'danger'; }
-                              elseif ($stShow === 'Damaged') { $badge = 'warning'; }
+                              if ($stShow === 'Returned') {
+                                $badge = 'success';
+                              } elseif ($stShow === 'Lost' || $stShow === 'Permanently Lost' || $stShow === 'Disposed') {
+                                $badge = 'danger';
+                              } elseif ($stShow === 'Damaged') {
+                                $badge = 'warning';
+                              }
                               echo '<span class="badge bg-'.htmlspecialchars($badge).'">'.htmlspecialchars($stShow).'</span>';
                             ?></td>
                           </tr>
@@ -5033,12 +5047,26 @@ if (!empty($my_requests)) {
       } else {
         list.forEach(function(hv){
           const stRaw = String(hv.latest_action || hv.status || '');
-          let stShow = (stRaw === 'Under Maintenance') ? 'Damaged' : stRaw;
-          if (stRaw === 'Found' || stRaw === 'Fixed') stShow = 'Returned';
+          const stNorm = stRaw.toLowerCase();
+          let stShow = stRaw;
+          // Normalize lifecycle: Damaged, Returned (Found/Fixed), Permanently Lost, Disposed
+          if (stNorm === 'under maintenance' || stNorm === 'damaged') {
+            stShow = 'Damaged';
+          } else if (stNorm === 'found' || stNorm === 'fixed') {
+            stShow = 'Returned';
+          } else if (stNorm === 'permanently lost') {
+            stShow = 'Permanently Lost';
+          } else if (stNorm === 'disposed' || stNorm === 'disposal') {
+            stShow = 'Disposed';
+          }
           let badge = 'secondary';
-          if (stShow === 'Returned') badge = 'success';
-          else if (stShow === 'Lost') badge = 'danger';
-          else if (stShow === 'Damaged') badge = 'warning';
+          if (stShow === 'Returned') {
+            badge = 'success';
+          } else if (stShow === 'Lost' || stShow === 'Permanently Lost' || stShow === 'Disposed') {
+            badge = 'danger';
+          } else if (stShow === 'Damaged') {
+            badge = 'warning';
+          }
           const reqId = (hv.request_id && Number(hv.request_id)>0) ? String(hv.request_id) : (hv.borrow_id!=null? String(hv.borrow_id): '');
           const modelName = String(hv.model || hv.item_name || '');
           const borrowedAt = hv.borrowed_at ? new Date(hv.borrowed_at).toLocaleString() : '';
