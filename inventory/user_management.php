@@ -223,12 +223,15 @@ try {
                 };
 
                 $ldCur = $ldCol->find(
-                    ['action' => ['$in' => ['Lost','Under Maintenance','Permanently Lost','Disposed']]],
-                    ['sort' => ['created_at' => -1, 'id' => -1], 'limit' => 2000]
+                    ['action' => ['$in' => ['Lost','Under Maintenance','Permanently Lost','Disposed','Found','Fixed','Damaged','Disposal']]],
+                    ['sort' => ['model_id' => 1, 'created_at' => 1, 'id' => 1], 'limit' => 5000]
                 );
-                $perUserItem = [];
+                $openEpisodes = [];
+                $lostEpisodes = [];
+                $damagedEpisodes = [];
                 foreach ($ldCur as $l) {
                     $mid = isset($l['model_id']) ? (int)$l['model_id'] : 0;
+                    if ($mid <= 0) continue;
                     $logWhen = '';
                     try {
                         if (isset($l['created_at']) && $l['created_at'] instanceof MongoDB\BSON\UTCDateTime) {
@@ -241,43 +244,82 @@ try {
                     } catch (Throwable $_c) {
                         $logWhen = trim((string)($l['created_at'] ?? ''));
                     }
-                    $userU = '';
-                    if (isset($l['affected_username'])) {
-                        $userU = trim((string)$l['affected_username']);
+                    $act = strtolower((string)($l['action'] ?? ''));
+                    if (!isset($openEpisodes[$mid])) {
+                        $openEpisodes[$mid] = null;
                     }
-                    if ($userU === '') {
-                        $userU = $tryBorrow($mid, $logWhen);
+                    $ep =& $openEpisodes[$mid];
+                    $isStartCandidate = in_array($act, ['lost','under maintenance','damaged','permanently lost','disposed','disposal'], true);
+                    // Start a new episode when we see a loss/damage-type action and none is open
+                    if ($isStartCandidate && $ep === null) {
+                        $userU = '';
+                        if (isset($l['affected_username'])) {
+                            $userU = trim((string)$l['affected_username']);
+                        }
+                        if ($userU === '') {
+                            $userU = $tryBorrow($mid, $logWhen);
+                        }
+                        if ($userU === '' && isset($l['username'])) {
+                            $cand = trim((string)$l['username']);
+                            if (isset($userSet[$cand])) {
+                                $userU = $cand;
+                            }
+                        }
+                        if ($userU !== '' && isset($userStats[$userU])) {
+                            $isLost = in_array($act, ['lost','permanently lost'], true);
+                            $ep = [
+                                'user' => $userU,
+                                'lost' => $isLost,
+                                'damaged' => !$isLost,
+                            ];
+                        }
+                        unset($ep);
+                        continue;
                     }
-                    if ($userU === '' && isset($l['username'])) {
-                        $cand = trim((string)$l['username']);
-                        if (isset($userSet[$cand])) {
-                            $userU = $cand;
+                    if ($ep !== null) {
+                        // Upgrade flags within an open episode
+                        if (in_array($act, ['lost','permanently lost'], true)) {
+                            $ep['lost'] = true;
+                            $ep['damaged'] = false;
+                        } elseif (in_array($act, ['under maintenance','damaged','disposed','disposal'], true)) {
+                            if (!$ep['lost']) {
+                                $ep['damaged'] = true;
+                            }
+                        }
+                        // Resolution-type actions close the episode but still count it
+                        if (in_array($act, ['found','fixed','permanently lost','disposed','disposal'], true)) {
+                            $u = $ep['user'];
+                            if (!isset($lostEpisodes[$u])) $lostEpisodes[$u] = 0;
+                            if (!isset($damagedEpisodes[$u])) $damagedEpisodes[$u] = 0;
+                            if (!empty($ep['lost'])) {
+                                $lostEpisodes[$u]++;
+                            } elseif (!empty($ep['damaged'])) {
+                                $damagedEpisodes[$u]++;
+                            }
+                            $ep = null;
                         }
                     }
-                    if ($userU === '' || !isset($userStats[$userU]) || $mid <= 0) continue;
-                    $action = (string)($l['action'] ?? '');
-                    $key = $userU . '|' . $mid;
-                    if (!isset($perUserItem[$key])) {
-                        $perUserItem[$key] = ['lost' => false, 'damaged' => false];
-                    }
-                    if ($action === 'Lost' || $action === 'Permanently Lost') {
-                        $perUserItem[$key]['lost'] = true;
-                        $perUserItem[$key]['damaged'] = false;
-                    } elseif ($action === 'Under Maintenance' || $action === 'Disposed') {
-                        if (!$perUserItem[$key]['lost']) {
-                            $perUserItem[$key]['damaged'] = true;
-                        }
+                    unset($ep);
+                }
+                // Any open episodes with no explicit resolution should still be counted once
+                foreach ($openEpisodes as $mid => $ep) {
+                    if ($ep === null) continue;
+                    $u = $ep['user'];
+                    if (!isset($userStats[$u])) continue;
+                    if (!isset($lostEpisodes[$u])) $lostEpisodes[$u] = 0;
+                    if (!isset($damagedEpisodes[$u])) $damagedEpisodes[$u] = 0;
+                    if (!empty($ep['lost'])) {
+                        $lostEpisodes[$u]++;
+                    } elseif (!empty($ep['damaged'])) {
+                        $damagedEpisodes[$u]++;
                     }
                 }
-                foreach ($perUserItem as $key => $flags) {
-                    list($userU,) = explode('|', $key, 2);
-                    if (!isset($userStats[$userU])) continue;
-                    if (!empty($flags['lost'])) {
-                        $userStats[$userU]['lost']++;
-                    } elseif (!empty($flags['damaged'])) {
-                        $userStats[$userU]['damaged']++;
-                    }
+                // Apply episode counts into userStats
+                foreach ($userStats as $uname => &$st) {
+                    $st['lost'] = isset($lostEpisodes[$uname]) ? (int)$lostEpisodes[$uname] : 0;
+                    $st['damaged'] = isset($damagedEpisodes[$uname]) ? (int)$damagedEpisodes[$uname] : 0;
                 }
+                unset($st);
             }
         } catch (Throwable $_agg) {
             $userStats = [];
