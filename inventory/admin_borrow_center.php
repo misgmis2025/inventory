@@ -2395,8 +2395,6 @@ if ($act === 'pending_json' || $act === 'borrowed_json' || $act === 'reservation
         if ($reqId <= 0 || $borrowId <= 0) { continue; }
         $er = $erCol->findOne(['id' => $reqId]);
         if (!$er) { continue; }
-        $st = (string)($er['status'] ?? '');
-        if (!in_array($st, ['Approved','Borrowed'], true)) { continue; }
         $ub = $ubCol->findOne(['id' => $borrowId]);
         if (!$ub) { continue; }
         // Only show if this allocation's borrow is still active

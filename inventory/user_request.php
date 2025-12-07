@@ -1860,6 +1860,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cat = '';
     foreach ($availableMap as $c => $mods) { if (in_array($item_name, array_values($mods), true)) { $cat = $c; break; } }
     $isAllowed = ($cat !== '');
+    if ($isAllowed) {
+      try {
+        if ($USED_MONGO && $mongo_db) {
+          $bmLive = $mongo_db->selectCollection('borrowable_catalog');
+          $catNormLive = $cat !== '' ? $cat : 'Uncategorized';
+          $bmDocLive = $bmLive->findOne(['active'=>1,'model_name'=>$item_name,'category'=>$catNormLive], ['projection'=>['borrow_limit'=>1]]);
+          $limitNow = $bmDocLive && isset($bmDocLive['borrow_limit']) ? (int)$bmDocLive['borrow_limit'] : 0;
+          if (!$bmDocLive || $limitNow <= 0) { $isAllowed = false; $cat = ''; }
+        } elseif ($conn) {
+          $catNormLive = $cat !== '' ? $cat : 'Uncategorized';
+          $limitNow = 0;
+          if ($stL = $conn->prepare("SELECT borrow_limit FROM borrowable_models WHERE active=1 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?)) LIMIT 1")) {
+            $stL->bind_param('ss',$item_name,$catNormLive);
+            $stL->execute();
+            $stL->bind_result($limitNow);
+            $stL->fetch();
+            $stL->close();
+          }
+          if ((int)$limitNow <= 0) { $isAllowed = false; $cat = ''; }
+        }
+      } catch (Throwable $_live) { }
+    }
     // Reservation override: allow single-quantity items even if currently in use (cap quantity to 1)
     $reservationSingleOverride = false;
     if (!$isAllowed && $req_type === 'reservation') {
@@ -1869,7 +1891,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $bmCol = $mongo_db->selectCollection('borrowable_catalog');
           $iiDoc = $iiCol->findOne(['$or' => [['model'=>$item_name], ['item_name'=>$item_name]]], ['sort'=>['id'=>-1], 'projection'=>['category'=>1,'model'=>1,'item_name'=>1,'quantity'=>1]]);
           $catNorm = $iiDoc ? ((string)($iiDoc['category'] ?? '') ?: 'Uncategorized') : 'Uncategorized';
-          $isBorrowable = (int)$bmCol->countDocuments(['active'=>1,'model_name'=>$item_name,'category'=>$catNorm]) > 0;
+          // Only allow override when there is an active borrowable row with positive borrow_limit
+          $isBorrowable = (int)$bmCol->countDocuments(['active'=>1,'model_name'=>$item_name,'category'=>$catNorm,'borrow_limit'=>['$gt'=>0]]) > 0;
           if ($isBorrowable) {
             // total units
             $sum = 0; $agg = $iiCol->aggregate([
@@ -1880,9 +1903,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($sum <= 1) { $cat = $catNorm; $isAllowed = true; $reservationSingleOverride = true; }
           }
         } elseif ($conn) {
-          // Resolve category and ensure model is active in borrowable_models
+          // Resolve category and ensure model is active in borrowable_models with positive borrow_limit
           $catNorm = 'Uncategorized'; if ($st = $conn->prepare("SELECT COALESCE(NULLIF(category,''),'Uncategorized') FROM inventory_items WHERE (model=? OR item_name=?) ORDER BY id DESC LIMIT 1")) { $st->bind_param('ss',$item_name,$item_name); $st->execute(); $st->bind_result($catNorm); $st->fetch(); $st->close(); }
-          $isBorrowable = false; if ($st2 = $conn->prepare("SELECT 1 FROM borrowable_models WHERE active=1 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?)) LIMIT 1")) { $st2->bind_param('ss',$item_name,$catNorm); $st2->execute(); $st2->store_result(); $isBorrowable = $st2->num_rows > 0; $st2->close(); }
+          $isBorrowable = false; if ($st2 = $conn->prepare("SELECT 1 FROM borrowable_models WHERE active=1 AND borrow_limit>0 AND LOWER(TRIM(model_name))=LOWER(TRIM(?)) AND LOWER(TRIM(category))=LOWER(TRIM(?)) LIMIT 1")) { $st2->bind_param('ss',$item_name,$catNorm); $st2->execute(); $st2->store_result(); $isBorrowable = $st2->num_rows > 0; $st2->close(); }
           if ($isBorrowable) {
             $sum = 0; if ($st3 = $conn->prepare("SELECT COALESCE(SUM(quantity),0) FROM inventory_items WHERE LOWER(TRIM(COALESCE(NULLIF(model,''), item_name)))=LOWER(TRIM(?))")) { $st3->bind_param('s',$item_name); $st3->execute(); $st3->bind_result($sum); $st3->fetch(); $st3->close(); }
             if ((int)$sum <= 1) { $cat = $catNorm; $isAllowed = true; $reservationSingleOverride = true; }
