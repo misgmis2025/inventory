@@ -418,7 +418,7 @@ try {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary btn-sm" id="agreementAcceptBtn" disabled>I Agree &amp; Create Account</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="agreementAcceptBtn" disabled>I Agree &amp; Create Account</button>
           </div>
         </div>
       </div>
@@ -510,7 +510,8 @@ try {
             msg.style.display = 'none';
           }
 
-          const fieldsOk = passOk && (!confirmTyped || matched) && idOk && typeOk && fullOk && userOk && !idTakenBad && !fullTakenBad && !userTakenBad;
+          // All basic fields must be valid, and confirm password must be filled & matching
+          const fieldsOk = passOk && confirmTyped && matched && idOk && typeOk && fullOk && userOk && !idTakenBad && !fullTakenBad && !userTakenBad;
           const allOk = fieldsOk && agreementAccepted;
 
           if (submitBtn) {
@@ -629,6 +630,8 @@ try {
           const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
           if (atBottom) {
             agreementAcceptBtn.disabled = false;
+            agreementAcceptBtn.classList.remove('btn-secondary');
+            agreementAcceptBtn.classList.add('btn-primary');
             if (agreementHint) agreementHint.textContent = 'You may now click "I Agree & Create Account" to finish signing up.';
           }
         }
@@ -641,7 +644,11 @@ try {
         if (agreementChk && agreementModalEl) {
           agreementChk.addEventListener('click', function(e) {
             e.preventDefault();
-            if (agreementAcceptBtn) agreementAcceptBtn.disabled = true;
+            if (agreementAcceptBtn) {
+              agreementAcceptBtn.disabled = true;
+              agreementAcceptBtn.classList.add('btn-secondary');
+              agreementAcceptBtn.classList.remove('btn-primary');
+            }
             if (agreementScroll) agreementScroll.scrollTop = 0;
             if (agreementHint) agreementHint.textContent = 'Scroll to the bottom to enable the Agree button.';
             if (!agreementModal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
@@ -674,7 +681,11 @@ try {
             if (!agreementAccepted && agreementModal) {
               e.preventDefault();
               // Reset scroll/agree state each time
-              if (agreementAcceptBtn) agreementAcceptBtn.disabled = true;
+              if (agreementAcceptBtn) {
+                agreementAcceptBtn.disabled = true;
+                agreementAcceptBtn.classList.add('btn-secondary');
+                agreementAcceptBtn.classList.remove('btn-primary');
+              }
               if (agreementScroll) {
                 agreementScroll.scrollTop = 0;
               }
