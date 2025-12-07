@@ -6345,7 +6345,15 @@ try {
         var modelInput = document.getElementById('ldConfirmModelId');
         var doInput = document.getElementById('ldConfirmDo');
         var confirmHidden = document.getElementById('ldConfirmText');
+        var okBtn = document.getElementById('ldConfirmOkBtn');
         var expected = '';
+
+        function updateLdConfirmState() {
+          if (!inputEl || !okBtn) return;
+          var val = String(inputEl.value || '');
+          var match = expected && (val.trim() === expected);
+          okBtn.disabled = !match;
+        }
 
         parent.addEventListener('click', function(e){
           var btn = e.target.closest('.ld-confirm-btn');
@@ -6370,6 +6378,9 @@ try {
             inputEl.value = '';
             inputEl.placeholder = expected;
           }
+          if (okBtn) {
+            okBtn.disabled = true;
+          }
           if (modelInput) modelInput.value = mid;
           if (doInput) {
             doInput.value = (type === 'permanent_lost' ? 'mark_permanent_lost' : (type === 'dispose' ? 'dispose_item' : ''));
@@ -6382,12 +6393,18 @@ try {
           }
         });
 
+        if (inputEl) {
+          inputEl.addEventListener('input', function(){
+            updateLdConfirmState();
+          });
+        }
+
         formEl.addEventListener('submit', function(ev){
           if (!expected) return;
           var val = inputEl ? String(inputEl.value || '') : '';
-          if (val.trim().toUpperCase() !== expected) {
+          if (val.trim() !== expected) {
             ev.preventDefault();
-            alert('Confirmation failed. You must type ' + expected + ' to proceed.');
+            alert('Confirmation failed. You must type ' + expected + ' exactly as shown to proceed.');
             if (inputEl) { inputEl.focus(); }
             return;
           }
