@@ -453,25 +453,6 @@ try {
                 <span>ECA MIS-GMIS</span>
             </div>
 
-            <div class="card mt-4">
-                <div class="card-header">
-                    <strong>Borrowing Agreement &amp; Accountability Policy</strong>
-                </div>
-                <div class="card-body">
-                    <form method="post" action="user_management.php">
-                        <input type="hidden" name="action" value="update_borrow_agreement" />
-                        <div class="mb-2 small text-muted">
-                            This content is shown on the Signup page and in the user Submit Request / Scan Item QR modals.
-                        </div>
-                        <textarea name="borrow_agreement" class="form-control" rows="8"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
-                        <div class="text-end mt-3">
-                            <button type="submit" class="btn btn-primary btn-sm">Save Policy</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-    
             <div class="list-group list-group-flush my-3">
                 <a href="admin_dashboard.php" class="list-group-item list-group-item-action bg-transparent">
                     <i class="bi bi-speedometer2 me-2"></i>Dashboard
@@ -523,6 +504,9 @@ try {
                             </div>
                         </div>
                     </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#editBorrowAgreementModal">
+                        <i class="bi bi-file-earmark-text me-1"></i>Edit Policy
+                    </button>
                     <span class="text-muted">Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?>!</span>
                 </div>
             </div>
@@ -750,6 +734,31 @@ try {
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Edit Borrowing Agreement & Accountability Policy Modal -->
+    <div class="modal fade" id="editBorrowAgreementModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Edit Borrowing Agreement &amp; Accountability Policy</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form method="post" action="user_management.php" id="editBorrowAgreementForm">
+              <input type="hidden" name="action" value="update_borrow_agreement" />
+              <div class="mb-2 small text-muted">
+                This content is shown on the Signup page and in the user Submit Request / Scan Item QR modals.
+              </div>
+              <textarea name="borrow_agreement" class="form-control" rows="10"><?php echo htmlspecialchars($agreementHtml !== '' ? $agreementHtml : ''); ?></textarea>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" form="editBorrowAgreementForm" class="btn btn-primary btn-sm">Save Policy</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Account Disable/Enable Modal -->
