@@ -295,7 +295,7 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
             <div class="text-danger small mt-2"><?php echo htmlspecialchars($login_error); ?></div>
           <?php endif; ?>
 
-          <?php if ($accountDisabled && $isAppUa): ?>
+          <?php if ($accountDisabled): ?>
             <div class="alert alert-warning small mt-3" role="alert">
               Your account has been suspended due to a violation of system policies.
               Access to the platform has been temporarily restricted. Please contact the MIS Office
