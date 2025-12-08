@@ -476,8 +476,6 @@ try {
     </script>
     <script>
         (function(){
-            var ua = navigator.userAgent || '';
-            if (ua.indexOf('MISGMIS-APP') !== -1) return;
             if (typeof window.fetch !== 'function') return;
             function checkDisabled(){
                 try {
