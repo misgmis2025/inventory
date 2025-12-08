@@ -212,20 +212,22 @@ try {
         elseif ($q > 50) { $highCount++; }
     }
 
-    // Build Out of Stock list from active borrowable catalog using constrained availability (borrowable list quantities)
+    // Build Out of Stock list from active borrowable catalog using constrained availability
+    // Only include models that still have inventory_items records (exclude fully deleted/outdated entries)
     try {
         $bcCol = $db->selectCollection('borrowable_catalog');
         $iiCol = $db->selectCollection('inventory_items');
-        // Borrow limits map for active models
+        // Borrow limits map for active models (skip logically deleted entries with borrow_limit <= 0)
         $borrowLimitMap = [];
         $activeCur = $bcCol->find(['active' => 1], ['projection' => ['model_name' => 1, 'category' => 1, 'borrow_limit'=>1]]);
         foreach ($activeCur as $b) {
             $c = (string)($b['category'] ?? '');
             $c = ($c !== '') ? $c : 'Uncategorized';
             $m = trim((string)($b['model_name'] ?? ''));
-            if ($m === '') continue;
+            $limitVal = isset($b['borrow_limit']) ? (int)$b['borrow_limit'] : 0;
+            if ($m === '' || $limitVal <= 0) continue; // treat borrow_limit <= 0 as deleted from borrowable list
             if (!isset($borrowLimitMap[$c])) $borrowLimitMap[$c] = [];
-            $borrowLimitMap[$c][$m] = (int)($b['borrow_limit'] ?? 0);
+            $borrowLimitMap[$c][$m] = $limitVal;
         }
         // Available now per (category, model)
         $availNow = [];
@@ -244,6 +246,24 @@ try {
             if ($m === '') continue;
             if (!isset($availNow[$c])) $availNow[$c] = [];
             $availNow[$c][$m] = (int)($r->avail ?? 0);
+        }
+        // Total units per (category, model) across all statuses
+        // Used to skip borrowable entries that have no inventory items left (fully deleted/moved)
+        $totalByBorrowModel = [];
+        $aggTotal = $iiCol->aggregate([
+            ['$project'=>[
+                'category'=>['$ifNull'=>['$category','Uncategorized']],
+                'model_key'=>['$ifNull'=>['$model','$item_name']],
+                'q'=>['$ifNull'=>['$quantity',1]]
+            ]],
+            ['$group'=>['_id'=>['c'=>'$category','m'=>'$model_key'], 'total'=>['$sum'=>'$q']]]
+        ]);
+        foreach ($aggTotal as $r) {
+            $c = (string)($r->_id['c'] ?? 'Uncategorized');
+            $m = (string)($r->_id['m'] ?? '');
+            if ($m === '') continue;
+            if (!isset($totalByBorrowModel[$c])) $totalByBorrowModel[$c] = [];
+            $totalByBorrowModel[$c][$m] = (int)($r->total ?? 0);
         }
         // Consumed counts: active borrows + pending returned_queue + returned_hold
         $consumed = [];
@@ -281,6 +301,12 @@ try {
         $outBorrowables = [];
         foreach ($borrowLimitMap as $cat => $mods) {
             foreach ($mods as $mod => $limit) {
+                $totalForModel = (int)($totalByBorrowModel[$cat][$mod] ?? 0);
+                if ($totalForModel <= 0) {
+                    // No inventory_items left for this category/model (fully deleted or renamed)
+                    // Do not treat it as out-of-stock on the dashboard
+                    continue;
+                }
                 $availableNow = (int)($availNow[$cat][$mod] ?? 0);
                 $cons = (int)($consumed[$cat][$mod] ?? 0);
                 $avail = max(0, min(max(0, $limit - $cons), $availableNow));
@@ -300,10 +326,13 @@ try {
         $borrowableSet = [];
         try {
             $bc2 = $db->selectCollection('borrowable_catalog');
-            $curB = $bc2->find(['active'=>1], ['projection'=>['category'=>1,'model_name'=>1]]);
+            $curB = $bc2->find(['active'=>1], ['projection'=>['category'=>1,'model_name'=>1,'borrow_limit'=>1]]);
             foreach ($curB as $b) {
-                $c = (string)($b['category'] ?? ''); $c = ($c !== '') ? $c : 'Uncategorized';
-                $m = trim((string)($b['model_name'] ?? '')); if ($m === '') continue;
+                $c = (string)($b['category'] ?? '');
+                $c = ($c !== '') ? $c : 'Uncategorized';
+                $m = trim((string)($b['model_name'] ?? ''));
+                $limitVal = isset($b['borrow_limit']) ? (int)$b['borrow_limit'] : 0;
+                if ($m === '' || $limitVal <= 0) continue; // skip logically deleted borrowables
                 $borrowableSet[strtolower($c).'|'.strtolower($m)] = true;
             }
         } catch (Throwable $_) {}
