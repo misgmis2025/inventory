@@ -38,9 +38,13 @@ if (isset($_SESSION['username'])) {
 $login_error = '';
 $prev_username = '';
 $accountDisabled = false;
-// If redirected due to a disabled account, show the disabled-account modal
-if (isset($_GET['disabled']) && $_GET['disabled'] === '1') {
+// If redirected due to a disabled account (query or cookie), show the disabled-account modal
+if ((isset($_GET['disabled']) && $_GET['disabled'] === '1') || (!empty($_COOKIE['inventory_disabled']))) {
     $accountDisabled = true;
+}
+// One-shot cookie: clear it after reading so it does not persist forever
+if (!empty($_COOKIE['inventory_disabled'])) {
+    @setcookie('inventory_disabled', '', time() - 3600, '/');
 }
 // Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
 $__autoload_candidates = [

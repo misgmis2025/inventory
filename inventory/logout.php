@@ -14,8 +14,16 @@ if (ini_get('session.use_cookies')) {
     setcookie(session_name(), '', time() - 42000, $params['path'] ?? '/', $params['domain'] ?? '', !empty($params['secure']), !empty($params['httponly']));
 }
 @session_destroy();
+
+// If this logout was triggered due to a disabled account, set a short-lived cookie
+// so index.php can reliably show the penalty message even if the query is lost.
+$isDisabledLogout = (isset($_GET['disabled']) && $_GET['disabled'] === '1');
+if ($isDisabledLogout) {
+    @setcookie('inventory_disabled', '1', time() + 600, '/');
+}
+
 $redir = 'index.php';
-if (isset($_GET['disabled']) && $_GET['disabled'] === '1') {
+if ($isDisabledLogout) {
     $redir .= '?disabled=1';
 }
 header('Location: ' . $redir);
