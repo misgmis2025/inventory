@@ -2685,7 +2685,7 @@ if (!empty($my_requests)) {
 
                 <div class="mt-2 row g-2 d-none" id="urReserveWrap">
                   <div class="col-12 col-md-6">
-                    <label class="form-label fw-bold d-flex align-items-center gap-2" for="urResFrom">Reservation Start <small id="urResStartHint" class="text-info"></small></label>
+                    <label class="form-label fw-bold" for="urResFrom">Reservation Start <small id="urResStartHint" class="text-info"></small></label>
                     <input type="datetime-local" id="urResFrom" class="form-control" />
                   </div>
                   <div class="col-12 col-md-6">
