@@ -993,6 +993,37 @@ if (!$USED_MONGO) {
         }catch(_){ }
       })();
     </script>
+    <script>
+      // Live disabled-account detection for logged-in user dashboard
+      (function(){
+        if (typeof window.fetch !== 'function') return;
+        function checkDisabled(){
+          try {
+            fetch('auth_status.php', { cache: 'no-store' })
+              .then(function(r){ return r.json(); })
+              .then(function(d){
+                try {
+                  if (!d) return;
+                  if (d.disabled) {
+                    window.location.href = 'logout.php?disabled=1';
+                  } else if (d.logged_out) {
+                    window.location.href = 'index.php';
+                  }
+                } catch (_){ }
+              })
+              .catch(function(){ });
+          } catch (_){ }
+        }
+        // Initial check and periodic polling while tab is visible
+        checkDisabled();
+        setInterval(function(){
+          try {
+            if (document.visibilityState && document.visibilityState !== 'visible') return;
+          } catch (_){ }
+          checkDisabled();
+        }, 2000);
+      })();
+    </script>
     <script src="page-transitions.js?v=<?php echo filemtime(__DIR__.'/page-transitions.js'); ?>"></script>
 </body>
 </html>
