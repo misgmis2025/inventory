@@ -307,7 +307,7 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
         </form>
         <p class="login-switch">Don't have an account? <a href="/inventory/signup.php">Sign up here</a></p>
         <?php if ($showAppDownloadLink): ?>
-          <div class="mt-3 small text-center">
+          <div id="browserAppDownloadBlock" class="mt-3 small text-center">
             <span class="text-muted d-block mb-1">Using the browser? Install the MISGMIS mobile app:</span>
             <a href="<?php echo htmlspecialchars($appApkUrl, ENT_QUOTES); ?>" class="btn btn-outline-primary btn-sm">Download MISGMIS App</a>
           </div>
@@ -349,6 +349,17 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
           }
         }
       });
+    </script>
+    <script>
+      (function(){
+        try {
+          var ua = navigator.userAgent || '';
+          if (ua.indexOf('MISGMIS-APP') !== -1) {
+            var blk = document.getElementById('browserAppDownloadBlock');
+            if (blk) { blk.style.display = 'none'; }
+          }
+        } catch (e) {}
+      })();
     </script>
     <script>
       // Try to auto-open MISGMIS app on Android browsers when visiting login page
