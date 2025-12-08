@@ -353,18 +353,9 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
         var isAndroid = /Android/i.test(ua);
         if (!isAndroid) return;
 
-        // Do not attempt deep link when account is disabled (penalty state)
-        var isDisabled = <?php echo $accountDisabled ? 'true' : 'false'; ?>;
-        if (isDisabled) return;
-
-        // Give the page a moment to render, then attempt deep link.
-        setTimeout(function(){
-          try {
-            window.location.href = 'misgmis://app/login';
-          } catch (e) {
-            // If app is not installed or browser blocks it, just ignore.
-          }
-        }, 800);
+        // Deep link temporarily disabled to avoid Android 'webpage not available' errors.
+        // Keeping this block as a no-op so behavior can be re-enabled later if needed.
+        return;
       })();
     </script>
     <script>
