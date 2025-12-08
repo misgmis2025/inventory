@@ -338,6 +338,27 @@ $showAppDownloadLink = !$isIosUa && !$isAppUa && $appApkUrl !== '';
       });
     </script>
     <script>
+      // Try to auto-open MISGMIS app on Android browsers when visiting login page
+      (function(){
+        var isApp = <?php echo $isAppUa ? 'true' : 'false'; ?>;
+        var isIos = <?php echo $isIosUa ? 'true' : 'false'; ?>;
+        if (isApp || isIos) return; // do not run inside app WebView or on iOS
+
+        var ua = navigator.userAgent || '';
+        var isAndroid = /Android/i.test(ua);
+        if (!isAndroid) return;
+
+        // Give the page a moment to render, then attempt deep link.
+        setTimeout(function(){
+          try {
+            window.location.href = 'misgmis://app/login';
+          } catch (e) {
+            // If app is not installed or browser blocks it, just ignore.
+          }
+        }, 800);
+      })();
+    </script>
+    <script>
       (function(){
         const pwd = document.getElementById('password');
         const toggle = document.getElementById('toggle_password_login');
