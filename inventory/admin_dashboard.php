@@ -216,31 +216,49 @@ try {
     try {
         $bcCol = $db->selectCollection('borrowable_catalog');
         $iiCol = $db->selectCollection('inventory_items');
+        $buCol = $db->selectCollection('borrowable_units');
         // Borrow limits map for active models
         $borrowLimitMap = [];
-        $activeCur = $bcCol->find(['active' => 1], ['projection' => ['model_name' => 1, 'category' => 1, 'borrow_limit'=>1]]);
+        $activeCur = $bcCol->find(['active' => 1, 'borrow_limit' => ['$gt' => 0]], ['projection' => ['model_name' => 1, 'category' => 1, 'borrow_limit'=>1]]);
         foreach ($activeCur as $b) {
             $c = (string)($b['category'] ?? '');
             $c = ($c !== '') ? $c : 'Uncategorized';
             $m = trim((string)($b['model_name'] ?? ''));
             if ($m === '') continue;
             if (!isset($borrowLimitMap[$c])) $borrowLimitMap[$c] = [];
-            $borrowLimitMap[$c][$m] = (int)($b['borrow_limit'] ?? 0);
+            $lim = (int)($b['borrow_limit'] ?? 0);
+            if ($lim <= 0) continue;
+            $borrowLimitMap[$c][$m] = $lim;
         }
         // Available now per (category, model)
         $availNow = [];
-        $aggAvail = $iiCol->aggregate([
-            ['$match'=>['status'=>'Available','quantity'=>['$gt'=>0]]],
-            ['$project'=>[
-                'category'=>['$ifNull'=>['$category','Uncategorized']],
-                'model_key'=>['$ifNull'=>['$model','$item_name']],
-                'q'=>['$ifNull'=>['$quantity',1]]
+        $aggAvail = $buCol->aggregate([
+            ['$lookup'=>[
+                'from'=>'inventory_items',
+                'localField'=>'model_id',
+                'foreignField'=>'id',
+                'as'=>'item'
             ]],
-            ['$group'=>['_id'=>['c'=>'$category','m'=>'$model_key'], 'avail'=>['$sum'=>'$q']]]
+            ['$unwind'=>'$item'],
+            ['$project'=>[
+                'category'=>'$category',
+                'model_name'=>'$model_name',
+                'status'=>['$ifNull'=>['$item.status','']]
+            ]],
+            ['$group'=>[
+                '_id'=>[
+                    'category'=>['$ifNull'=>['$category','Uncategorized']],
+                    'model_name'=>['$ifNull'=>['$model_name','']]
+                ],
+                'avail'=>['$sum'=>[
+                    '$cond'=>[['$eq'=>['$status','Available']],1,0]
+                ]]
+            ]]
         ]);
         foreach ($aggAvail as $r) {
-            $c = (string)($r->_id['c'] ?? 'Uncategorized');
-            $m = (string)($r->_id['m'] ?? '');
+            $id = (array)($r->_id ?? []);
+            $c = (string)($id['category'] ?? 'Uncategorized');
+            $m = (string)($id['model_name'] ?? '');
             if ($m === '') continue;
             if (!isset($availNow[$c])) $availNow[$c] = [];
             $availNow[$c][$m] = (int)($r->avail ?? 0);
@@ -281,6 +299,13 @@ try {
         $outBorrowables = [];
         foreach ($borrowLimitMap as $cat => $mods) {
             foreach ($mods as $mod => $limit) {
+                // Skip stale borrowable entries that have no whitelisted units
+                // and no active/pending usage; these typically correspond to
+                // deleted categories/items that still have a catalog row.
+                $hasAvail = isset($availNow[$cat]) && array_key_exists($mod, $availNow[$cat]);
+                $hasCons  = isset($consumed[$cat]) && array_key_exists($mod, $consumed[$cat]);
+                if (!$hasAvail && !$hasCons) { continue; }
+
                 $availableNow = (int)($availNow[$cat][$mod] ?? 0);
                 $cons = (int)($consumed[$cat][$mod] ?? 0);
                 $avail = max(0, min(max(0, $limit - $cons), $availableNow));
@@ -300,28 +325,47 @@ try {
         $borrowableSet = [];
         try {
             $bc2 = $db->selectCollection('borrowable_catalog');
-            $curB = $bc2->find(['active'=>1], ['projection'=>['category'=>1,'model_name'=>1]]);
+            $curB = $bc2->find(['active'=>1, 'borrow_limit' => ['$gt' => 0]], ['projection'=>['category'=>1,'model_name'=>1,'borrow_limit'=>1]]);
             foreach ($curB as $b) {
                 $c = (string)($b['category'] ?? ''); $c = ($c !== '') ? $c : 'Uncategorized';
                 $m = trim((string)($b['model_name'] ?? '')); if ($m === '') continue;
+                $lim = (int)($b['borrow_limit'] ?? 0); if ($lim <= 0) continue;
                 $borrowableSet[strtolower($c).'|'.strtolower($m)] = true;
             }
         } catch (Throwable $_) {}
         try {
-            $curA = $itemsCol->find(['status'=>'Available'], ['projection'=>['item_name'=>1,'model'=>1,'category'=>1,'location'=>1,'remarks'=>1,'serial_no'=>1]]);
-            foreach ($curA as $docA) {
-                $cat = (string)($docA['category'] ?? ''); $cat = ($cat !== '') ? $cat : 'Uncategorized';
-                $mk = (string)($docA['model'] ?? '');
-                $nm = ($mk !== '') ? $mk : (string)($docA['item_name'] ?? '');
+            $bu2 = $db->selectCollection('borrowable_units');
+            $aggAvailUnits = $bu2->aggregate([
+                ['$lookup'=>[
+                    'from'=>'inventory_items',
+                    'localField'=>'model_id',
+                    'foreignField'=>'id',
+                    'as'=>'item'
+                ]],
+                ['$unwind'=>'$item'],
+                ['$project'=>[
+                    'category'=>'$category',
+                    'model_name'=>'$model_name',
+                    'status'=>['$ifNull'=>['$item.status','']],
+                    'location'=>['$ifNull'=>['$item.location','']],
+                    'remarks'=>['$ifNull'=>['$item.remarks','']],
+                    'serial_no'=>['$ifNull'=>['$item.serial_no','']]
+                ]]
+            ]);
+            foreach ($aggAvailUnits as $rowA) {
+                $rawStatus = (string)($rowA->status ?? '');
+                if ($rawStatus !== 'Available') continue;
+                $cat = trim((string)($rowA->category ?? '')) !== '' ? (string)$rowA->category : 'Uncategorized';
+                $nm = trim((string)($rowA->model_name ?? ''));
                 if ($nm === '') continue;
                 $key = strtolower($cat).'|'.strtolower($nm);
                 if (!isset($borrowableSet[$key])) continue;
                 $availableUnits[] = [
                     'item_name' => $nm,
                     'category' => $cat,
-                    'location' => (string)($docA['location'] ?? ''),
-                    'remarks' => (string)($docA['remarks'] ?? ''),
-                    'serial_no' => (string)($docA['serial_no'] ?? ''),
+                    'location' => (string)($rowA->location ?? ''),
+                    'remarks' => (string)($rowA->remarks ?? ''),
+                    'serial_no' => (string)($rowA->serial_no ?? ''),
                 ];
                 if (count($availableUnits) >= 500) break;
             }
