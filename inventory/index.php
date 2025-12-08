@@ -299,14 +299,6 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
             <div class="text-danger small mt-2"><?php echo htmlspecialchars($login_error); ?></div>
           <?php endif; ?>
 
-          <?php if ($accountDisabled): ?>
-            <div class="alert alert-warning small mt-3" role="alert">
-              Your account has been suspended due to a violation of system policies.
-              Access to the platform has been temporarily restricted. Please contact the MIS Office
-              if you need clarification or wish to appeal this decision.
-            </div>
-          <?php endif; ?>
-
           <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
         </form>
         <p class="login-switch">Don't have an account? <a href="/inventory/signup.php">Sign up here</a></p>
