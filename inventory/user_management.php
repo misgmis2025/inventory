@@ -90,11 +90,11 @@ try {
                 header('Location: user_management.php?updated=1'); exit();
             } elseif ($action === 'delete_user') {
                 $adminPass = $_POST['admin_password'] ?? '';
-                if ($adminPass === '') { header('Location: user_management.php?error=auth'); exit(); }
+                if ($adminPass === '') { header('Location: user_management.php?error=auth&ctx=delete&user='.urlencode($username)); exit(); }
                 // Verify admin password
                 $me = $usersCol->findOne(['username'=>$_SESSION['username']], ['projection'=>['password_hash'=>1]]);
                 $authOk = ($me && isset($me['password_hash']) && password_verify($adminPass, (string)$me['password_hash']));
-                if (!$authOk) { header('Location: user_management.php?error=auth'); exit(); }
+                if (!$authOk) { header('Location: user_management.php?error=auth&ctx=delete&user='.urlencode($username)); exit(); }
                 // Disallow deleting any admin; require demotion first
                 $target = $usersCol->findOne(['username'=>$username], ['projection'=>['usertype'=>1]]);
                 if (($target['usertype'] ?? '') === 'admin') {
@@ -910,11 +910,12 @@ try {
             <div class="mb-0">
               <label class="form-label mb-1">Enter your password to confirm</label>
               <input type="password" class="form-control form-control-sm" id="accountDeleteAdminPassword" placeholder="Your password" autocomplete="current-password" />
+              <div class="mt-1 small text-danger d-none" id="accountDeleteErrorText">Incorrect password. Please try again.</div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-danger btn-sm" id="accountDeleteConfirmBtn">Delete</button>
+            <button type="button" class="btn btn-danger btn-sm" id="accountDeleteConfirmBtn" disabled>Delete</button>
           </div>
         </div>
       </div>
@@ -1110,6 +1111,7 @@ try {
               const disableAdminPwInput = document.getElementById('accountDisableAdminPassword');
               const deleteUserSpan = document.getElementById('accountDeleteUsername');
               const deleteAdminPwInput = document.getElementById('accountDeleteAdminPassword');
+              const deleteErrorText = document.getElementById('accountDeleteErrorText');
               const disableBodyMain = disableModalEl.querySelector('.account-disable-body-main');
               const disableConfirmBtn = document.getElementById('accountDisableConfirmBtn');
               const deleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn');
@@ -1153,10 +1155,26 @@ try {
                   if (deleteAdminPwInput) {
                     deleteAdminPwInput.value = '';
                   }
+                  if (deleteConfirmBtn) {
+                    deleteConfirmBtn.disabled = true;
+                  }
+                  if (deleteErrorText) {
+                    deleteErrorText.classList.add('d-none');
+                  }
                   deleteModal.show();
                   return;
                 }
               });
+
+              if (deleteAdminPwInput && deleteConfirmBtn) {
+                deleteAdminPwInput.addEventListener('input', function() {
+                  const hasVal = this.value.trim().length > 0;
+                  deleteConfirmBtn.disabled = !hasVal;
+                  if (deleteErrorText) {
+                    deleteErrorText.classList.add('d-none');
+                  }
+                });
+              }
 
               if (disableConfirmBtn) {
                 disableConfirmBtn.addEventListener('click', function() {
