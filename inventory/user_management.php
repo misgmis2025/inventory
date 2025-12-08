@@ -577,8 +577,8 @@ try {
                         <table id="accountsTable" class="table table-striped table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Username</th>
                                     <th>Full Name</th>
+                                    <th>Username</th>
                                     <th>School ID</th>
                                     <th>User Type</th>
                                     <th class="text-end text-nowrap">Actions</th>
@@ -591,13 +591,13 @@ try {
                                     <?php foreach ($users as $u): ?>
                                         <?php $isDisabled = !empty($u['disabled']); ?>
                                         <tr data-account-row="1">
+                                            <td><?php echo htmlspecialchars($u['full_name'] ?? ''); ?></td>
                                             <td>
                                                 <?php echo htmlspecialchars($u['username']); ?>
                                                 <?php if ($isDisabled): ?>
                                                     <span class="badge bg-secondary ms-1">Disabled</span>
                                                 <?php endif; ?>
                                             </td>
-                                            <td><?php echo htmlspecialchars($u['full_name'] ?? ''); ?></td>
                                             <td><?php echo htmlspecialchars($u['school_id'] ?? ''); ?></td>
                                             <td>
                                                 <?php if (($u['usertype'] ?? '') === 'admin'): ?>
