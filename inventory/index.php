@@ -147,6 +147,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $login_error = 'Invalid username or password.';
     }
 }
+$ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+$isAppUa = (strpos($ua, 'MISGMIS-APP') !== false);
+$isMobileUa = (bool)preg_match('/Android|iPhone|iPad|iPod|Mobile|CriOS|FxiOS|EdgiOS|SamsungBrowser/i', $ua);
+$appApkUrl = '/inventory/app/MISGMIS.apk';
+$showAppDownloadLink = $isMobileUa && !$isAppUa && $appApkUrl !== '';
+
 ?>
 
 <!DOCTYPE html>
@@ -285,6 +291,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
           <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
         </form>
+        <?php if ($showAppDownloadLink): ?>
+          <div class="mt-3 small text-center">
+            <span class="text-muted d-block mb-1">Using the browser? Install the MISGMIS mobile app:</span>
+            <a href="<?php echo htmlspecialchars($appApkUrl, ENT_QUOTES); ?>" class="btn btn-outline-primary btn-sm">Download MISGMIS App</a>
+          </div>
+        <?php endif; ?>
         <p class="login-switch">Don't have an account? <a href="/inventory/signup.php">Sign up here</a></p>
       </div>
     </div>
