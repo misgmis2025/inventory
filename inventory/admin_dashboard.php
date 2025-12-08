@@ -215,10 +215,13 @@ try {
     }
 
     // Build Out of Stock list from active borrowable catalog using constrained availability
-    // Only include models that still have inventory_items records (exclude fully deleted/outdated entries)
+    // Use whitelist-based availability (borrowable_units joined to inventory_items),
+    // and only include models that still have inventory_items records.
     try {
         $bcCol = $db->selectCollection('borrowable_catalog');
         $iiCol = $db->selectCollection('inventory_items');
+        $buCol = $db->selectCollection('borrowable_units');
+
         // Borrow limits map for active models (skip logically deleted entries with borrow_limit <= 0)
         $borrowLimitMap = [];
         $activeCur = $bcCol->find(['active' => 1], ['projection' => ['model_name' => 1, 'category' => 1, 'borrow_limit'=>1]]);
@@ -231,24 +234,7 @@ try {
             if (!isset($borrowLimitMap[$c])) $borrowLimitMap[$c] = [];
             $borrowLimitMap[$c][$m] = $limitVal;
         }
-        // Available now per (category, model)
-        $availNow = [];
-        $aggAvail = $iiCol->aggregate([
-            ['$match'=>['status'=>'Available','quantity'=>['$gt'=>0]]],
-            ['$project'=>[
-                'category'=>['$ifNull'=>['$category','Uncategorized']],
-                'model_key'=>['$ifNull'=>['$model','$item_name']],
-                'q'=>['$ifNull'=>['$quantity',1]]
-            ]],
-            ['$group'=>['_id'=>['c'=>'$category','m'=>'$model_key'], 'avail'=>['$sum'=>'$q']]]
-        ]);
-        foreach ($aggAvail as $r) {
-            $c = (string)($r->_id['c'] ?? 'Uncategorized');
-            $m = (string)($r->_id['m'] ?? '');
-            if ($m === '') continue;
-            if (!isset($availNow[$c])) $availNow[$c] = [];
-            $availNow[$c][$m] = (int)($r->avail ?? 0);
-        }
+
         // Total units per (category, model) across all statuses
         // Used to skip borrowable entries that have no inventory items left (fully deleted/moved)
         $totalByBorrowModel = [];
@@ -267,6 +253,43 @@ try {
             if (!isset($totalByBorrowModel[$c])) $totalByBorrowModel[$c] = [];
             $totalByBorrowModel[$c][$m] = (int)($r->total ?? 0);
         }
+
+        // Whitelisted available units per (category, model)
+        $wlAvail = [];
+        try {
+            $aggWl = $buCol->aggregate([
+                ['$lookup' => [
+                    'from' => 'inventory_items',
+                    'localField' => 'model_id',
+                    'foreignField' => 'id',
+                    'as' => 'item'
+                ]],
+                ['$unwind' => '$item'],
+                ['$project' => [
+                    'category' => ['$ifNull' => ['$category', 'Uncategorized']],
+                    'model_name' => ['$ifNull' => ['$model_name', '']],
+                    'status' => ['$ifNull' => ['$item.status', '']],
+                ]],
+                ['$group' => [
+                    '_id' => [
+                        'category' => '$category',
+                        'model_name' => '$model_name',
+                    ],
+                    'avail' => ['$sum' => [
+                        '$cond' => [[ '$eq' => ['$status', 'Available'] ], 1, 0]
+                    ]],
+                ]],
+            ]);
+            foreach ($aggWl as $row) {
+                $id = (array)($row->_id ?? []);
+                $c = (string)($id['category'] ?? 'Uncategorized');
+                $m = (string)($id['model_name'] ?? '');
+                if ($m === '') continue;
+                if (!isset($wlAvail[$c])) { $wlAvail[$c] = []; }
+                $wlAvail[$c][$m] = (int)($row->avail ?? 0);
+            }
+        } catch (Throwable $_wa) { $wlAvail = []; }
+
         // Consumed counts: active borrows + pending returned_queue + returned_hold
         $consumed = [];
         try {
@@ -299,7 +322,8 @@ try {
             ]);
             foreach ($aggRh as $r) { $c=(string)($r->_id['c']??'Uncategorized'); $m=(string)($r->_id['m']??''); if ($m==='') continue; $consumed[$c][$m] = (int)($r->cnt??0) + (int)($consumed[$c][$m]??0); }
         } catch (Throwable $_) {}
-        // Compute constrained availability and collect out-of-stock
+
+        // Compute constrained availability and collect out-of-stock (whitelist-based)
         $outBorrowables = [];
         foreach ($borrowLimitMap as $cat => $mods) {
             foreach ($mods as $mod => $limit) {
@@ -309,11 +333,11 @@ try {
                     // Do not treat it as out-of-stock or available on the dashboard
                     continue;
                 }
-                $availableNow = (int)($availNow[$cat][$mod] ?? 0);
+                $whAvail = (int)($wlAvail[$cat][$mod] ?? 0);
                 $cons = (int)($consumed[$cat][$mod] ?? 0);
-                // Capacity-constrained availability (same as Submit Request catalog):
-                // cap = max(0, min(borrow_limit - consumed, availableNow))
-                $cap = max(0, min(max(0, $limit - $cons), $availableNow));
+                // Capacity-constrained availability (same as Submit Request catalog, whitelist-based):
+                // cap = max(0, min(borrow_limit - consumed, whitelistedAvailable))
+                $cap = max(0, min(max(0, $limit - $cons), $whAvail));
                 if ($cap <= 0) {
                     $outBorrowables[] = ['item_name'=>$mod, 'category'=>$cat, 'available_qty'=>0, 'oos_date'=>date('Y-m-d')];
                 } else {
@@ -330,34 +354,52 @@ try {
     $reservedUnits = [];
     $availableCount = 0; $inUseCount = 0; $reservedCount = 0;
     try {
-        // Build per-model lists of Available units, then trim each list to its capacity cap
+        // Build per-model lists of whitelisted Available units, then trim each list to its capacity cap
         $perModelUnits = [];
         try {
-            $curA = $itemsCol->find(['status'=>'Available'], ['projection'=>['item_name'=>1,'model'=>1,'category'=>1,'location'=>1,'remarks'=>1,'serial_no'=>1]]);
-            foreach ($curA as $docA) {
-                $cat = (string)($docA['category'] ?? '');
+            $buCol = $db->selectCollection('borrowable_units');
+            $aggAvailUnits = $buCol->aggregate([
+                ['$lookup' => [
+                    'from' => 'inventory_items',
+                    'localField' => 'model_id',
+                    'foreignField' => 'id',
+                    'as' => 'item'
+                ]],
+                ['$unwind' => '$item'],
+                ['$project' => [
+                    'category' => ['$ifNull' => ['$category', 'Uncategorized']],
+                    'model_name' => ['$ifNull' => ['$model_name', '']],
+                    'status' => ['$ifNull' => ['$item.status', '']],
+                    'location' => ['$ifNull' => ['$item.location', '']],
+                    'remarks' => ['$ifNull' => ['$item.remarks', '']],
+                    'serial_no' => ['$ifNull' => ['$item.serial_no', '']],
+                    'item_label' => ['$ifNull' => ['$item.model', '$item.item_name']],
+                ]],
+                ['$match' => ['status' => 'Available']],
+            ]);
+            foreach ($aggAvailUnits as $row) {
+                $cat = (string)($row['category'] ?? '');
                 $cat = ($cat !== '') ? $cat : 'Uncategorized';
-                $mk = (string)($docA['model'] ?? '');
-                $nm = ($mk !== '') ? $mk : (string)($docA['item_name'] ?? '');
-                if ($nm === '') continue;
-                $cap = (int)($capacityByModel[$cat][$nm] ?? 0);
-                if ($cap <= 0) continue; // no borrowable capacity for this model
+                $mod = (string)($row['model_name'] ?? '');
+                if ($mod === '') continue;
+                $cap = (int)($capacityByModel[$cat][$mod] ?? 0);
+                if ($cap <= 0) continue; // no borrowable capacity remaining for this model
                 if (!isset($perModelUnits[$cat])) { $perModelUnits[$cat] = []; }
-                if (!isset($perModelUnits[$cat][$nm])) { $perModelUnits[$cat][$nm] = []; }
-                $perModelUnits[$cat][$nm][] = [
-                    'item_name' => $nm,
+                if (!isset($perModelUnits[$cat][$mod])) { $perModelUnits[$cat][$mod] = []; }
+                $perModelUnits[$cat][$mod][] = [
+                    'item_name' => (string)($row['item_label'] ?? $mod),
                     'category' => $cat,
-                    'location' => (string)($docA['location'] ?? ''),
-                    'remarks' => (string)($docA['remarks'] ?? ''),
-                    'serial_no' => (string)($docA['serial_no'] ?? ''),
+                    'location' => (string)($row['location'] ?? ''),
+                    'remarks' => (string)($row['remarks'] ?? ''),
+                    'serial_no' => (string)($row['serial_no'] ?? ''),
                 ];
             }
         } catch (Throwable $_a) {}
 
         // Flatten per-model units, trimming each group to its capacity cap
         foreach ($perModelUnits as $cat => $mods) {
-            foreach ($mods as $nm => $rows) {
-                $cap = (int)($capacityByModel[$cat][$nm] ?? 0);
+            foreach ($mods as $mod => $rows) {
+                $cap = (int)($capacityByModel[$cat][$mod] ?? 0);
                 if ($cap <= 0) continue;
                 $slice = array_slice($rows, 0, $cap);
                 foreach ($slice as $row) {
