@@ -89,6 +89,12 @@ try {
                 }
                 header('Location: user_management.php?updated=1'); exit();
             } elseif ($action === 'delete_user') {
+                $adminPass = $_POST['admin_password'] ?? '';
+                if ($adminPass === '') { header('Location: user_management.php?error=auth'); exit(); }
+                // Verify admin password
+                $me = $usersCol->findOne(['username'=>$_SESSION['username']], ['projection'=>['password_hash'=>1]]);
+                $authOk = ($me && isset($me['password_hash']) && password_verify($adminPass, (string)$me['password_hash']));
+                if (!$authOk) { header('Location: user_management.php?error=auth'); exit(); }
                 // Disallow deleting any admin; require demotion first
                 $target = $usersCol->findOne(['username'=>$username], ['projection'=>['usertype'=>1]]);
                 if (($target['usertype'] ?? '') === 'admin') {
@@ -898,9 +904,13 @@ try {
           </div>
           <div class="modal-body">
             <p>Are you sure you want to permanently delete this account?</p>
-            <p class="mb-0">
+            <p>
               Target account: <strong id="accountDeleteUsername"></strong>
             </p>
+            <div class="mb-0">
+              <label class="form-label mb-1">Enter your password to confirm</label>
+              <input type="password" class="form-control form-control-sm" id="accountDeleteAdminPassword" placeholder="Your password" autocomplete="current-password" />
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -1099,6 +1109,7 @@ try {
               const disableUserSpan = document.getElementById('accountDisableUsername');
               const disableAdminPwInput = document.getElementById('accountDisableAdminPassword');
               const deleteUserSpan = document.getElementById('accountDeleteUsername');
+              const deleteAdminPwInput = document.getElementById('accountDeleteAdminPassword');
               const disableBodyMain = disableModalEl.querySelector('.account-disable-body-main');
               const disableConfirmBtn = document.getElementById('accountDisableConfirmBtn');
               const deleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn');
@@ -1139,6 +1150,9 @@ try {
                   pendingDeleteForm = form;
                   const uname = deleteBtn.getAttribute('data-username') || '';
                   if (deleteUserSpan) deleteUserSpan.textContent = uname;
+                  if (deleteAdminPwInput) {
+                    deleteAdminPwInput.value = '';
+                  }
                   deleteModal.show();
                   return;
                 }
@@ -1165,6 +1179,16 @@ try {
               if (deleteConfirmBtn) {
                 deleteConfirmBtn.addEventListener('click', function() {
                   if (pendingDeleteForm) {
+                    if (deleteAdminPwInput) {
+                      let hidden = pendingDeleteForm.querySelector('input[name="admin_password"]');
+                      if (!hidden) {
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'admin_password';
+                        pendingDeleteForm.appendChild(hidden);
+                      }
+                      hidden.value = deleteAdminPwInput.value || '';
+                    }
                     pendingDeleteForm.submit();
                     pendingDeleteForm = null;
                   }
