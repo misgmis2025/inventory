@@ -627,7 +627,7 @@ try {
                                                             </button>
                                                         </li>
                                                         <?php if (($u['usertype'] ?? '') !== 'admin'): ?>
-                                  ss="dropdown-divider"></li>
+                                                        <li><hr class="dropdown-divider"></li>
                                                         <li>
                                                             <form method="post" action="user_management.php" class="px-3 py-0 m-0 account-toggle-form">
                                                                 <input type="hidden" name="action" value="toggle_disabled" />
