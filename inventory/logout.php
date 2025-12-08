@@ -14,5 +14,9 @@ if (ini_get('session.use_cookies')) {
     setcookie(session_name(), '', time() - 42000, $params['path'] ?? '/', $params['domain'] ?? '', !empty($params['secure']), !empty($params['httponly']));
 }
 @session_destroy();
-header('Location: index.php');
+$redir = 'index.php';
+if (isset($_GET['disabled']) && $_GET['disabled'] === '1') {
+    $redir .= '?disabled=1';
+}
+header('Location: ' . $redir);
 exit();

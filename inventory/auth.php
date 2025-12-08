@@ -11,6 +11,10 @@ if (!function_exists('inventory_redirect_if_disabled')) {
         if ($uname === '') {
             return;
         }
+        $role = strtolower((string)($_SESSION['usertype'] ?? ''));
+        if ($role === 'admin') {
+            return;
+        }
         $isDisabled = false;
         try {
             require_once __DIR__ . '/db/mongo.php';
@@ -24,13 +28,7 @@ if (!function_exists('inventory_redirect_if_disabled')) {
         }
         if ($isDisabled) {
             // Clear session and force re-login with disabled message.
-            try {
-                $_SESSION = [];
-                if (session_id() !== '') {
-                    @session_destroy();
-                }
-            } catch (\Throwable $_) {}
-            header('Location: index.php?disabled=1');
+            header('Location: logout.php?disabled=1');
             exit();
         }
     }
