@@ -21,7 +21,12 @@ if (!function_exists('inventory_redirect_if_disabled')) {
             $db = get_mongo_db();
             $users = $db->selectCollection('users');
             $doc = $users->findOne(['username' => $uname], ['projection' => ['disabled' => 1]]);
-            $isDisabled = $doc && !empty($doc['disabled']);
+            if (!$doc) {
+                // User record no longer exists: force a clean logout (no penalty message).
+                header('Location: logout.php');
+                exit();
+            }
+            $isDisabled = !empty($doc['disabled']);
         } catch (\Throwable $e) {
             // On DB error, do not block the user; just log and continue.
             try { error_log('[auth] disabled-check failed: ' . $e->getMessage()); } catch (\Throwable $_) {}

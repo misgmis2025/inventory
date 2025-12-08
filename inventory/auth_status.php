@@ -39,7 +39,18 @@ try {
         ['username' => (string)$_SESSION['username']],
         ['projection' => ['disabled' => 1]]
     );
-    $disabled = $doc && !empty($doc['disabled']);
+    if (!$doc) {
+        // User record no longer exists: treat as logged out and clear the session.
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000, $params['path'] ?? '/', $params['domain'] ?? '', !empty($params['secure']), !empty($params['httponly']));
+        }
+        @session_destroy();
+        echo json_encode(['ok' => false, 'logged_out' => true]);
+        exit;
+    }
+    $disabled = !empty($doc['disabled']);
 } catch (\Throwable $e) {
     echo json_encode(['ok' => true, 'disabled' => false]);
     exit;
