@@ -4,6 +4,8 @@ if (!isset($_SESSION['username']) || ($_SESSION['usertype'] ?? 'user') !== 'user
     if (!isset($_SESSION['username'])) { header('Location: index.php'); } else { header('Location: admin_dashboard.php'); }
     exit();
 }
+require_once __DIR__ . '/auth.php';
+inventory_redirect_if_disabled();
 date_default_timezone_set('Asia/Manila');
 
 require_once __DIR__ . '/../vendor/autoload.php';

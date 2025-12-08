@@ -15,6 +15,8 @@ session_start();
 date_default_timezone_set('Asia/Manila');
 if (!isset($_SESSION['username'])) { header('Location: index.php'); exit(); }
 $__act = $_GET['action'] ?? '';
+require_once __DIR__ . '/auth.php';
+inventory_redirect_if_disabled();
 // Only regular users can access this page; redirect admins to admin borrow center
 if (isset($_SESSION['usertype']) && $_SESSION['usertype'] === 'admin' && $__act !== 'register_fcm_token') { header('Location: admin_borrow_center.php'); exit(); }
 // Action routing must be defined before any endpoint usage

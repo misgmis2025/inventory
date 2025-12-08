@@ -16,6 +16,8 @@ if (!isset($_SESSION['username'])) {
     header("Location: index.php");
     exit();
 }
+require_once __DIR__ . '/auth.php';
+inventory_redirect_if_disabled();
 
 $username = $_SESSION['username'];
 $usertype = $_SESSION['usertype'] ?? 'user';

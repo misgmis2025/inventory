@@ -38,6 +38,10 @@ if (isset($_SESSION['username'])) {
 $login_error = '';
 $prev_username = '';
 $accountDisabled = false;
+// If redirected due to a disabled account, show the disabled-account modal
+if (isset($_GET['disabled']) && $_GET['disabled'] === '1') {
+    $accountDisabled = true;
+}
 // Load Composer autoloader if present (avoid fatal on hosts where composer install didn't run yet)
 $__autoload_candidates = [
   __DIR__ . '/vendor/autoload.php',      // web root vendor (after Docker promotion)

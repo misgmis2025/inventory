@@ -16,6 +16,8 @@ if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
     header("Location: index.php");
     exit();
 }
+require_once __DIR__ . '/auth.php';
+inventory_redirect_if_disabled();
 
 // Prefer MongoDB for dashboard aggregates
 $DASH_MONGO_FILLED = false;

@@ -24,6 +24,8 @@ if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'admin') {
   header('Location: index.php');
   exit();
 }
+require_once __DIR__ . '/auth.php';
+inventory_redirect_if_disabled();
 // Action routing (define early so it's available to all handlers below)
 $act = $_GET['action'] ?? '';
 // Resolve current admin full name for autofill (fallback to username)

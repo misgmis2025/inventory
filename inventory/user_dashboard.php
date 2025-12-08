@@ -23,6 +23,8 @@ if (!isset($_SESSION['username']) || $_SESSION['usertype'] !== 'user') {
     }
     exit();
 }
+require_once __DIR__ . '/auth.php';
+inventory_redirect_if_disabled();
 // Mongo-first dashboard data, fallback to MySQL if Mongo is unavailable
 $USED_MONGO = false;
 $recent_requests = [];
