@@ -576,7 +576,7 @@ try {
                                     <th>Full Name</th>
                                     <th>School ID</th>
                                     <th>User Type</th>
-                                    <th style="width:420px;">Actions</th>
+                                    <th class="text-end text-nowrap">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -604,7 +604,7 @@ try {
                                                     <span class="text-muted small ms-1">(You)</span>
                                                 <?php endif; ?>
                                             </td>
-                                            <td>
+                                            <td class="text-end">
                                                 <?php if ($u['username'] !== ($_SESSION['username'] ?? '')): ?>
                                                 <div class="dropdown">
                                                     <button class="btn btn-sm btn-outline-secondary btn-actions-thin dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -627,7 +627,7 @@ try {
                                                             </button>
                                                         </li>
                                                         <?php if (($u['usertype'] ?? '') !== 'admin'): ?>
-                                                        <li><hr class="dropdown-divider"></li>
+                                  ss="dropdown-divider"></li>
                                                         <li>
                                                             <form method="post" action="user_management.php" class="px-3 py-0 m-0 account-toggle-form">
                                                                 <input type="hidden" name="action" value="toggle_disabled" />
