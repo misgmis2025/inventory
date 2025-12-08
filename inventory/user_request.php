@@ -1294,6 +1294,12 @@ if ($__act === 'catalog' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         try {
           foreach ($borrowLimitMap as $cat => $mods) {
             foreach ($mods as $mod => $limit) {
+              // Skip models that have no whitelisted units at all. If a group has been
+              // fully removed from the whitelist, it should not appear even for
+              // reservation.
+              if (!isset($wlAvail[$cat]) || !array_key_exists($mod, $wlAvail[$cat])) {
+                continue;
+              }
               if (isset($availableMapLive[$cat]) && isset($availableMapLive[$cat][mb_strtolower($mod)])) continue;
               $aggTu = $ii->aggregate([
                 ['$match'=>['$or'=>[['model'=>$mod],['item_name'=>$mod]], 'category'=>$cat]],
