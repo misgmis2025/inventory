@@ -994,8 +994,9 @@ if (!$USED_MONGO) {
       })();
     </script>
     <script>
-      // Live disabled-account detection for logged-in user dashboard
       (function(){
+        var ua = navigator.userAgent || '';
+        if (ua.indexOf('MISGMIS-APP') !== -1) return;
         if (typeof window.fetch !== 'function') return;
         function checkDisabled(){
           try {
