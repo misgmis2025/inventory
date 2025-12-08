@@ -150,9 +150,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
 $isAppUa = (strpos($ua, 'MISGMIS-APP') !== false);
 $isIosUa = (bool)preg_match('/iPhone|iPad|iPod/i', $ua);
+$isAndroidUa = (bool)preg_match('/Android/i', $ua);
 $appApkUrl = '/inventory/download_app.php';
-// Show for all non‑iOS browsers, but hide inside the MISGMIS app WebView.
-$showAppDownloadLink = !$isIosUa && !$isAppUa && $appApkUrl !== '';
+// Show only for Android browsers (not iOS, not desktop, not inside the MISGMIS app WebView).
+$showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== '';
 
 ?>
 
