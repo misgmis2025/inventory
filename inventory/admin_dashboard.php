@@ -180,6 +180,8 @@ try {
     $byItem = [];
     $stocksMap = [];
     $outBorrowables = [];
+    // Capacity-constrained availability per (category, model) for dashboard Available KPI
+    $capacityByModel = [];
     $cursor = $itemsCol->find($match);
     foreach ($cursor as $doc) {
         $nm = (string)($doc['item_name'] ?? '');
@@ -304,14 +306,19 @@ try {
                 $totalForModel = (int)($totalByBorrowModel[$cat][$mod] ?? 0);
                 if ($totalForModel <= 0) {
                     // No inventory_items left for this category/model (fully deleted or renamed)
-                    // Do not treat it as out-of-stock on the dashboard
+                    // Do not treat it as out-of-stock or available on the dashboard
                     continue;
                 }
                 $availableNow = (int)($availNow[$cat][$mod] ?? 0);
                 $cons = (int)($consumed[$cat][$mod] ?? 0);
-                $avail = max(0, min(max(0, $limit - $cons), $availableNow));
-                if ($avail <= 0) {
+                // Capacity-constrained availability (same as Submit Request catalog):
+                // cap = max(0, min(borrow_limit - consumed, availableNow))
+                $cap = max(0, min(max(0, $limit - $cons), $availableNow));
+                if ($cap <= 0) {
                     $outBorrowables[] = ['item_name'=>$mod, 'category'=>$cat, 'available_qty'=>0, 'oos_date'=>date('Y-m-d')];
+                } else {
+                    if (!isset($capacityByModel[$cat])) { $capacityByModel[$cat] = []; }
+                    $capacityByModel[$cat][$mod] = $cap;
                 }
             }
         }
@@ -323,38 +330,42 @@ try {
     $reservedUnits = [];
     $availableCount = 0; $inUseCount = 0; $reservedCount = 0;
     try {
-        $borrowableSet = [];
-        try {
-            $bc2 = $db->selectCollection('borrowable_catalog');
-            $curB = $bc2->find(['active'=>1], ['projection'=>['category'=>1,'model_name'=>1,'borrow_limit'=>1]]);
-            foreach ($curB as $b) {
-                $c = (string)($b['category'] ?? '');
-                $c = ($c !== '') ? $c : 'Uncategorized';
-                $m = trim((string)($b['model_name'] ?? ''));
-                $limitVal = isset($b['borrow_limit']) ? (int)$b['borrow_limit'] : 0;
-                if ($m === '' || $limitVal <= 0) continue; // skip logically deleted borrowables
-                $borrowableSet[strtolower($c).'|'.strtolower($m)] = true;
-            }
-        } catch (Throwable $_) {}
+        // Build per-model lists of Available units, then trim each list to its capacity cap
+        $perModelUnits = [];
         try {
             $curA = $itemsCol->find(['status'=>'Available'], ['projection'=>['item_name'=>1,'model'=>1,'category'=>1,'location'=>1,'remarks'=>1,'serial_no'=>1]]);
             foreach ($curA as $docA) {
-                $cat = (string)($docA['category'] ?? ''); $cat = ($cat !== '') ? $cat : 'Uncategorized';
+                $cat = (string)($docA['category'] ?? '');
+                $cat = ($cat !== '') ? $cat : 'Uncategorized';
                 $mk = (string)($docA['model'] ?? '');
                 $nm = ($mk !== '') ? $mk : (string)($docA['item_name'] ?? '');
                 if ($nm === '') continue;
-                $key = strtolower($cat).'|'.strtolower($nm);
-                if (!isset($borrowableSet[$key])) continue;
-                $availableUnits[] = [
+                $cap = (int)($capacityByModel[$cat][$nm] ?? 0);
+                if ($cap <= 0) continue; // no borrowable capacity for this model
+                if (!isset($perModelUnits[$cat])) { $perModelUnits[$cat] = []; }
+                if (!isset($perModelUnits[$cat][$nm])) { $perModelUnits[$cat][$nm] = []; }
+                $perModelUnits[$cat][$nm][] = [
                     'item_name' => $nm,
                     'category' => $cat,
                     'location' => (string)($docA['location'] ?? ''),
                     'remarks' => (string)($docA['remarks'] ?? ''),
                     'serial_no' => (string)($docA['serial_no'] ?? ''),
                 ];
-                if (count($availableUnits) >= 500) break;
             }
         } catch (Throwable $_a) {}
+
+        // Flatten per-model units, trimming each group to its capacity cap
+        foreach ($perModelUnits as $cat => $mods) {
+            foreach ($mods as $nm => $rows) {
+                $cap = (int)($capacityByModel[$cat][$nm] ?? 0);
+                if ($cap <= 0) continue;
+                $slice = array_slice($rows, 0, $cap);
+                foreach ($slice as $row) {
+                    $availableUnits[] = $row;
+                    if (count($availableUnits) >= 500) break 3; // global safety cap for modal list
+                }
+            }
+        }
         $availableCount = count($availableUnits);
         try {
             $ubCol = $db->selectCollection('user_borrows');
