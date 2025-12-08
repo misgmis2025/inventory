@@ -117,6 +117,11 @@ try {
                 $usersCol->updateOne(['_id'=>$target['_id']], ['$set'=>['password_hash'=>$hash, 'updated_at'=>date('Y-m-d H:i:s')]]);
                 header('Location: user_management.php?reset=1'); exit();
             } elseif ($action === 'toggle_disabled') {
+                $adminPass = $_POST['admin_password'] ?? '';
+                if ($adminPass === '') { header('Location: user_management.php?error=auth'); exit(); }
+                $me = $usersCol->findOne(['username'=>$_SESSION['username']], ['projection'=>['password_hash'=>1]]);
+                $authOk = ($me && isset($me['password_hash']) && password_verify($adminPass, (string)$me['password_hash']));
+                if (!$authOk) { header('Location: user_management.php?error=auth'); exit(); }
                 // Toggle disabled flag for non-admin accounts (cannot target self)
                 $target = $usersCol->findOne(['username'=>$username], ['projection'=>['usertype'=>1]]);
                 if (!$target) { header('Location: user_management.php?error=missing'); exit(); }
@@ -867,9 +872,13 @@ try {
             <p class="account-disable-body-main">
               Are you sure you want to disable this account? The user will be blocked from logging in.
             </p>
-            <p class="mb-0">
+            <p class="mb-2">
               Target account: <strong id="accountDisableUsername"></strong>
             </p>
+            <div class="mb-0">
+              <label class="form-label mb-1">Enter your password to confirm</label>
+              <input type="password" class="form-control form-control-sm" id="accountDisableAdminPassword" placeholder="Your password" autocomplete="current-password" />
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -1088,6 +1097,7 @@ try {
               const disableModal = new bootstrap.Modal(disableModalEl);
               const deleteModal = new bootstrap.Modal(deleteModalEl);
               const disableUserSpan = document.getElementById('accountDisableUsername');
+              const disableAdminPwInput = document.getElementById('accountDisableAdminPassword');
               const deleteUserSpan = document.getElementById('accountDeleteUsername');
               const disableBodyMain = disableModalEl.querySelector('.account-disable-body-main');
               const disableConfirmBtn = document.getElementById('accountDisableConfirmBtn');
@@ -1116,6 +1126,9 @@ try {
                     disableConfirmBtn.classList.toggle('btn-warning', mode !== 'enable');
                     disableConfirmBtn.classList.toggle('btn-success', mode === 'enable');
                   }
+                  if (disableAdminPwInput) {
+                    disableAdminPwInput.value = '';
+                  }
                   disableModal.show();
                   return;
                 }
@@ -1134,6 +1147,16 @@ try {
               if (disableConfirmBtn) {
                 disableConfirmBtn.addEventListener('click', function() {
                   if (pendingDisableForm) {
+                    if (disableAdminPwInput) {
+                      let hidden = pendingDisableForm.querySelector('input[name="admin_password"]');
+                      if (!hidden) {
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'admin_password';
+                        pendingDisableForm.appendChild(hidden);
+                      }
+                      hidden.value = disableAdminPwInput.value || '';
+                    }
                     pendingDisableForm.submit();
                     pendingDisableForm = null;
                   }
