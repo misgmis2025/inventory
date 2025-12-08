@@ -149,9 +149,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 $ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
 $isAppUa = (strpos($ua, 'MISGMIS-APP') !== false);
-$isAndroidUa = (bool)preg_match('/Android/i', $ua);
+$isIosUa = (bool)preg_match('/iPhone|iPad|iPod/i', $ua);
+$isMobileUa = (bool)preg_match('/Android|Mobile|Silk|Kindle|BlackBerry|Opera Mini|Opera Mobi/i', $ua);
 $appApkUrl = '/inventory/download_app.php';
-$showAppDownloadLink = $isAndroidUa && !$isAppUa && $appApkUrl !== '';
+// Show only for mobile browsers (Android and others), but hide on iOS and inside the MISGMIS app.
+$showAppDownloadLink = $isMobileUa && !$isIosUa && !$isAppUa && $appApkUrl !== '';
 
 ?>
 
@@ -251,7 +253,7 @@ $showAppDownloadLink = $isAndroidUa && !$isAppUa && $appApkUrl !== '';
       @media (max-width: 576px) {
         html, body {
           height: 100vh;
-          overflow: hidden; /* prevent scrolling on mobile */
+          overflow-y: auto; /* allow scrolling on mobile to see download link */
         }
         .login-card { padding: 2rem 1.5rem; }
         .login-title { font-size: 1.6rem; }
