@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
 $isAppUa = (strpos($ua, 'MISGMIS-APP') !== false);
 $isMobileUa = (bool)preg_match('/Android|iPhone|iPad|iPod|Mobile|CriOS|FxiOS|EdgiOS|SamsungBrowser/i', $ua);
-$appApkUrl = '/inventory/app/MISGMIS.apk';
+$appApkUrl = '/inventory/download_app.php';
 $showAppDownloadLink = $isMobileUa && !$isAppUa && $appApkUrl !== '';
 
 ?>
