@@ -149,9 +149,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 $ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
 $isAppUa = (strpos($ua, 'MISGMIS-APP') !== false);
-$isMobileUa = (bool)preg_match('/Android|iPhone|iPad|iPod|Mobile|CriOS|FxiOS|EdgiOS|SamsungBrowser/i', $ua);
+$isAndroidUa = (bool)preg_match('/Android/i', $ua);
 $appApkUrl = '/inventory/download_app.php';
-$showAppDownloadLink = $isMobileUa && !$isAppUa && $appApkUrl !== '';
+$showAppDownloadLink = $isAndroidUa && !$isAppUa && $appApkUrl !== '';
 
 ?>
 
@@ -291,15 +291,15 @@ $showAppDownloadLink = $isMobileUa && !$isAppUa && $appApkUrl !== '';
 
           <button type="submit" class="btn btn-primary btn-lg mt-3 w-100">Log in</button>
         </form>
-        <?php if ($showAppDownloadLink): ?>
-          <div class="mt-3 small text-center">
-            <span class="text-muted d-block mb-1">Using the browser? Install the MISGMIS mobile app:</span>
-            <a href="<?php echo htmlspecialchars($appApkUrl, ENT_QUOTES); ?>" class="btn btn-outline-primary btn-sm">Download MISGMIS App</a>
-          </div>
-        <?php endif; ?>
         <p class="login-switch">Don't have an account? <a href="/inventory/signup.php">Sign up here</a></p>
       </div>
     </div>
+    <?php if ($showAppDownloadLink): ?>
+      <div class="mt-3 small text-center px-3">
+        <span class="text-muted d-block mb-1">Using the browser? Install the MISGMIS mobile app:</span>
+        <a href="<?php echo htmlspecialchars($appApkUrl, ENT_QUOTES); ?>" class="btn btn-outline-primary btn-sm">Download MISGMIS App</a>
+      </div>
+    <?php endif; ?>
 
     <!-- Account Disabled Modal -->
     <div class="modal fade" id="accountDisabledModal" tabindex="-1" aria-hidden="true">
