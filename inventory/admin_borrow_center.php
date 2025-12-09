@@ -1616,6 +1616,14 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
       elseif ($modelIdIn > 0) { $unit = $ii->findOne(['id'=>$modelIdIn]); }
       if (!$unit) { echo json_encode(['ok'=>false,'reason'=>'Serial not found']); exit; }
       if ((string)($unit['status'] ?? '') !== 'Available') { echo json_encode(['ok'=>false,'reason'=>'Serial not available']); exit; }
+      try {
+        $buCol = $db->selectCollection('borrowable_units');
+        $uid = (int)($unit['id'] ?? 0);
+        if ($uid > 0) {
+          $whitelisted = (int)$buCol->countDocuments(['model_id' => ['$in' => [$uid, (string)$uid]]]) > 0;
+          if (!$whitelisted) { echo json_encode(['ok'=>false,'reason'=>'Item not borrowable']); exit; }
+        }
+      } catch (Throwable $_w) {}
       $um = (string)($unit['model'] ?? ($unit['item_name'] ?? ''));
       $uc = trim((string)($unit['category'] ?? '')) !== '' ? (string)$unit['category'] : 'Uncategorized';
       $match = (strcasecmp(trim($um), trim($dm))===0) && (strcasecmp(trim($uc), trim($dc))===0);
@@ -1742,6 +1750,23 @@ if (in_array($act, ['validate_model_id','approve_with','edit_reservation_serial'
         $cutoff = $earliest - (5*60);
         if ($tsExpected > $cutoff) { header('Location: admin_borrow_center.php?error=reservation_conflict'); exit(); }
       }
+
+      try {
+        $buCol = $db->selectCollection('borrowable_units');
+        $unitForWhitelist = null;
+        if ($serial !== '') {
+          $unitForWhitelist = $ii->findOne(['serial_no'=>$serial], ['projection'=>['id'=>1]]);
+        } elseif ($modelIdIn > 0) {
+          $unitForWhitelist = $ii->findOne(['id'=>$modelIdIn], ['projection'=>['id'=>1]]);
+        }
+        if ($unitForWhitelist) {
+          $uid = (int)($unitForWhitelist['id'] ?? 0);
+          if ($uid > 0) {
+            $whitelisted = (int)$buCol->countDocuments(['model_id' => ['$in' => [$uid, (string)$uid]]]) > 0;
+            if (!$whitelisted) { header('Location: admin_borrow_center.php?error=preferred_unavailable'); exit(); }
+          }
+        }
+      } catch (Throwable $_w2) {}
 
       // Proceed to claim a unit and mark borrowed
       if ($serial === '' && $modelIdIn <= 0) { header('Location: admin_borrow_center.php?error=preferred_unavailable'); exit(); }
