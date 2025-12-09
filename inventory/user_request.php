@@ -6651,7 +6651,7 @@ if (!empty($my_requests)) {
               msg = 'This unit is available.';
               cls = 'text-success';
             } else {
-              msg = 'Cannot borrow' + ((lastData && lastData.vr && lastData.vr.reason) ? (': ' + lastData.vr.reason) : '.');
+              msg = 'Item is not available for borrowing';
               cls = 'text-danger';
             }
             break;
