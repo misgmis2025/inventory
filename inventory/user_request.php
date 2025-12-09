@@ -6646,7 +6646,15 @@ if (!empty($my_requests)) {
         const statusText = (document.getElementById('urStatusBadge')?.textContent || '').trim();
         let msg = ''; let cls = 'text-muted';
         switch (statusText){
-          case 'Available': msg='This unit is available.'; cls='text-success'; break;
+          case 'Available':
+            if (vr && vr.allowed) {
+              msg = 'This unit is available.';
+              cls = 'text-success';
+            } else {
+              msg = 'Cannot borrow' + ((lastData && lastData.vr && lastData.vr.reason) ? (': ' + lastData.vr.reason) : '.');
+              cls = 'text-danger';
+            }
+            break;
           case 'In Use': msg='This unit is currently in use.'; cls='text-danger'; break;
           case 'Reserved': msg='This unit is currently reserved.'; cls='text-info'; break;
           case 'Maintenance': msg='This unit is under maintenance.'; cls='text-warning'; break;
