@@ -655,7 +655,7 @@ try {
             <?php if (isset($pendingVerifications) && is_array($pendingVerifications)): ?>
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <strong>Pending Physical Verifications</strong>
+                    <strong>Pending Verifications</strong>
                     <div class="ms-3" style="max-width: 260px;">
                         <input type="text" id="verificationSearch" class="form-control form-control-sm" placeholder="Search full name or school ID">
                     </div>
@@ -675,7 +675,7 @@ try {
                             </thead>
                             <tbody>
                                 <?php if (empty($pendingVerifications)): ?>
-                                    <tr><td colspan="6" class="text-center text-muted">No pending physical verifications.</td></tr>
+                                    <tr><td colspan="6" class="text-center text-muted">No pending verifications.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($pendingVerifications as $pv): ?>
                                         <tr data-verif-row="1" data-fullname="<?php echo htmlspecialchars($pv['full_name'] ?? ''); ?>" data-school-id="<?php echo htmlspecialchars($pv['school_id'] ?? ''); ?>">
@@ -1011,7 +1011,7 @@ try {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <p>
+            <p> 
               Action: <strong id="verificationAction">Verify</strong><br>
               Target account: <strong id="verificationUsername"></strong>
             </p>
