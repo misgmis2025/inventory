@@ -170,6 +170,24 @@ if (!empty($history)) {
         $groups[$labelAll][] = $hvTmpAll;
     }
 }
+
+// Approximate how many data rows fit on a physical page and compute how many
+// blank rows to append to the very last date table so the final grid appears
+// visually filled. This does not try to be exact; it just avoids an obviously
+// short last page.
+$approxRowsPerPage = 15;
+$totalDataRows = !empty($history) ? count($history) : 0;
+$blankRowsLast = 0;
+if ($totalDataRows > 0 && $approxRowsPerPage > 0) {
+    if ($totalDataRows <= $approxRowsPerPage) {
+        $blankRowsLast = $approxRowsPerPage - $totalDataRows;
+    } else {
+        $mod = $totalDataRows % $approxRowsPerPage;
+        if ($mod > 0) {
+            $blankRowsLast = $approxRowsPerPage - $mod;
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -421,6 +439,19 @@ if (!empty($history)) {
                       ?></td>
                     </tr>
                   <?php endforeach; ?>
+                  <?php if ($gi === count($groupOrder) - 1 && $blankRowsLast > 0): ?>
+                    <?php for ($i = 0; $i < $blankRowsLast; $i++): ?>
+                      <tr class="blank-row">
+                        <td>&nbsp;</td>
+                        <td>&nbsp;</td>
+                        <td>&nbsp;</td>
+                        <td>&nbsp;</td>
+                        <td>&nbsp;</td>
+                        <td class="col-datetime"><span class="dt"><span class="dt-time">&nbsp;</span></span></td>
+                        <td class="col-datetime"><span class="dt"><span class="dt-date">&nbsp;</span><span class="dt-time">&nbsp;</span></span></td>
+                      </tr>
+                    <?php endfor; ?>
+                  <?php endif; ?>
                 </tbody>
               </table>
             </div>
