@@ -75,7 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Generate numeric id for consistency with ETL
                 $last = $users->findOne([], ['sort' => ['id' => -1], 'projection' => ['id' => 1]]);
                 $nextId = ($last && isset($last['id']) ? (int)$last['id'] : 0) + 1;
-                $users->insertOne([
+                $nowStr = date('Y-m-d H:i:s');
+                $verificationStatus = ($usertype === 'admin') ? 'verified' : 'pending';
+                $verificationRequestedAt = ($usertype === 'admin') ? null : $nowStr;
+                $doc = [
                     'id' => $nextId,
                     'school_id' => $school_id_raw,
                     'user_type' => $user_type, // Student | Staff | Faculty
@@ -83,10 +86,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'username' => $username,
                     'password_hash' => $password_hash,
                     'usertype' => $usertype,
-                    'created_at' => date('Y-m-d H:i:s'),
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
-                header("Location: index.php");
+                    'created_at' => $nowStr,
+                    'updated_at' => $nowStr,
+                    'verification_status' => $verificationStatus,
+                ];
+                if ($verificationRequestedAt !== null) {
+                    $doc['verification_requested_at'] = $verificationRequestedAt;
+                }
+                $users->insertOne($doc);
+                header("Location: index.php?pending_verification=1");
                 exit();
             }
         } catch (Throwable $e) {

@@ -21,6 +21,7 @@ $UM_MONGO_FILLED = false;
 $users = [];
 $userStats = [];
 $agreementHtml = '';
+$pendingVerifications = [];
 try {
     require_once __DIR__ . '/../vendor/autoload.php';
     require_once __DIR__ . '/db/mongo.php';
@@ -140,12 +141,52 @@ try {
                     ['$set'=>['disabled'=>$newDisabled, 'updated_at'=>date('Y-m-d H:i:s')]]
                 );
                 header('Location: user_management.php?updated=1'); exit();
+            } elseif ($action === 'verify_user' || $action === 'reject_user') {
+                $adminPass = $_POST['admin_password'] ?? '';
+                if ($adminPass === '') { header('Location: user_management.php?error=auth'); exit(); }
+                $me = $usersCol->findOne(['username'=>$_SESSION['username']], ['projection'=>['password_hash'=>1]]);
+                $authOk = ($me && isset($me['password_hash']) && password_verify($adminPass, (string)$me['password_hash']));
+                if (!$authOk) { header('Location: user_management.php?error=auth'); exit(); }
+                $target = $usersCol->findOne(['username'=>$username], ['projection'=>['_id'=>1,'usertype'=>1]]);
+                if (!$target) { header('Location: user_management.php?error=missing'); exit(); }
+                if (($target['usertype'] ?? '') === 'admin') {
+                    header('Location: user_management.php?error=verify_admin_forbidden'); exit();
+                }
+                $nowStr = date('Y-m-d H:i:s');
+                if ($action === 'verify_user') {
+                    $usersCol->updateOne(
+                        ['_id'=>$target['_id']],
+                        ['$set'=>[
+                            'verification_status' => 'verified',
+                            'verification_verified_at' => $nowStr,
+                            'updated_at' => $nowStr,
+                        ]]
+                    );
+                    header('Location: user_management.php?verification_verified=1'); exit();
+                } else {
+                    $usersCol->updateOne(
+                        ['_id'=>$target['_id']],
+                        ['$set'=>[
+                            'verification_status' => 'rejected',
+                            'verification_rejected_at' => $nowStr,
+                            'updated_at' => $nowStr,
+                        ]]
+                    );
+                    header('Location: user_management.php?verification_rejected=1'); exit();
+                }
             }
         }
     }
 
     // List users
-    $cur = $usersCol->find([], ['sort'=>['username'=>1], 'projection'=>['username'=>1,'usertype'=>1,'full_name'=>1,'user_type'=>1,'school_id'=>1,'disabled'=>1]]);
+    $verifiedFilter = [
+        '$or' => [
+            ['verification_status' => 'verified'],
+            ['verification_status' => ['$exists' => false]],
+            ['verification_status' => ''],
+        ],
+    ];
+    $cur = $usersCol->find($verifiedFilter, ['sort'=>['username'=>1], 'projection'=>['username'=>1,'usertype'=>1,'full_name'=>1,'user_type'=>1,'school_id'=>1,'disabled'=>1]]);
     foreach ($cur as $u) {
         $users[] = [
             'username' => (string)($u['username'] ?? ''),
@@ -155,6 +196,38 @@ try {
             'school_id' => isset($u['school_id']) ? (string)$u['school_id'] : '',
             'disabled' => !empty($u['disabled']),
         ];
+    }
+    try {
+        $pendingCur = $usersCol->find([
+            'usertype' => 'user',
+            'verification_status' => 'pending',
+        ], [
+            'sort' => ['verification_requested_at' => 1, 'full_name' => 1],
+            'projection' => ['username'=>1,'full_name'=>1,'user_type'=>1,'school_id'=>1,'verification_requested_at'=>1],
+        ]);
+        foreach ($pendingCur as $pv) {
+            $ts = '';
+            try {
+                if (isset($pv['verification_requested_at']) && $pv['verification_requested_at'] instanceof MongoDB\BSON\UTCDateTime) {
+                    $dt = $pv['verification_requested_at']->toDateTime();
+                    $dt->setTimezone(new DateTimeZone('Asia/Manila'));
+                    $ts = $dt->format('Y-m-d H:i:s');
+                } else {
+                    $ts = trim((string)($pv['verification_requested_at'] ?? ''));
+                }
+            } catch (Throwable $_v) {
+                $ts = trim((string)($pv['verification_requested_at'] ?? ''));
+            }
+            $pendingVerifications[] = [
+                'username' => (string)($pv['username'] ?? ''),
+                'full_name' => (string)($pv['full_name'] ?? ''),
+                'user_type' => (string)($pv['user_type'] ?? ''),
+                'school_id' => isset($pv['school_id']) ? (string)$pv['school_id'] : '',
+                'requested_at' => $ts,
+            ];
+        }
+    } catch (Throwable $_pend) {
+        $pendingVerifications = [];
     }
     if (!empty($users)) {
         $me = (string)($_SESSION['username'] ?? '');
@@ -555,6 +628,9 @@ try {
             <?php if (isset($_GET['error']) && $_GET['error']==='disable_admin_forbidden'): ?>
                 <div class="alert alert-warning">Cannot disable an admin account. Demote to Student/Staff/Faculty first.</div>
             <?php endif; ?>
+            <?php if (isset($_GET['error']) && $_GET['error']==='verify_admin_forbidden'): ?>
+                <div class="alert alert-warning">Cannot process physical verification for an admin account.</div>
+            <?php endif; ?>
             <?php if (isset($_GET['error']) && $_GET['error']==='school_id_mismatch'): ?>
                 <div class="alert alert-warning">School ID verification failed for that user.</div>
             <?php endif; ?>
@@ -569,6 +645,67 @@ try {
             <?php endif; ?>
             <?php if (isset($_GET['agreement_updated'])): ?>
                 <div class="alert alert-success">Borrowing Agreement &amp; Accountability Policy has been updated.</div>
+            <?php endif; ?>
+            <?php if (isset($_GET['verification_verified'])): ?>
+                <div class="alert alert-success">User has been marked as physically verified.</div>
+            <?php endif; ?>
+            <?php if (isset($_GET['verification_rejected'])): ?>
+                <div class="alert alert-info">Physical verification request has been rejected.</div>
+            <?php endif; ?>
+            <?php if (isset($pendingVerifications) && is_array($pendingVerifications)): ?>
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>Pending Physical Verifications</strong>
+                    <div class="ms-3" style="max-width: 260px;">
+                        <input type="text" id="verificationSearch" class="form-control form-control-sm" placeholder="Search full name or school ID">
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive accounts-table-scroll">
+                        <table id="verificationTable" class="table table-striped table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Full Name</th>
+                                    <th>Username</th>
+                                    <th>School ID</th>
+                                    <th>User Type</th>
+                                    <th class="text-end text-nowrap">Requested At</th>
+                                    <th class="text-end text-nowrap">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($pendingVerifications)): ?>
+                                    <tr><td colspan="6" class="text-center text-muted">No pending physical verifications.</td></tr>
+                                <?php else: ?>
+                                    <?php foreach ($pendingVerifications as $pv): ?>
+                                        <tr data-verif-row="1" data-fullname="<?php echo htmlspecialchars($pv['full_name'] ?? ''); ?>" data-school-id="<?php echo htmlspecialchars($pv['school_id'] ?? ''); ?>">
+                                            <td><?php echo htmlspecialchars($pv['full_name'] ?? ''); ?></td>
+                                            <td><?php echo htmlspecialchars($pv['username'] ?? ''); ?></td>
+                                            <td><?php echo htmlspecialchars($pv['school_id'] ?? ''); ?></td>
+                                            <td><?php echo htmlspecialchars($pv['user_type'] ?? ''); ?></td>
+                                            <td class="text-end text-nowrap"><?php echo htmlspecialchars($pv['requested_at'] ?? ''); ?></td>
+                                            <td class="text-end">
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <form method="post" action="user_management.php" class="m-0 p-0 verification-action-form">
+                                                        <input type="hidden" name="action" value="verify_user" />
+                                                        <input type="hidden" name="username" value="<?php echo htmlspecialchars($pv['username'] ?? ''); ?>" />
+                                                        <button type="button" class="btn btn-success verification-action-btn" data-username="<?php echo htmlspecialchars($pv['username'] ?? ''); ?>" data-mode="verify">Verify</button>
+                                                    </form>
+                                                    <form method="post" action="user_management.php" class="m-0 p-0 verification-action-form">
+                                                        <input type="hidden" name="action" value="reject_user" />
+                                                        <input type="hidden" name="username" value="<?php echo htmlspecialchars($pv['username'] ?? ''); ?>" />
+                                                        <button type="button" class="btn btn-outline-danger verification-action-btn" data-username="<?php echo htmlspecialchars($pv['username'] ?? ''); ?>" data-mode="reject">Reject</button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
             <?php endif; ?>
 
             <div class="card">
@@ -866,6 +1003,32 @@ try {
       </div>
     </div>
 
+    <div class="modal fade" id="verificationDecisionModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Physical Verification Decision</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              Action: <strong id="verificationAction">Verify</strong><br>
+              Target account: <strong id="verificationUsername"></strong>
+            </p>
+            <div class="mb-0">
+              <label class="form-label mb-1">Enter your password to confirm</label>
+              <input type="password" class="form-control form-control-sm" id="verificationAdminPassword" placeholder="Your password" autocomplete="current-password" />
+              <div class="mt-1 small text-danger d-none" id="verificationErrorText">Incorrect password. Please try again.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-success btn-sm" id="verificationConfirmBtn" disabled>Verify</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Account Disable/Enable Modal -->
     <div class="modal fade" id="accountDisableModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
@@ -1018,7 +1181,6 @@ try {
 
         // Role toggle modal wiring (guarded) and Edit Type wiring
         document.addEventListener('DOMContentLoaded', function() {
-            // Accounts table search filter (username / full name / school ID)
             const accountsSearch = document.getElementById('accountsSearch');
             const accountsTable = document.getElementById('accountsTable');
             if (accountsSearch && accountsTable) {
@@ -1040,6 +1202,27 @@ try {
                   } else {
                     row.classList.add('d-none');
                   }
+                });
+              });
+            }
+
+            const verifSearch = document.getElementById('verificationSearch');
+            const verifTable = document.getElementById('verificationTable');
+            if (verifSearch && verifTable) {
+              const vtbody = verifTable.querySelector('tbody');
+              const vrows = vtbody ? Array.from(vtbody.querySelectorAll('tr[data-verif-row="1"]')) : [];
+              verifSearch.addEventListener('input', function() {
+                const q = this.value.toLowerCase().trim();
+                vrows.forEach(function(row) {
+                  const full = (row.getAttribute('data-fullname') || '').toLowerCase();
+                  const sid = (row.getAttribute('data-school-id') || '').toLowerCase();
+                  let show = true;
+                  if (q) {
+                    if (full.indexOf(q) === -1 && sid.indexOf(q) === -1) {
+                      show = false;
+                    }
+                  }
+                  row.classList.toggle('d-none', !show);
                 });
               });
             }
@@ -1098,7 +1281,6 @@ try {
               if (statsStatusFilter) statsStatusFilter.addEventListener('change', applyStatsFilters);
             }
 
-            // Account disable / enable modal wiring
             const disableModalEl = document.getElementById('accountDisableModal');
             const deleteModalEl = document.getElementById('accountDeleteModal');
             const accountsTbody = document.querySelector('#accountsTable tbody');

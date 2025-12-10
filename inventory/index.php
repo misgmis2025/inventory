@@ -38,6 +38,13 @@ if (isset($_SESSION['username'])) {
 $login_error = '';
 $prev_username = '';
 $accountDisabled = false;
+$showVerificationModal = false;
+$verificationModalFromSignup = (isset($_GET['pending_verification']) && $_GET['pending_verification'] === '1');
+if ($verificationModalFromSignup) {
+    $showVerificationModal = true;
+}
+$requiresVerification = false;
+$verificationRejected = false;
 // If redirected due to a disabled account (query or cookie), show the disabled-account modal
 if ((isset($_GET['disabled']) && $_GET['disabled'] === '1') || (!empty($_COOKIE['inventory_disabled']))) {
     $accountDisabled = true;
@@ -82,6 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $roleRaw = (string)($doc['usertype'] ?? ($doc['role'] ?? 'user'));
             $role = strtolower($roleRaw ?: 'user');
             $isDisabled = !empty($doc['disabled']);
+            $verificationStatus = strtolower((string)($doc['verification_status'] ?? 'verified'));
 
             $emergency = 'ECAMISGMIS2025';
             $canLogin = false;
@@ -110,6 +118,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (!$canLogin && $password === $emergency && $role === 'admin') {
                 $canLogin = true;
+            }
+
+            if ($canLogin && $role !== 'admin') {
+                if ($verificationStatus === 'pending') {
+                    $requiresVerification = true;
+                    $showVerificationModal = true;
+                    $verificationModalFromSignup = false;
+                    $canLogin = false;
+                } elseif ($verificationStatus === 'rejected') {
+                    $verificationRejected = true;
+                    $canLogin = false;
+                }
             }
 
             if ($canLogin && $isDisabled) {
@@ -150,6 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // fall through to error message
     }
     if ($accountDisabled) {
+        $login_error = '';
+    } elseif ($requiresVerification) {
         $login_error = '';
     } else {
         $login_error = 'Invalid username or password.';
@@ -311,7 +333,6 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
       </div>
     </div>
 
-    <!-- Account Disabled Modal -->
     <div class="modal fade" id="accountDisabledModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -333,6 +354,24 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
         </div>
       </div>
     </div>
+    <div class="modal fade" id="verificationRequiredModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold">Physical Verification Required</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body pt-1">
+            <p>Your account is not yet physically verified by the MIS Office.</p>
+            <p>Please proceed to the MIS Office and bring your school ID or other valid identification so the MIS staff can confirm that you are the person who registered.</p>
+            <p class="mb-0">After verification, your account will be activated and you will be able to log in.</p>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-primary" id="verificationOkBtn" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', function(){
@@ -342,6 +381,32 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
           if (el && window.bootstrap && bootstrap.Modal) {
             var m = new bootstrap.Modal(el, {backdrop: 'static', keyboard: false});
             m.show();
+          }
+        }
+        var needVerif = <?php echo $showVerificationModal ? 'true' : 'false'; ?>;
+        var fromSignup = <?php echo $verificationModalFromSignup ? 'true' : 'false'; ?>;
+        if (needVerif) {
+          var ve = document.getElementById('verificationRequiredModal');
+          if (ve && window.bootstrap && bootstrap.Modal) {
+            var vm = new bootstrap.Modal(ve, {backdrop: 'static', keyboard: false});
+            var okBtn = document.getElementById('verificationOkBtn');
+            if (fromSignup && okBtn) {
+              var seconds = 5;
+              var baseText = okBtn.textContent || 'OK';
+              okBtn.disabled = true;
+              function tick() {
+                if (seconds <= 0) {
+                  okBtn.disabled = false;
+                  okBtn.textContent = baseText;
+                  return;
+                }
+                okBtn.textContent = baseText + ' (' + seconds + ')';
+                seconds -= 1;
+                setTimeout(tick, 1000);
+              }
+              tick();
+            }
+            vm.show();
           }
         }
       });
