@@ -151,8 +151,9 @@ try {
 
 // If Mongo failed, leave $history empty and render safely
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
-// Let the browser handle page breaks; render all rows in a single sequence
-$pages = !empty($history) ? [$history] : [];
+// Fixed rows per printed page; remaining space is filled with blank rows
+$rowsPerPage = 24;
+$pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -211,6 +212,7 @@ $pages = !empty($history) ? [$history] : [];
     .print-table .col-datetime .dt { display: inline-block; line-height: 1.35; min-height: calc(1.35em * 2); white-space: normal; }
     .print-table .col-datetime .dt .dt-date,
     .print-table .col-datetime .dt .dt-time { display: block; }
+    .print-table tr.blank-row td { padding-top: .30rem; padding-bottom: .30rem; }
     .table-scroll thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
     .eca-header { text-align: center; margin-bottom: 14px; }
     .eca-header .eca-title { font-weight: 400; letter-spacing: 6px; font-size: 14pt; }
@@ -288,7 +290,7 @@ $pages = !empty($history) ? [$history] : [];
     <tbody>
       <tr><td style="padding:0;">
         <?php $pagesToRender = !empty($pages) ? $pages : [[]]; ?>
-        <?php foreach ($pagesToRender as $pi => $displayRows): $padRows = 0; ?>
+        <?php foreach ($pagesToRender as $pi => $displayRows): $padRows = isset($rowsPerPage) ? max(0, $rowsPerPage - count($displayRows)) : 0; ?>
           <?php if (empty($displayRows)): ?>
             <div class="table-responsive">
               <table class="table table-bordered table-sm align-middle print-table">
@@ -427,7 +429,7 @@ $pages = !empty($history) ? [$history] : [];
                     <?php endforeach; ?>
                     <?php if ($gi === count($groupOrder) - 1): ?>
                       <?php for ($i = 0; $i < $padRows; $i++): ?>
-                        <tr>
+                        <tr class="blank-row">
                           <td>&nbsp;</td>
                           <td>&nbsp;</td>
                           <td>&nbsp;</td>
