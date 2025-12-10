@@ -519,6 +519,8 @@ try {
       .stats-table-scroll { max-height: 260px; min-height: 260px; overflow-y: auto; }
       .stats-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
       #verificationTable { width: 100%; }
+      #verificationTable thead th,
+      #verificationTable tbody td { padding-top: 0.25rem; padding-bottom: 0.25rem; }
       /* Borrowing Agreement editor: keep toolbar visible while scrolling */
       #editBorrowAgreementModal .modal-body {
         max-height: 70vh;
