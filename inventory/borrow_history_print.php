@@ -210,6 +210,37 @@ if (!empty($history)) {
     if (!empty($currentPage['segments'])) {
         $pages[] = $currentPage;
     }
+
+    // Compress pages: if two consecutive logical pages together still fit within
+    // $rowsPerPage, merge them. This avoids very sparse intermediate pages when
+    // we could fit their rows into a single page.
+    if (!empty($pages) && isset($rowsPerPage) && $rowsPerPage > 0) {
+        $compressed = [];
+        $pending = null;
+        foreach ($pages as $pg) {
+            if ($pending === null) {
+                $pending = $pg;
+                continue;
+            }
+
+            $pendingRows = isset($pending['row_count']) ? (int)$pending['row_count'] : 0;
+            $pgRows = isset($pg['row_count']) ? (int)$pg['row_count'] : 0;
+
+            if ($pendingRows + $pgRows <= $rowsPerPage) {
+                $pendingSegments = (isset($pending['segments']) && is_array($pending['segments'])) ? $pending['segments'] : [];
+                $pgSegments = (isset($pg['segments']) && is_array($pg['segments'])) ? $pg['segments'] : [];
+                $pending['segments'] = array_merge($pendingSegments, $pgSegments);
+                $pending['row_count'] = $pendingRows + $pgRows;
+            } else {
+                $compressed[] = $pending;
+                $pending = $pg;
+            }
+        }
+        if ($pending !== null) {
+            $compressed[] = $pending;
+        }
+        $pages = $compressed;
+    }
 } else {
     $pages = [];
 }
@@ -240,6 +271,8 @@ if (!empty($history)) {
       .col-datetime .dt { white-space: normal; }
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
+      /* Avoid splitting a single date table across two physical pages */
+      .table-responsive, .print-table { page-break-inside: avoid; break-inside: avoid-page; }
       .print-doc { width: 100% !important; border-collapse: collapse !important; border-spacing: 0 !important; }
       .print-doc thead { display: table-header-group !important; }
       .print-doc tfoot { display: table-footer-group !important; }
@@ -353,7 +386,10 @@ if (!empty($history)) {
           <?php
             $segments = (isset($pageMeta['segments']) && is_array($pageMeta['segments'])) ? $pageMeta['segments'] : [];
             $rowsOnPage = isset($pageMeta['row_count']) ? (int)$pageMeta['row_count'] : 0;
-            $padRows = isset($rowsPerPage) ? max(0, $rowsPerPage - $rowsOnPage) : 0;
+            // Only pad with blank rows on the final logical page to avoid
+            // creating extra partly-blank physical pages.
+            $isLastPage = ($pi === count($pagesToRender) - 1);
+            $padRows = ($isLastPage && isset($rowsPerPage)) ? max(0, $rowsPerPage - $rowsOnPage) : 0;
           ?>
           <?php if (empty($segments)): ?>
             <div class="table-responsive">
