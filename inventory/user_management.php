@@ -518,6 +518,7 @@ try {
       .accounts-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
       .stats-table-scroll { max-height: 260px; min-height: 260px; overflow-y: auto; }
       .stats-table-scroll thead th { position: sticky; top: 0; z-index: 2; }
+      #verificationTable { width: 100%; }
       /* Borrowing Agreement editor: keep toolbar visible while scrolling */
       #editBorrowAgreementModal .modal-body {
         max-height: 70vh;
@@ -535,6 +536,7 @@ try {
       .user-actions { gap: 0.2rem !important; }
       .user-actions .btn .bi { font-size: 0.85em; margin-right: 0.25rem !important; }
       .btn-actions-thin { padding: 0.1rem 0.45rem; font-size: 0.78rem; line-height: 1.1; }
+      .verification-action-btn.btn { padding: 0.1rem 0.35rem; font-size: 0.72rem; line-height: 1; }
     </style>
 </head>
 <body>
