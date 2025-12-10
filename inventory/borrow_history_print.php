@@ -151,8 +151,9 @@ try {
 
 // If Mongo failed, leave $history empty and render safely
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
-// Fixed rows per printed page; remaining space is filled with blank rows
-$rowsPerPage = 24;
+// Fixed rows per printed page; remaining space is filled with blank rows.
+// Use a conservative value so data + blank rows fit on a single physical page.
+$rowsPerPage = 18;
 
 // Build pages by grouping rows by borrowed date and packing into pages,
 // allowing a single date to span multiple pages (continuation)
