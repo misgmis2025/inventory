@@ -151,17 +151,10 @@ try {
 
 // If Mongo failed, leave $history empty and render safely
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
-// Maximum data rows per logical page (no blank fillers). Chosen so that
-// data + header/footer comfortably fit on one physical A4 page.
-$rowsPerPage = 24;
-
-// Build pages by grouping rows by borrowed date and packing into pages,
-// allowing a single date to span multiple pages (continuation)
-$pages = [];
+// Group history rows by borrowed date label (browser will handle page breaks).
+$groups = [];
+$groupOrder = [];
 if (!empty($history)) {
-    // Group all history rows by date label while preserving order
-    $allGroups = [];
-    $allGroupOrder = [];
     foreach ($history as $hvTmpAll) {
         $labelAll = 'Unknown date';
         if (!empty($hvTmpAll['borrowed_at'])) {
@@ -170,79 +163,12 @@ if (!empty($history)) {
                 $labelAll = date('F j, Y', $tsTmpAll);
             }
         }
-        if (!isset($allGroups[$labelAll])) {
-            $allGroups[$labelAll] = [];
-            $allGroupOrder[] = $labelAll;
+        if (!isset($groups[$labelAll])) {
+            $groups[$labelAll] = [];
+            $groupOrder[] = $labelAll;
         }
-        $allGroups[$labelAll][] = $hvTmpAll;
+        $groups[$labelAll][] = $hvTmpAll;
     }
-
-    $currentPage = ['segments' => [], 'row_count' => 0];
-    foreach ($allGroupOrder as $dateLabelAll) {
-        $rowsForLabel = $allGroups[$dateLabelAll];
-        $offset = 0;
-        $totalForLabel = count($rowsForLabel);
-        $isFirstSegmentForLabel = true;
-
-        while ($offset < $totalForLabel) {
-            $remaining = $rowsPerPage - $currentPage['row_count'];
-            if ($remaining <= 0) {
-                $pages[] = $currentPage;
-                $currentPage = ['segments' => [], 'row_count' => 0];
-                $remaining = $rowsPerPage;
-            }
-
-            $take = min($remaining, $totalForLabel - $offset);
-            $segmentRows = array_slice($rowsForLabel, $offset, $take);
-
-            $currentPage['segments'][] = [
-                'label' => $dateLabelAll,
-                'rows' => $segmentRows,
-                'continued' => !$isFirstSegmentForLabel,
-            ];
-            $currentPage['row_count'] += count($segmentRows);
-
-            $offset += $take;
-            $isFirstSegmentForLabel = false;
-        }
-    }
-
-    if (!empty($currentPage['segments'])) {
-        $pages[] = $currentPage;
-    }
-
-    // Compress pages: if two consecutive logical pages together still fit within
-    // $rowsPerPage, merge them. This avoids very sparse intermediate pages when
-    // we could fit their rows into a single page.
-    if (!empty($pages) && isset($rowsPerPage) && $rowsPerPage > 0) {
-        $compressed = [];
-        $pending = null;
-        foreach ($pages as $pg) {
-            if ($pending === null) {
-                $pending = $pg;
-                continue;
-            }
-
-            $pendingRows = isset($pending['row_count']) ? (int)$pending['row_count'] : 0;
-            $pgRows = isset($pg['row_count']) ? (int)$pg['row_count'] : 0;
-
-            if ($pendingRows + $pgRows <= $rowsPerPage) {
-                $pendingSegments = (isset($pending['segments']) && is_array($pending['segments'])) ? $pending['segments'] : [];
-                $pgSegments = (isset($pg['segments']) && is_array($pg['segments'])) ? $pg['segments'] : [];
-                $pending['segments'] = array_merge($pendingSegments, $pgSegments);
-                $pending['row_count'] = $pendingRows + $pgRows;
-            } else {
-                $compressed[] = $pending;
-                $pending = $pg;
-            }
-        }
-        if ($pending !== null) {
-            $compressed[] = $pending;
-        }
-        $pages = $compressed;
-    }
-} else {
-    $pages = [];
 }
 ?>
 <!DOCTYPE html>
@@ -271,8 +197,6 @@ if (!empty($history)) {
       .col-datetime .dt { white-space: normal; }
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
-      /* Avoid splitting a single date table across two physical pages */
-      .table-responsive, .print-table { page-break-inside: avoid; break-inside: avoid-page; }
       .print-doc { width: 100% !important; border-collapse: collapse !important; border-spacing: 0 !important; }
       .print-doc thead { display: table-header-group !important; }
       .print-doc tfoot { display: table-footer-group !important; }
@@ -381,16 +305,37 @@ if (!empty($history)) {
     </thead>
     <tbody>
       <tr><td style="padding:0;">
-        <?php $pagesToRender = !empty($pages) ? $pages : [[]]; ?>
-        <?php foreach ($pagesToRender as $pi => $pageMeta): ?>
-          <?php
-            $segments = (isset($pageMeta['segments']) && is_array($pageMeta['segments'])) ? $pageMeta['segments'] : [];
-            $rowsOnPage = isset($pageMeta['row_count']) ? (int)$pageMeta['row_count'] : 0;
-            // Do NOT add blank rows; each page is filled only with real data.
-            // The last page can be partially filled.
-            $padRows = 0;
-          ?>
-          <?php if (empty($segments)): ?>
+        <?php if (empty($groupOrder)): ?>
+          <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle print-table">
+              <colgroup>
+                <col style="width: 16%" /> <!-- User -->
+                <col style="width: 12%" /> <!-- Student ID -->
+                <col style="width: 12%" /> <!-- Serial ID -->
+                <col style="width: 22%" /> <!-- Item/Model -->
+                <col style="width: 10%" /> <!-- Category -->
+                <col style="width: 14%" /> <!-- Time Borrowed -->
+                <col style="width: 14%" /> <!-- Time Returned -->
+              </colgroup>
+              <thead class="table-light">
+                <tr>
+                  <th>User</th>
+                  <th>Student ID</th>
+                  <th>Serial ID</th>
+                  <th>Item/Model</th>
+                  <th>Category</th>
+                  <th class="col-datetime">Time Borrowed</th>
+                  <th class="col-datetime">Time Returned</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7" class="text-center text-muted py-3">No history.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        <?php else: ?>
+          <?php foreach ($groupOrder as $gi => $dateLabel): ?>
+            <?php $segmentRows = $groups[$dateLabel] ?? []; ?>
             <div class="table-responsive">
               <table class="table table-bordered table-sm align-middle print-table">
                 <colgroup>
@@ -404,6 +349,14 @@ if (!empty($history)) {
                 </colgroup>
                 <thead class="table-light">
                   <tr>
+                    <th colspan="7">
+                      <span class="date-group-header">
+                        <i class="bi bi-calendar3"></i>
+                        <span><?php echo htmlspecialchars($dateLabel); ?></span>
+                      </span>
+                    </th>
+                  </tr>
+                  <tr>
                     <th>User</th>
                     <th>Student ID</th>
                     <th>Serial ID</th>
@@ -414,137 +367,68 @@ if (!empty($history)) {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td colspan="7" class="text-center text-muted py-3">No history.</td></tr>
+                  <?php foreach ($segmentRows as $hv): ?>
+                    <?php
+                      $mn = trim((string)($hv['model_name'] ?? ''));
+                      $cat = trim((string)($hv['category'] ?? ''));
+                      $usr = trim((string)($hv['full_name'] ?? ($hv['username'] ?? '')));
+                      $ser = trim((string)($hv['serial_no'] ?? ''));
+                      $modelClass = '';
+                      $catClass = '';
+                      $userClass = '';
+                      $serialClass = '';
+                      $lenMn = strlen($mn);
+                      $lenCat = strlen($cat);
+                      $lenUsr = strlen($usr);
+                      $lenSer = strlen($ser);
+                      if ($lenMn > 30 && $lenMn <= 45) { $modelClass = 'shrink-1'; }
+                      elseif ($lenMn > 45 && $lenMn <= 60) { $modelClass = 'shrink-2'; }
+                      elseif ($lenMn > 60) { $modelClass = 'shrink-3'; }
+                      if ($lenCat > 20 && $lenCat <= 30) { $catClass = 'shrink-1'; }
+                      elseif ($lenCat > 30 && $lenCat <= 45) { $catClass = 'shrink-2'; }
+                      elseif ($lenCat > 45) { $catClass = 'shrink-3'; }
+                      if ($lenUsr > 18 && $lenUsr <= 26) { $userClass = 'shrink-1'; }
+                      elseif ($lenUsr > 26 && $lenUsr <= 34) { $userClass = 'shrink-2'; }
+                      elseif ($lenUsr > 34) { $userClass = 'shrink-3'; }
+                      if ($lenSer > 12 && $lenSer <= 18) { $serialClass = 'shrink-1'; }
+                      elseif ($lenSer > 18 && $lenSer <= 24) { $serialClass = 'shrink-2'; }
+                      elseif ($lenSer > 24) { $serialClass = 'shrink-3'; }
+                    ?>
+                    <tr>
+                      <td class="<?php echo $userClass; ?>"><span class="two-line"><?php echo htmlspecialchars($usr); ?></span></td>
+                      <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['school_id'] ?? '')); ?></span></td>
+                      <td class="<?php echo $serialClass; ?>"><span class="two-line"><?php echo htmlspecialchars($ser); ?></span></td>
+                      <td class="<?php echo $modelClass; ?>" title="<?php echo htmlspecialchars($mn); ?>"><span class="two-line"><?php echo htmlspecialchars($mn); ?></span></td>
+                      <td class="<?php echo $catClass; ?>"><span class="two-line"><?php echo htmlspecialchars($cat); ?></span></td>
+                      <td class="col-datetime"><?php
+                        if (!empty($hv['borrowed_at'])) {
+                          $ts = strtotime($hv['borrowed_at']);
+                          if ($ts !== false) {
+                            $timePart = date('g:iA', $ts);
+                            echo '<span class="dt"><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                          }
+                        }
+                      ?></td>
+                      <td class="col-datetime"><?php
+                        if (!empty($hv['returned_at'])) {
+                          $ts = strtotime($hv['returned_at']);
+                          if ($ts !== false) {
+                            $datePart = date('F d, Y', $ts);
+                            $timePart = date('g:iA', $ts);
+                            echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
+                          }
+                        }
+                      ?></td>
+                    </tr>
+                  <?php endforeach; ?>
                 </tbody>
               </table>
             </div>
-          <?php else: ?>
-            <?php foreach ($segments as $si => $segment): ?>
-              <?php
-                $dateLabel = isset($segment['label']) ? (string)$segment['label'] : 'Unknown date';
-                $segmentRows = (isset($segment['rows']) && is_array($segment['rows'])) ? $segment['rows'] : [];
-                $continued = !empty($segment['continued']);
-              ?>
-              <div class="table-responsive">
-                <table class="table table-bordered table-sm align-middle print-table">
-                  <colgroup>
-                    <col style="width: 16%" /> <!-- User -->
-                    <col style="width: 12%" /> <!-- Student ID -->
-                    <col style="width: 12%" /> <!-- Serial ID -->
-                    <col style="width: 22%" /> <!-- Item/Model -->
-                    <col style="width: 10%" /> <!-- Category -->
-                    <col style="width: 14%" /> <!-- Time Borrowed -->
-                    <col style="width: 14%" /> <!-- Time Returned -->
-                  </colgroup>
-                  <thead class="table-light">
-                    <tr>
-                      <th colspan="7">
-                        <span class="date-group-header">
-                          <i class="bi bi-calendar3"></i>
-                          <span>
-                            <?php
-                              $labelText = $dateLabel;
-                              if ($continued) {
-                                $labelText .= ' (continued)';
-                              }
-                              echo htmlspecialchars($labelText);
-                            ?>
-                          </span>
-                        </span>
-                      </th>
-                    </tr>
-                    <?php if ($si === 0): ?>
-                    <tr>
-                      <th>User</th>
-                      <th>Student ID</th>
-                      <th>Serial ID</th>
-                      <th>Item/Model</th>
-                      <th>Category</th>
-                      <th class="col-datetime">Time Borrowed</th>
-                      <th class="col-datetime">Time Returned</th>
-                    </tr>
-                    <?php endif; ?>
-                  </thead>
-                  <tbody>
-                    <?php foreach ($segmentRows as $hv): ?>
-                      <?php
-                        $mn = trim((string)($hv['model_name'] ?? ''));
-                        $cat = trim((string)($hv['category'] ?? ''));
-                        $usr = trim((string)($hv['full_name'] ?? ($hv['username'] ?? '')));
-                        $ser = trim((string)($hv['serial_no'] ?? ''));
-                        $modelClass = '';
-                        $catClass = '';
-                        $userClass = '';
-                        $serialClass = '';
-                        $lenMn = strlen($mn);
-                        $lenCat = strlen($cat);
-                        $lenUsr = strlen($usr);
-                        $lenSer = strlen($ser);
-                        if ($lenMn > 30 && $lenMn <= 45) { $modelClass = 'shrink-1'; }
-                        elseif ($lenMn > 45 && $lenMn <= 60) { $modelClass = 'shrink-2'; }
-                        elseif ($lenMn > 60) { $modelClass = 'shrink-3'; }
-                        if ($lenCat > 20 && $lenCat <= 30) { $catClass = 'shrink-1'; }
-                        elseif ($lenCat > 30 && $lenCat <= 45) { $catClass = 'shrink-2'; }
-                        elseif ($lenCat > 45) { $catClass = 'shrink-3'; }
-                        if ($lenUsr > 18 && $lenUsr <= 26) { $userClass = 'shrink-1'; }
-                        elseif ($lenUsr > 26 && $lenUsr <= 34) { $userClass = 'shrink-2'; }
-                        elseif ($lenUsr > 34) { $userClass = 'shrink-3'; }
-                        if ($lenSer > 12 && $lenSer <= 18) { $serialClass = 'shrink-1'; }
-                        elseif ($lenSer > 18 && $lenSer <= 24) { $serialClass = 'shrink-2'; }
-                        elseif ($lenSer > 24) { $serialClass = 'shrink-3'; }
-                      ?>
-                      <tr>
-                        <td class="<?php echo $userClass; ?>"><span class="two-line"><?php echo htmlspecialchars($usr); ?></span></td>
-                        <td><span class="two-line"><?php echo htmlspecialchars((string)($hv['school_id'] ?? '')); ?></span></td>
-                        <td class="<?php echo $serialClass; ?>"><span class="two-line"><?php echo htmlspecialchars($ser); ?></span></td>
-                        <td class="<?php echo $modelClass; ?>" title="<?php echo htmlspecialchars($mn); ?>"><span class="two-line"><?php echo htmlspecialchars($mn); ?></span></td>
-                        <td class="<?php echo $catClass; ?>"><span class="two-line"><?php echo htmlspecialchars($cat); ?></span></td>
-                        <td class="col-datetime"><?php
-                          if (!empty($hv['borrowed_at'])) {
-                            $ts = strtotime($hv['borrowed_at']);
-                            if ($ts !== false) {
-                              $timePart = date('g:iA', $ts);
-                              echo '<span class="dt"><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
-                            }
-                          }
-                        ?></td>
-                        <td class="col-datetime"><?php
-                          if (!empty($hv['returned_at'])) {
-                            $ts = strtotime($hv['returned_at']);
-                            if ($ts !== false) {
-                              $datePart = date('F d, Y', $ts);
-                              $timePart = date('g:iA', $ts);
-                              echo '<span class="dt"><span class="dt-date">'.htmlspecialchars($datePart).'</span><span class="dt-time">'.htmlspecialchars($timePart).'</span></span>';
-                            }
-                          }
-                        ?></td>
-                      </tr>
-                    <?php endforeach; ?>
-                    <?php if ($si === count($segments) - 1 && $padRows > 0): ?>
-                      <?php for ($i = 0; $i < $padRows; $i++): ?>
-                        <tr class="blank-row">
-                          <td>&nbsp;</td>
-                          <td>&nbsp;</td>
-                          <td>&nbsp;</td>
-                          <td>&nbsp;</td>
-                          <td>&nbsp;</td>
-                          <td class="col-datetime"><span class="dt"><span class="dt-time">&nbsp;</span></span></td>
-                          <td class="col-datetime"><span class="dt"><span class="dt-date">&nbsp;</span><span class="dt-time">&nbsp;</span></span></td>
-                        </tr>
-                      <?php endfor; ?>
-                    <?php endif; ?>
-                  </tbody>
-                </table>
-              </div>
-              <?php if ($si < count($segments) - 1): ?>
-                <div class="date-separator"></div>
-              <?php endif; ?>
-            <?php endforeach; ?>
-          <?php endif; ?>
-          <?php if ($pi < count($pagesToRender) - 1): ?>
-            <div class="page-break"></div>
-          <?php endif; ?>
-        <?php endforeach; ?>
+            <?php if ($gi < count($groupOrder) - 1): ?>
+              <div class="date-separator"></div>
+            <?php endif; ?>
+          <?php endforeach; ?>
+        <?php endif; ?>
       </td></tr>
     </tbody>
     <tfoot>
