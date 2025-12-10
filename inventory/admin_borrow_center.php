@@ -228,52 +228,80 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       .eca-footer { margin-top:18mm; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap; }
       .eca-footer .field { display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
       .eca-print-value { display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:180px; }
+      .page { page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+      .blank-row td { padding-top: .2rem !important; padding-bottom: .2rem !important; }
     </style>
   </head><body>
     <div class="container-fluid pt-3 print-root">
-      <div class="eca-header"><div class="eca-title">ECA</div><div class="eca-sub">Exact Colleges of Asia, Inc.</div></div>
-      <div class="eca-meta"><div><strong>Date:</strong> <?php echo htmlspecialchars($dateVal); ?></div><div></div></div>
-      <div class="report-title">OVERDUE ITEMS</div>
-      <div class="print-wrap mb-2">
-        <table class="table table-bordered table-sm align-middle print-table">
-          <thead class="table-light">
-            <tr>
-              <th>Serial ID</th>
-              <th>Item</th>
-              <th>Category</th>
-              <th>Location</th>
-              <th>Borrowed By</th>
-              <th>School ID</th>
-              <th>Approved By</th>
-              <th>Remarks</th>
-              <th>Due At</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php if (empty($rows)): ?>
-              <tr><td colspan="9" class="text-center text-muted">No overdue items.</td></tr>
-            <?php else: foreach ($rows as $rw): ?>
+      <?php
+        $pageSize = 15;
+        $totalRows = is_array($rows) ? count($rows) : 0;
+        $pages = max(1, (int)ceil($totalRows / $pageSize));
+        for ($p = 0; $p < $pages; $p++) {
+          $slice = array_slice($rows, $p * $pageSize, $pageSize);
+          $fill  = $pageSize - count($slice);
+      ?>
+      <div class="page">
+        <div class="eca-header"><div class="eca-title">ECA</div><div class="eca-sub">Exact Colleges of Asia, Inc.</div></div>
+        <div class="eca-meta"><div><strong>Date:</strong> <?php echo htmlspecialchars($dateVal); ?></div><div></div></div>
+        <div class="report-title">OVERDUE ITEMS</div>
+        <div class="print-wrap mb-2">
+          <table class="table table-bordered table-sm align-middle print-table">
+            <thead class="table-light">
               <tr>
-                <td><?php echo htmlspecialchars($rw['serial']); ?></td>
-                <td><?php echo htmlspecialchars($rw['model']); ?></td>
-                <td><?php echo htmlspecialchars($rw['category']); ?></td>
-                <td><?php echo htmlspecialchars($rw['location']); ?></td>
-                <td><?php echo htmlspecialchars($rw['borrowed_by']); ?></td>
-                <td><?php echo htmlspecialchars((string)($rw['school_id'] ?? '')); ?></td>
-                <td><?php echo htmlspecialchars($rw['approved_by']); ?></td>
-                <td><?php echo htmlspecialchars($rw['remarks']); ?></td>
-                <td><?php echo htmlspecialchars($rw['due_at'] ? date('F d, Y g:iA', strtotime($rw['due_at'])) : ''); ?></td>
+                <th>Serial ID</th>
+                <th>Item</th>
+                <th>Category</th>
+                <th>Location</th>
+                <th>Borrowed By</th>
+                <th>School ID</th>
+                <th>Approved By</th>
+                <th>Remarks</th>
+                <th>Due At</th>
               </tr>
-            <?php endforeach; endif; ?>
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              <?php if (empty($slice)): ?>
+                <?php /* no data on this page; will render blank rows below */ ?>
+              <?php endif; ?>
+              <?php foreach ($slice as $rw): ?>
+                <tr>
+                  <td><?php echo htmlspecialchars($rw['serial']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['model']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['category']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['location']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['borrowed_by']); ?></td>
+                  <td><?php echo htmlspecialchars((string)($rw['school_id'] ?? '')); ?></td>
+                  <td><?php echo htmlspecialchars($rw['approved_by']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['remarks']); ?></td>
+                  <td><?php echo htmlspecialchars($rw['due_at'] ? date('F d, Y g:iA', strtotime($rw['due_at'])) : ''); ?></td>
+                </tr>
+              <?php endforeach; ?>
+              <?php for ($i = 0; $i < $fill; $i++): ?>
+                <tr class="blank-row">
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                </tr>
+              <?php endfor; ?>
+            </tbody>
+          </table>
+        </div>
 
-    <!-- no modal JS in print view -->
-      <div class="eca-footer">
-        <div class="field"><label>Prepared by:</label><span class="eca-print-value"><?php echo htmlspecialchars($prepared); ?>&nbsp;</span></div>
-        <div class="field"><label>Checked by:</label><span class="eca-print-value"><?php echo htmlspecialchars($checked); ?>&nbsp;</span></div>
+      <!-- no modal JS in print view -->
+        <div class="eca-footer">
+          <div class="field"><label>Prepared by:</label><span class="eca-print-value"><?php echo htmlspecialchars($prepared); ?>&nbsp;</span></div>
+          <div class="field"><label>Checked by:</label><span class="eca-print-value"><?php echo htmlspecialchars($checked); ?>&nbsp;</span></div>
+        </div>
       </div>
+      <?php } ?>
     </div>
     <script>
       // Auto-trigger print on load for convenience

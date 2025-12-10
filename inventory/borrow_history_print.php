@@ -181,8 +181,8 @@ $pages = !empty($history) ? [$history] : [];
       .table-scroll { max-height: none !important; overflow: visible !important; }
       .table-responsive { max-height: none !important; overflow: visible !important; }
       .print-doc { width: 100% !important; border-collapse: collapse !important; border-spacing: 0 !important; }
-      .print-doc thead { display: table-row-group !important; }
-      .print-doc tfoot { display: none !important; }
+      .print-doc thead { display: table-header-group !important; }
+      .print-doc tfoot { display: table-footer-group !important; }
       .print-doc thead tr:first-child { page-break-before: avoid !important; break-before: avoid-page !important; }
       .page-break { page-break-before: always !important; break-before: page !important; }
       .container-fluid { padding-left: 0 !important; padding-right: 0 !important; }
@@ -191,7 +191,7 @@ $pages = !empty($history) ? [$history] : [];
       .print-doc .print-table { margin-top: 6px !important; }
       .container-fluid.pb-3 { padding-bottom: 0 !important; }
       .eca-footer { margin-top: 16px !important; }
-      .print-footer-fixed { position: fixed; left: 0; right: 0; bottom: 0.20in; }
+      .print-footer-fixed { position: fixed; left: 0; right: 0; bottom: 0.20in; display: none !important; }
       /* Responsive font shrinking helpers */
       .shrink-1 { font-size: 10px !important; }
       .shrink-2 { font-size: 9px !important; }
