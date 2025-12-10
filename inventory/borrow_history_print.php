@@ -151,9 +151,9 @@ try {
 
 // If Mongo failed, leave $history empty and render safely
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
-// Fixed rows per printed page; remaining space is filled with blank rows.
-// Use a conservative value so data + blank rows fit on a single physical page.
-$rowsPerPage = 18;
+// Maximum data rows per logical page (no blank fillers). Chosen so that
+// data + header/footer comfortably fit on one physical A4 page.
+$rowsPerPage = 24;
 
 // Build pages by grouping rows by borrowed date and packing into pages,
 // allowing a single date to span multiple pages (continuation)
@@ -386,10 +386,9 @@ if (!empty($history)) {
           <?php
             $segments = (isset($pageMeta['segments']) && is_array($pageMeta['segments'])) ? $pageMeta['segments'] : [];
             $rowsOnPage = isset($pageMeta['row_count']) ? (int)$pageMeta['row_count'] : 0;
-            // Only pad with blank rows on the final logical page to avoid
-            // creating extra partly-blank physical pages.
-            $isLastPage = ($pi === count($pagesToRender) - 1);
-            $padRows = ($isLastPage && isset($rowsPerPage)) ? max(0, $rowsPerPage - $rowsOnPage) : 0;
+            // Do NOT add blank rows; each page is filled only with real data.
+            // The last page can be partially filled.
+            $padRows = 0;
           ?>
           <?php if (empty($segments)): ?>
             <div class="table-responsive">
