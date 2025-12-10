@@ -153,7 +153,65 @@ try {
 $autoPrint = (isset($_GET['autoprint']) && $_GET['autoprint'] == '1');
 // Fixed rows per printed page; remaining space is filled with blank rows
 $rowsPerPage = 24;
-$pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
+
+// Build pages by grouping rows by borrowed date and packing into pages,
+// allowing a single date to span multiple pages (continuation)
+$pages = [];
+if (!empty($history)) {
+    // Group all history rows by date label while preserving order
+    $allGroups = [];
+    $allGroupOrder = [];
+    foreach ($history as $hvTmpAll) {
+        $labelAll = 'Unknown date';
+        if (!empty($hvTmpAll['borrowed_at'])) {
+            $tsTmpAll = strtotime($hvTmpAll['borrowed_at']);
+            if ($tsTmpAll !== false) {
+                $labelAll = date('F j, Y', $tsTmpAll);
+            }
+        }
+        if (!isset($allGroups[$labelAll])) {
+            $allGroups[$labelAll] = [];
+            $allGroupOrder[] = $labelAll;
+        }
+        $allGroups[$labelAll][] = $hvTmpAll;
+    }
+
+    $currentPage = ['segments' => [], 'row_count' => 0];
+    foreach ($allGroupOrder as $dateLabelAll) {
+        $rowsForLabel = $allGroups[$dateLabelAll];
+        $offset = 0;
+        $totalForLabel = count($rowsForLabel);
+        $isFirstSegmentForLabel = true;
+
+        while ($offset < $totalForLabel) {
+            $remaining = $rowsPerPage - $currentPage['row_count'];
+            if ($remaining <= 0) {
+                $pages[] = $currentPage;
+                $currentPage = ['segments' => [], 'row_count' => 0];
+                $remaining = $rowsPerPage;
+            }
+
+            $take = min($remaining, $totalForLabel - $offset);
+            $segmentRows = array_slice($rowsForLabel, $offset, $take);
+
+            $currentPage['segments'][] = [
+                'label' => $dateLabelAll,
+                'rows' => $segmentRows,
+                'continued' => !$isFirstSegmentForLabel,
+            ];
+            $currentPage['row_count'] += count($segmentRows);
+
+            $offset += $take;
+            $isFirstSegmentForLabel = false;
+        }
+    }
+
+    if (!empty($currentPage['segments'])) {
+        $pages[] = $currentPage;
+    }
+} else {
+    $pages = [];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -290,8 +348,13 @@ $pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
     <tbody>
       <tr><td style="padding:0;">
         <?php $pagesToRender = !empty($pages) ? $pages : [[]]; ?>
-        <?php foreach ($pagesToRender as $pi => $displayRows): $padRows = isset($rowsPerPage) ? max(0, $rowsPerPage - count($displayRows)) : 0; ?>
-          <?php if (empty($displayRows)): ?>
+        <?php foreach ($pagesToRender as $pi => $pageMeta): ?>
+          <?php
+            $segments = (isset($pageMeta['segments']) && is_array($pageMeta['segments'])) ? $pageMeta['segments'] : [];
+            $rowsOnPage = isset($pageMeta['row_count']) ? (int)$pageMeta['row_count'] : 0;
+            $padRows = isset($rowsPerPage) ? max(0, $rowsPerPage - $rowsOnPage) : 0;
+          ?>
+          <?php if (empty($segments)): ?>
             <div class="table-responsive">
               <table class="table table-bordered table-sm align-middle print-table">
                 <colgroup>
@@ -320,26 +383,12 @@ $pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
               </table>
             </div>
           <?php else: ?>
-            <?php
-              // Group rows by borrowed date label while preserving original order
-              $groups = [];
-              $groupOrder = [];
-              foreach ($displayRows as $hvTmp) {
-                $label = 'Unknown date';
-                if (!empty($hvTmp['borrowed_at'])) {
-                  $tsTmp = strtotime($hvTmp['borrowed_at']);
-                  if ($tsTmp !== false) {
-                    $label = date('F j, Y', $tsTmp);
-                  }
-                }
-                if (!isset($groups[$label])) {
-                  $groups[$label] = [];
-                  $groupOrder[] = $label;
-                }
-                $groups[$label][] = $hvTmp;
-              }
-            ?>
-            <?php foreach ($groupOrder as $gi => $dateLabel): ?>
+            <?php foreach ($segments as $si => $segment): ?>
+              <?php
+                $dateLabel = isset($segment['label']) ? (string)$segment['label'] : 'Unknown date';
+                $segmentRows = (isset($segment['rows']) && is_array($segment['rows'])) ? $segment['rows'] : [];
+                $continued = !empty($segment['continued']);
+              ?>
               <div class="table-responsive">
                 <table class="table table-bordered table-sm align-middle print-table">
                   <colgroup>
@@ -356,11 +405,19 @@ $pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
                       <th colspan="7">
                         <span class="date-group-header">
                           <i class="bi bi-calendar3"></i>
-                          <span><?php echo htmlspecialchars($dateLabel); ?></span>
+                          <span>
+                            <?php
+                              $labelText = $dateLabel;
+                              if ($continued) {
+                                $labelText .= ' (continued)';
+                              }
+                              echo htmlspecialchars($labelText);
+                            ?>
+                          </span>
                         </span>
                       </th>
                     </tr>
-                    <?php if ($gi === 0): ?>
+                    <?php if ($si === 0): ?>
                     <tr>
                       <th>User</th>
                       <th>Student ID</th>
@@ -373,7 +430,7 @@ $pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
                     <?php endif; ?>
                   </thead>
                   <tbody>
-                    <?php foreach ($groups[$dateLabel] as $hv): ?>
+                    <?php foreach ($segmentRows as $hv): ?>
                       <?php
                         $mn = trim((string)($hv['model_name'] ?? ''));
                         $cat = trim((string)($hv['category'] ?? ''));
@@ -427,7 +484,7 @@ $pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
                         ?></td>
                       </tr>
                     <?php endforeach; ?>
-                    <?php if ($gi === count($groupOrder) - 1): ?>
+                    <?php if ($si === count($segments) - 1 && $padRows > 0): ?>
                       <?php for ($i = 0; $i < $padRows; $i++): ?>
                         <tr class="blank-row">
                           <td>&nbsp;</td>
@@ -443,7 +500,7 @@ $pages = !empty($history) ? array_chunk($history, $rowsPerPage) : [];
                   </tbody>
                 </table>
               </div>
-              <?php if ($gi < count($groupOrder) - 1): ?>
+              <?php if ($si < count($segments) - 1): ?>
                 <div class="date-separator"></div>
               <?php endif; ?>
             <?php endforeach; ?>

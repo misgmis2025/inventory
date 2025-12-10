@@ -235,7 +235,8 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   </head><body>
     <div class="container-fluid pt-3 print-root">
       <?php
-        $pageSize = 15;
+        // Use a slightly larger page size so the grid visually fills more of the page
+        $pageSize = 20;
         $totalRows = is_array($rows) ? count($rows) : 0;
         $pages = max(1, (int)ceil($totalRows / $pageSize));
         for ($p = 0; $p < $pages; $p++) {
@@ -1174,10 +1175,10 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       .eca-header { text-align:center; margin-bottom:10px; }
       .eca-title { font-weight:400; letter-spacing:6px; font-size:14pt; }
       .print-wrap { width: 100%; overflow: visible; }
-      .eca-meta { display:flex; align-items:center; justify-content:space-between; font-size:9pt; margin-top:6px; margin-bottom:10px; }
-      .dept-row { margin-bottom: 10mm; }
-      .report-title { text-align:center; font-weight:400; font-size:14pt; margin:14px 0 14px; text-transform:uppercase; }
-      .eca-footer { margin-top:20mm; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap; }
+      .eca-meta { display:flex; align-items:center; justify-content:space-between; font-size:9pt; margin-top:6px; margin-bottom:8px; }
+      .dept-row { margin-bottom: 8mm; }
+      .report-title { text-align:center; font-weight:400; font-size:14pt; margin:14px 0 8px; text-transform:uppercase; }
+      .eca-footer { margin-top:12mm; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap; }
       .eca-footer .field { display:inline-flex; align-items:center; gap:8px; margin-right:0; white-space:nowrap; }
       .eca-footer .field label { margin:0; white-space:nowrap; }
       .eca-print-value { display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:180px; }
@@ -1188,7 +1189,7 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
   </head><body>
     <div class="container-fluid pt-3 print-root">
       <?php
-        $pageSize = 15;
+        $pageSize = 20;
         $totalRows = is_array($rows) ? count($rows) : 0;
         $pages = max(1, (int)ceil($totalRows / $pageSize));
         for ($p = 0; $p < $pages; $p++) {
