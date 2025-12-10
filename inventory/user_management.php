@@ -1396,6 +1396,67 @@ try {
               }
             }
 
+            const verifModalEl = document.getElementById('verificationDecisionModal');
+            const verifTbody = document.querySelector('#verificationTable tbody');
+            let pendingVerifForm = null;
+            if (verifModalEl && verifTbody) {
+              const verifModal = new bootstrap.Modal(verifModalEl);
+              const verifUserSpan = document.getElementById('verificationUsername');
+              const verifActionSpan = document.getElementById('verificationAction');
+              const verifAdminPwInput = document.getElementById('verificationAdminPassword');
+              const verifConfirmBtn = document.getElementById('verificationConfirmBtn');
+              const verifErrorText = document.getElementById('verificationErrorText');
+
+              verifTbody.addEventListener('click', function(e) {
+                const btn = e.target.closest('.verification-action-btn');
+                if (!btn) return;
+                e.preventDefault();
+                const form = btn.closest('form.verification-action-form');
+                if (!form) return;
+                pendingVerifForm = form;
+                const uname = btn.getAttribute('data-username') || '';
+                const mode = btn.getAttribute('data-mode') || 'verify';
+                if (verifUserSpan) verifUserSpan.textContent = uname;
+                if (verifActionSpan) verifActionSpan.textContent = (mode === 'reject') ? 'Reject' : 'Verify';
+                if (verifAdminPwInput) verifAdminPwInput.value = '';
+                if (verifConfirmBtn) {
+                  verifConfirmBtn.textContent = (mode === 'reject') ? 'Reject' : 'Verify';
+                  verifConfirmBtn.classList.toggle('btn-danger', mode === 'reject');
+                  verifConfirmBtn.classList.toggle('btn-success', mode !== 'reject');
+                  verifConfirmBtn.disabled = true;
+                }
+                if (verifErrorText) verifErrorText.classList.add('d-none');
+                verifModal.show();
+              });
+
+              if (verifAdminPwInput && verifConfirmBtn) {
+                verifAdminPwInput.addEventListener('input', function() {
+                  const hasVal = this.value.trim().length > 0;
+                  verifConfirmBtn.disabled = !hasVal;
+                  if (verifErrorText) verifErrorText.classList.add('d-none');
+                });
+              }
+
+              if (verifConfirmBtn) {
+                verifConfirmBtn.addEventListener('click', function() {
+                  if (pendingVerifForm) {
+                    if (verifAdminPwInput) {
+                      let hidden = pendingVerifForm.querySelector('input[name="admin_password"]');
+                      if (!hidden) {
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'admin_password';
+                        pendingVerifForm.appendChild(hidden);
+                      }
+                      hidden.value = verifAdminPwInput.value || '';
+                    }
+                    pendingVerifForm.submit();
+                    pendingVerifForm = null;
+                  }
+                });
+              }
+            }
+
             // Borrowing Agreement edit modal formatting buttons (WYSIWYG)
             (function(){
               var form = document.getElementById('editBorrowAgreementForm');
