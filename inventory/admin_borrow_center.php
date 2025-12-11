@@ -1296,7 +1296,16 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
               <?php endforeach; ?>
               <?php for ($i = 0; $i < $fill; $i++): ?>
                 <tr class="blank-row">
-                  <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td><div>&nbsp;</div><div>&nbsp;</div></td>
+                  <td>&nbsp;</td>
                 </tr>
               <?php endfor; ?>
             </tbody>
