@@ -175,7 +175,7 @@ if (!empty($history)) {
 // blank rows to append to the very last date table so the final grid appears
 // visually filled. This does not try to be exact; it just avoids an obviously
 // short last page.
-$approxRowsPerPage = 19;
+$approxRowsPerPage = 17;
 $totalDataRows = !empty($history) ? count($history) : 0;
 $blankRowsLast = 0;
 if ($totalDataRows > 0 && $approxRowsPerPage > 0) {
@@ -187,6 +187,11 @@ if ($totalDataRows > 0 && $approxRowsPerPage > 0) {
             $blankRowsLast = $approxRowsPerPage - $mod;
         }
     }
+}
+// Safety clamp so we never add so many blank rows that they risk
+// pushing content onto an extra blank page.
+if ($blankRowsLast > 10) {
+    $blankRowsLast = 10;
 }
 ?>
 <!DOCTYPE html>
