@@ -363,8 +363,8 @@ $showAppDownloadLink = $isAndroidUa && !$isIosUa && !$isAppUa && $appApkUrl !== 
           </div>
           <div class="modal-body pt-1">
             <p>Your account has not yet been verified by the MIS Office.</p>
-            <p>Please visit the MIS Office, located beside the Registrar's Office in the Dr. Marcos Hall Building, and bring your school ID or any valid identification.</p>
-            <p>The MIS staff will verify your identity to confirm that you are the one who registered.</p>
+            <p>Please visit the MIS Office, <strong>located beside the Registrar's Office in the Dr. Marcos Hall Building</strong>, and bring your school ID or any valid identification.</p>
+            <p>The MIS staff will verify your identity to <strong>confirm</strong> that you are the one who registered.</p>
             <p class="mb-0">Once verification is complete, your account will be activated and you will be able to log in.</p>
           </div>
           <div class="modal-footer border-0 pt-0">
