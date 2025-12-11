@@ -1170,7 +1170,7 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       @page { size: A4 portrait; margin: 0.6in 0.25in 0.25in 0.25in; }
       @media print { .no-print { display:none!important } html,body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; } thead{display:table-header-group} tfoot{display:table-footer-group} .print-wrap{ overflow: visible !important; } }
       .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 9px; }
-      .print-table th, .print-table td { padding: .15rem .2rem; vertical-align: middle; line-height: 1.2; text-align: left; word-break: break-word; white-space: normal; }
+      .print-table th, .print-table td { padding: .18rem .2rem; vertical-align: middle; line-height: 1.2; text-align: left; word-break: break-word; white-space: normal; }
       .print-root { padding-top: 15mm; margin-top: 6mm; }
       .eca-header { text-align:center; margin-bottom:10px; }
       .eca-title { font-weight:400; letter-spacing:6px; font-size:14pt; }
@@ -1178,11 +1178,11 @@ if ($act === 'print_lost_damaged' && $_SERVER['REQUEST_METHOD'] === 'GET') {
       .eca-meta { display:flex; align-items:center; justify-content:space-between; font-size:9pt; margin-top:6px; margin-bottom:8px; }
       .dept-row { margin-bottom: 8mm; }
       .report-title { text-align:center; font-weight:400; font-size:14pt; margin:14px 0 8px; text-transform:uppercase; }
-      .eca-footer { margin-top:12mm; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap; }
+      .eca-footer { margin-top:18mm; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:nowrap; }
       .eca-footer .field { display:inline-flex; align-items:center; gap:8px; margin-right:0; white-space:nowrap; }
       .eca-footer .field label { margin:0; white-space:nowrap; }
       .eca-print-value { display:inline-block; border-bottom:1px solid #000; padding:0 4px 2px; min-width:180px; }
-      .blank-row td { padding-top: .35rem !important; padding-bottom: .35rem !important; }
+      .blank-row td { padding-top: .18rem !important; padding-bottom: .18rem !important; }
       .page { page-break-after: always; }
       .page:last-child { page-break-after: auto; }
     </style>
