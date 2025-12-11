@@ -209,7 +209,7 @@ if ($blankRowsLast > 10) {
     @media print {
       .no-print { display: none !important; }
       html, body { margin: 0 !important; background: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      body { padding-bottom: 0.90in !important; }
+      body { padding-bottom: 0.55in !important; }
       * { background: #ffffff !important; color: #000 !important; box-shadow: none !important; }
       .print-table thead { display: table-header-group; }
       .print-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 9px; }
