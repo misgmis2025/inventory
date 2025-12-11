@@ -276,7 +276,14 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                   <td><?php echo htmlspecialchars((string)($rw['school_id'] ?? '')); ?></td>
                   <td><?php echo htmlspecialchars($rw['approved_by']); ?></td>
                   <td><?php echo htmlspecialchars($rw['remarks']); ?></td>
-                  <td><?php echo htmlspecialchars($rw['due_at'] ? date('F d, Y g:iA', strtotime($rw['due_at'])) : ''); ?></td>
+                  <td>
+                    <?php
+                      $ts = strtotime((string)($rw['due_at'] ?? ''));
+                      if ($ts) {
+                        echo '<div>'.htmlspecialchars(date('M d,Y', $ts)).'</div><div>'.htmlspecialchars(date('g:ia', $ts)).'</div>';
+                      }
+                    ?>
+                  </td>
                 </tr>
               <?php endforeach; ?>
               <?php for ($i = 0; $i < $fill; $i++): ?>
@@ -289,7 +296,7 @@ if ($act === 'print_overdue' && $_SERVER['REQUEST_METHOD'] === 'GET') {
                   <td>&nbsp;</td>
                   <td>&nbsp;</td>
                   <td>&nbsp;</td>
-                  <td>&nbsp;</td>
+                  <td><div>&nbsp;</div><div>&nbsp;</div></td>
                 </tr>
               <?php endfor; ?>
             </tbody>
